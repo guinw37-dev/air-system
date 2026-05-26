@@ -11,6 +11,7 @@ import MasterData from './pages/MasterData'
 import Users from './pages/Users'
 import PMSchedule from './pages/PMSchedule'
 import CleaningStatus from './pages/CleaningStatus'
+import ImportPage from './pages/ImportPage'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -36,6 +37,9 @@ export default function App() {
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
         <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
         <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
+        <Route path="/import" element={
+          <RequireAuth><RequireRole roles={['admin', 'owner']}><ImportPage /></RequireRole></RequireAuth>
+        } />
         <Route path="/master" element={
           <RequireAuth><RequireRole roles={['admin', 'owner']}><MasterData /></RequireRole></RequireAuth>
         } />
