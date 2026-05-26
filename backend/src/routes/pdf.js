@@ -52,7 +52,6 @@ router.get('/work-orders/:id', authMiddleware, async (req, res) => {
 
     const executablePath =
       process.env.PUPPETEER_EXECUTABLE_PATH ||
-      '/usr/bin/chromium' ||
       '/usr/bin/chromium-browser';
 
     const browser = await puppeteer.launch({
