@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, ClipboardList, Wrench, Database,
-  Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity, FileUp
+  Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity, FileUp,
+  AlertCircle
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
+import api from '../api/client'
 
 const NAV = [
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
@@ -22,6 +24,16 @@ export default function Layout({ children, title, back, actions }) {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [rejectedCount, setRejectedCount] = useState(0)
+
+  const isTechAdmin = ['admin', 'technician'].includes(user?.role)
+
+  useEffect(() => {
+    if (!isTechAdmin) return
+    api.get('/stats/rejected-count')
+      .then((r) => setRejectedCount(r.data.count))
+      .catch(() => {})
+  }, [isTechAdmin, location.pathname])
 
   const visibleNav = NAV.filter((n) => !n.roles || n.roles.includes(user?.role))
 
@@ -29,6 +41,26 @@ export default function Layout({ children, title, back, actions }) {
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
 
   const doLogout = () => { logout(); navigate('/login') }
+
+  const NavLink = ({ path, icon: Icon, label, badge, onClick }) => (
+    <Link
+      to={path}
+      onClick={onClick}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+        isActive(path)
+          ? 'bg-blue-700 text-white'
+          : 'text-blue-200 hover:bg-blue-800 hover:text-white'
+      }`}
+    >
+      <Icon className="shrink-0" style={{ width: 18, height: 18 }} />
+      <span className="flex-1">{label}</span>
+      {badge > 0 && (
+        <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none">
+          {badge}
+        </span>
+      )}
+    </Link>
+  )
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -45,19 +77,18 @@ export default function Layout({ children, title, back, actions }) {
 
         <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
           {visibleNav.map(({ path, icon: Icon, label }) => (
-            <Link
-              key={path}
-              to={path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                isActive(path)
-                  ? 'bg-blue-700 text-white'
-                  : 'text-blue-200 hover:bg-blue-800 hover:text-white'
-              }`}
-            >
-              <Icon className="h-4.5 w-4.5 shrink-0" style={{ width: 18, height: 18 }} />
-              {label}
-            </Link>
+            <NavLink key={path} path={path} icon={Icon} label={label} />
           ))}
+
+          {/* Shortcut: งานตีกลับ — admin/technician only */}
+          {isTechAdmin && (
+            <NavLink
+              path="/work-orders?status=rejected"
+              icon={AlertCircle}
+              label="งานตีกลับ"
+              badge={rejectedCount}
+            />
+          )}
         </nav>
 
         <div className="px-2 py-3 border-t border-blue-800">
@@ -88,18 +119,19 @@ export default function Layout({ children, title, back, actions }) {
             </div>
             <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
               {visibleNav.map(({ path, icon: Icon, label }) => (
-                <Link
-                  key={path}
-                  to={path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-                    isActive(path) ? 'bg-blue-700 text-white' : 'text-blue-200'
-                  }`}
-                >
-                  <Icon style={{ width: 18, height: 18 }} />
-                  {label}
-                </Link>
+                <NavLink key={path} path={path} icon={Icon} label={label} onClick={() => setSidebarOpen(false)} />
               ))}
+
+              {/* Shortcut: งานตีกลับ — admin/technician only */}
+              {isTechAdmin && (
+                <NavLink
+                  path="/work-orders?status=rejected"
+                  icon={AlertCircle}
+                  label="งานตีกลับ"
+                  badge={rejectedCount}
+                  onClick={() => setSidebarOpen(false)}
+                />
+              )}
             </nav>
             <div className="px-5 py-4 border-t border-blue-800">
               <p className="text-xs text-blue-300">{user?.name}</p>

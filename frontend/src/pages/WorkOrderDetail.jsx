@@ -54,6 +54,7 @@ export default function WorkOrderDetail() {
   const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
 
   const isOwnerAdmin = ['owner', 'admin'].includes(user?.role)
+  const isTechAdmin = ['admin', 'technician'].includes(user?.role)
   const canEdit = wo.status === 'in_progress'
 
   const existingItemAcIds = new Set((wo.items || []).map((i) => i.ac_unit_id))
@@ -113,6 +114,19 @@ export default function WorkOrderDetail() {
     }
   }
 
+  const resubmit = async () => {
+    if (!confirm('ส่งงานใหม่อีกครั้ง? ลายเซ็นเดิมจะถูกลบ')) return
+    setActionLoading(true)
+    try {
+      await api.patch(`/work-orders/${id}/resubmit`)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'เกิดข้อผิดพลาด')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const saveSig = async (dataUrl) => {
     try {
       const res = await api.post(`/work-orders/${id}/signatures`, {
@@ -157,6 +171,29 @@ export default function WorkOrderDetail() {
     >
       <div className="px-4 pt-4 flex flex-col gap-4">
 
+        {/* Rejection Banner */}
+        {wo.status === 'rejected' && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-2">
+              <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-700">งานถูกตีกลับ</p>
+                <p className="text-xs text-red-600 mt-1">{wo.owner_notes || '-'}</p>
+              </div>
+            </div>
+            {isTechAdmin && (
+              <button
+                onClick={resubmit}
+                disabled={actionLoading}
+                className="mt-3 w-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <CheckCircle className="h-4 w-4" />
+                {actionLoading ? 'กำลังส่ง...' : 'แก้ไขและส่งใหม่'}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* WO Info Card */}
         <div className="card">
           <div className="flex items-center justify-between mb-3">
@@ -168,7 +205,7 @@ export default function WorkOrderDetail() {
           {wo.tech2_name && <InfoRow label="ช่าง 2" value={wo.tech2_name} />}
           <InfoRow label="เริ่มงาน" value={dayjs(wo.started_at).format('DD/MM/YYYY HH:mm')} />
           {wo.completed_at && <InfoRow label="เสร็จสิ้น" value={dayjs(wo.completed_at).format('DD/MM/YYYY HH:mm')} />}
-          {wo.owner_notes && (
+          {wo.owner_notes && wo.status !== 'rejected' && (
             <div className="mt-2 bg-orange-50 rounded-lg px-3 py-2">
               <p className="text-xs text-orange-700">{wo.owner_notes}</p>
             </div>

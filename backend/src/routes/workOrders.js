@@ -313,14 +313,37 @@ router.patch('/:id/approve', authMiddleware, requireRole('owner', 'admin'), asyn
 // ── PATCH /api/work-orders/:id/reject ─────────────────────────────────────
 router.patch('/:id/reject', authMiddleware, requireRole('owner', 'admin'), async (req, res) => {
   const { notes } = req.body;
+  if (!notes?.trim()) return res.status(400).json({ error: 'กรุณาระบุเหตุผลในการไม่อนุมัติ' });
   const { rows } = await pool.query(`
     UPDATE work_orders
     SET status = 'rejected', owner_id = $1, owner_notes = $2, updated_at = NOW()
     WHERE id = $3 AND status = 'pending_approval'
     RETURNING *
-  `, [req.user.id, notes || null, req.params.id]);
+  `, [req.user.id, notes.trim(), req.params.id]);
   if (!rows.length) return res.status(400).json({ error: 'Cannot reject — check status' });
   res.json(rows[0]);
+});
+
+// ── PATCH /api/work-orders/:id/resubmit ───────────────────────────────────
+// Admin/Technician ส่งงานใหม่หลังแก้ไข (rejected → in_progress)
+router.patch('/:id/resubmit', authMiddleware, async (req, res) => {
+  if (!['admin', 'technician'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'เฉพาะ Admin / Technician เท่านั้น' });
+  }
+  try {
+    // ลบ signatures เก่าออกเพื่อให้เซ็นใหม่
+    await pool.query(`DELETE FROM signatures WHERE work_order_id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`
+      UPDATE work_orders
+      SET status = 'in_progress', completed_at = NULL, updated_at = NOW()
+      WHERE id = $1 AND status = 'rejected'
+      RETURNING *
+    `, [req.params.id]);
+    if (!rows.length) return res.status(400).json({ error: 'Cannot resubmit — check status' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

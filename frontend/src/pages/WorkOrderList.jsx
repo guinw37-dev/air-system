@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
@@ -17,10 +17,11 @@ const STATUSES = [
 
 export default function WorkOrderList() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const user = useAuthStore((s) => s.user)
   const [wos, setWos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState(searchParams.get('status') || '')
   const [search, setSearch] = useState('')
 
   useEffect(() => {

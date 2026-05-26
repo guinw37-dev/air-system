@@ -113,6 +113,18 @@ router.get('/daily', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/stats/rejected-count
+router.get('/rejected-count', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM work_orders WHERE status = 'rejected'`
+    );
+    res.json({ count: rows[0].count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stats
 router.get('/', authMiddleware, async (req, res) => {
   try {
