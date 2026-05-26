@@ -7,7 +7,20 @@ import { useAuthStore } from '../store/auth'
 const TABS = [
   { key: 'ac-units',     label: 'ข้อมูลเครื่องแอร์',   role: ['admin', 'owner'] },
   { key: 'work-history', label: 'ประวัติงานเก่า',        role: ['admin'] },
+  { key: 'pts-excel',    label: 'ไฟล์ Excel แบบเดิม',   role: ['admin', 'owner'] },
 ]
+
+const PTS_INFO = (
+  <div className="bg-blue-50 rounded-xl px-4 py-3 text-xs text-blue-700 space-y-1">
+    <p className="font-semibold mb-1">ไฟล์ Excel แบบเดิม (สถานที่ล้างแอร์ + พัดลม.xlsx)</p>
+    <p>• รองรับ format เดิมโดยตรง — ไม่ต้องแก้ไข format</p>
+    <p>• Sheet 1 = แอร์, Sheet 2 = พัดลม (ระบบจะ import ทั้งคู่)</p>
+    <p>• วันที่ปีพ.ศ. (เช่น 2569-01-27) จะแปลงเป็น ค.ศ. อัตโนมัติ</p>
+    <p>• "แอร์เสีย" จะตั้งสถานะ broken, "ไม่มีฟิลเตอร์" จะข้ามแถวนั้น</p>
+    <p>• สร้าง Hospital / Building / Floor / Dept อัตโนมัติ</p>
+    <p>• ใบงานแต่ละวัน + ประเภทเดียวกัน จะรวมเป็นใบงานเดียว</p>
+  </div>
+)
 
 const COLUMNS = {
   'ac-units': [
@@ -113,50 +126,54 @@ export default function ImportPage() {
           ))}
         </div>
 
-        {/* Column guide */}
+        {/* Column guide / info */}
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800 text-sm">คอลัมน์ที่ต้องการ (Row 1 = header)</h3>
-            <button
-              onClick={downloadTemplate}
-              className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-            >
-              <Download className="h-4 w-4" /> ดาวน์โหลด Template
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left py-2 px-3 font-medium text-gray-500">Column name</th>
-                  <th className="text-left py-2 px-3 font-medium text-gray-500">จำเป็น</th>
-                  <th className="text-left py-2 px-3 font-medium text-gray-500">คำอธิบาย</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {COLUMNS[tab].map((c) => (
-                  <tr key={c.col}>
-                    <td className="py-2 px-3 font-mono text-blue-700">{c.col}</td>
-                    <td className="py-2 px-3">
-                      {c.req
-                        ? <span className="text-red-500 font-medium">ต้องมี</span>
-                        : <span className="text-gray-400">ไม่บังคับ</span>
-                      }
-                    </td>
-                    <td className="py-2 px-3 text-gray-600">{c.desc}</td>
-                  </tr>
+          {tab === 'pts-excel' ? (
+            PTS_INFO
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800 text-sm">คอลัมน์ที่ต้องการ (Row 1 = header)</h3>
+                <button
+                  onClick={downloadTemplate}
+                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                >
+                  <Download className="h-4 w-4" /> ดาวน์โหลด Template
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">Column name</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">จำเป็น</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">คำอธิบาย</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {COLUMNS[tab].map((c) => (
+                      <tr key={c.col}>
+                        <td className="py-2 px-3 font-mono text-blue-700">{c.col}</td>
+                        <td className="py-2 px-3">
+                          {c.req
+                            ? <span className="text-red-500 font-medium">ต้องมี</span>
+                            : <span className="text-gray-400">ไม่บังคับ</span>
+                          }
+                        </td>
+                        <td className="py-2 px-3 text-gray-600">{c.desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 bg-blue-50 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-blue-700 mb-1.5">หมายเหตุ</p>
+                {NOTES[tab].map((n, i) => (
+                  <p key={i} className="text-xs text-blue-700 leading-relaxed">• {n}</p>
                 ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Notes */}
-          <div className="mt-3 bg-blue-50 rounded-xl px-4 py-3">
-            <p className="text-xs font-semibold text-blue-700 mb-1.5">หมายเหตุ</p>
-            {NOTES[tab].map((n, i) => (
-              <p key={i} className="text-xs text-blue-700 leading-relaxed">• {n}</p>
-            ))}
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* File upload */}
@@ -213,7 +230,7 @@ export default function ImportPage() {
           ) : (
             <>
               <Upload className="h-4 w-4" />
-              {tab === 'ac-units' ? 'Import เครื่องแอร์' : 'Import ประวัติงาน'}
+              {tab === 'ac-units' ? 'Import เครื่องแอร์' : tab === 'pts-excel' ? 'Import ไฟล์ Excel แบบเดิม' : 'Import ประวัติงาน'}
             </>
           )}
         </button>
@@ -244,6 +261,15 @@ export default function ImportPage() {
                   )}
                   {result.skipped !== undefined && result.skipped > 0 && (
                     <span className="text-gray-500">⏭ ข้าม <strong>{result.skipped}</strong> แถว</span>
+                  )}
+                  {result.ac_created !== undefined && (
+                    <span className="text-green-700">✅ แอร์ใหม่ <strong>{result.ac_created}</strong> ตัว</span>
+                  )}
+                  {result.ac_updated !== undefined && (
+                    <span className="text-blue-700">🔄 แอร์อัปเดต <strong>{result.ac_updated}</strong> ตัว</span>
+                  )}
+                  {result.wos_created !== undefined && (
+                    <span className="text-purple-700">📋 ใบงาน <strong>{result.wos_created}</strong> ใบ</span>
                   )}
                 </div>
                 {result.errors?.length > 0 && (

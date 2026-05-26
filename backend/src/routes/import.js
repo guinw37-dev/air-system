@@ -276,4 +276,245 @@ router.post('/work-history', authMiddleware, requireRole('admin'), upload.single
   }
 });
 
+// ── POST /api/import/pts-excel  (custom format: สถานที่ล้างแอร์ + พัดลม.xlsx) ──
+router.post('/pts-excel', authMiddleware, requireRole('admin', 'owner'), upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  // column indices for work dates (0-based)
+  const WORK_COLS = [
+    { idx: 6, type: 'major' }, // ล้างใหญ่ ครั้งที่ 1
+    { idx: 7, type: 'minor' }, // ล้างย่อย ครั้งที่ 1
+    { idx: 8, type: 'minor' }, // ล้างย่อย ครั้งที่ 2
+    { idx: 9, type: 'major' }, // ล้างใหญ่ ครั้งที่ 2
+    { idx: 10, type: 'minor' },// ล้างย่อย ครั้งที่ 3
+    { idx: 11, type: 'minor' },// ล้างย่อย ครั้งที่ 4
+  ];
+  const SKIP_VALS  = new Set(['แอร์เสีย', 'ไม่มีฟิลเตอร์', 'ถอดออก', 'รื้อถอน', '-', '']);
+  const BROKEN_VALS = new Set(['แอร์เสีย', 'ถอดออก', 'รื้อถอน']);
+  const PM_INTERVAL = 2;
+
+  function parseType(s) {
+    s = (s || '').toUpperCase();
+    if (s.includes('AHU'))   return 'AHU';
+    if (s.includes('VRF'))   return 'VRF';
+    if (s.includes('SPLIT')) return 'Split';
+    if (s.includes('FCU'))   return 'FCU';
+    return 'FCU';
+  }
+
+  function parseBtu(s) {
+    const m = /([0-9,]+)\s*BTU/i.exec(String(s || ''));
+    return m ? String(parseInt(m[1].replace(/,/g, ''))) : null;
+  }
+
+  function parseCeDate(val) {
+    if (val == null) return null;
+    const s = String(val).trim();
+    if (!s || SKIP_VALS.has(s)) return null;
+
+    // "2569-01-27"
+    let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) {
+      let y = +m[1]; if (y > 2300) y -= 543;
+      return `${y}-${m[2]}-${m[3]}`;
+    }
+    // "27/01/2569"
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+    if (m) {
+      let y = +m[3]; if (y > 2300) y -= 543;
+      return `${y}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
+    }
+    return null;
+  }
+
+  function addMonths(dateStr, n) {
+    const d = new Date(dateStr);
+    d.setMonth(d.getMonth() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function extractHospital(text) {
+    const m = /(?:เครื่องปรับอากาศ|พัดลม)\s+(.+?)\s+อาคาร\s+\w/.exec(String(text || '').trim());
+    return m ? m[1].trim() : null;
+  }
+
+  async function getOrCreateH(hCache, bCache, fCache, dCache, name) {
+    const k = name.toLowerCase();
+    if (hCache[k]) return hCache[k];
+    const { rows } = await pool.query('SELECT id FROM hospitals WHERE LOWER(name)=LOWER($1)', [name]);
+    if (rows.length) { hCache[k] = rows[0].id; return rows[0].id; }
+    const slug = name.replace(/\s+/g, '-').replace(/[^\w-]/g, '').toLowerCase().slice(0, 40) + '-' + Date.now();
+    const ins = await pool.query('INSERT INTO hospitals (name,slug) VALUES ($1,$2) RETURNING id', [name, slug]);
+    hCache[k] = ins.rows[0].id;
+    return ins.rows[0].id;
+  }
+
+  async function gocBuilding(cache, hId, name) {
+    const k = `${hId}:${name.toLowerCase()}`;
+    if (cache[k]) return cache[k];
+    const { rows } = await pool.query(
+      'SELECT id FROM buildings WHERE hospital_id=$1 AND LOWER(name)=LOWER($2)', [hId, name]);
+    if (rows.length) { cache[k] = rows[0].id; return rows[0].id; }
+    const ins = await pool.query(
+      'INSERT INTO buildings (hospital_id,name,code) VALUES ($1,$2,$3) RETURNING id', [hId, name, name.slice(0,20)]);
+    cache[k] = ins.rows[0].id; return ins.rows[0].id;
+  }
+
+  async function gocFloor(cache, bId, name) {
+    const k = `${bId}:${name.toLowerCase()}`;
+    if (cache[k]) return cache[k];
+    const { rows } = await pool.query(
+      'SELECT id FROM floors WHERE building_id=$1 AND LOWER(name)=LOWER($2)', [bId, name]);
+    if (rows.length) { cache[k] = rows[0].id; return rows[0].id; }
+    const ins = await pool.query(
+      'INSERT INTO floors (building_id,name) VALUES ($1,$2) RETURNING id', [bId, name]);
+    cache[k] = ins.rows[0].id; return ins.rows[0].id;
+  }
+
+  async function gocDept(cache, fId, name) {
+    const k = `${fId}:${name.toLowerCase()}`;
+    if (cache[k]) return cache[k];
+    const { rows } = await pool.query(
+      'SELECT id FROM departments WHERE floor_id=$1 AND LOWER(name)=LOWER($2)', [fId, name]);
+    if (rows.length) { cache[k] = rows[0].id; return rows[0].id; }
+    const ins = await pool.query(
+      'INSERT INTO departments (floor_id,name) VALUES ($1,$2) RETURNING id', [fId, name]);
+    cache[k] = ins.rows[0].id; return ins.rows[0].id;
+  }
+
+  try {
+    const wb = xlsx.read(req.file.buffer, { type: 'buffer', raw: true });
+    const results = { ac_created: 0, ac_updated: 0, wos_created: 0, errors: [] };
+    const hCache = {}, bCache = {}, fCache = {}, dCache = {};
+
+    // (hospId, type, dateStr) → Set of acIds
+    const woGroups = new Map();
+
+    for (const sheetName of wb.SheetNames) {
+      const ws  = wb.Sheets[sheetName];
+      const isFan = sheetName.includes('พัดลม');
+      const rows = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+
+      let hospId = null;
+
+      for (const row of rows) {
+        if (!row || row.every(v => v == null)) continue;
+
+        const col0s = row[0] != null ? String(row[0]).trim() : '';
+
+        // Hospital header: col0 has text, col1-5 all null
+        if (row[0] != null && row.slice(1, 6).every(v => v == null)) {
+          const h = extractHospital(col0s);
+          if (h) {
+            hospId = await getOrCreateH(hCache, bCache, fCache, dCache, h);
+          }
+          continue;
+        }
+
+        // Skip header rows
+        if (col0s === 'ลำดับ' || col0s === 'ลำดับที่' || col0s === 'อาคาร') continue;
+
+        // Data row: col5 must be AC-*
+        const acCodeRaw = row[5];
+        if (!acCodeRaw) continue;
+        const acCode = String(acCodeRaw).trim();
+        if (!/^AC-/.test(acCode)) continue;
+        if (!hospId) { results.errors.push(`No hospital for ${acCode}`); continue; }
+
+        const bldRaw  = row[1] != null ? String(row[1]).trim() : 'A';
+        const flRaw   = row[2] != null ? String(row[2]).trim() : '1';
+        const deptRaw = row[3] != null ? String(row[3]).trim() : acCode;
+        const typeRaw = row[4] != null ? String(row[4]).trim() : '';
+
+        const bldName   = `อาคาร ${bldRaw}`;
+        const floorName = `ชั้น ${flRaw}`;
+        const acType    = isFan ? 'Fan' : parseType(typeRaw);
+        const btuStr    = parseBtu(typeRaw);
+
+        const isBroken = WORK_COLS.some(({ idx }) =>
+          row[idx] != null && BROKEN_VALS.has(String(row[idx]).trim()));
+
+        const bId  = await gocBuilding(bCache, hospId, bldName);
+        const fId  = await gocFloor(fCache, bId, floorName);
+        const dId  = await gocDept(dCache, fId, deptRaw);
+
+        // Upsert AC unit
+        const { rows: ex } = await pool.query('SELECT id FROM ac_units WHERE ac_code=$1', [acCode]);
+        let acId;
+        if (ex.length) {
+          if (isBroken) {
+            await pool.query("UPDATE ac_units SET status='broken',updated_at=NOW() WHERE id=$1", [ex[0].id]);
+          }
+          acId = ex[0].id;
+          results.ac_updated++;
+        } else {
+          const ins = await pool.query(`
+            INSERT INTO ac_units
+              (department_id,ac_code,name,type,capacity_btu,pm_interval_months,status)
+            VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+          `, [dId, acCode, deptRaw, acType, btuStr, PM_INTERVAL, isBroken ? 'broken' : 'active']);
+          acId = ins.rows[0].id;
+          results.ac_created++;
+        }
+
+        // Collect WO dates
+        for (const { idx, type: wtype } of WORK_COLS) {
+          if (idx >= row.length) continue;
+          const cellStr = row[idx] != null ? String(row[idx]).trim() : '';
+          if (SKIP_VALS.has(cellStr) || !cellStr) continue;
+          const dateStr = parseCeDate(row[idx]);
+          if (!dateStr) continue;
+
+          const gtype = isFan ? 'fan' : wtype;
+          const gkey  = `${hospId}|${gtype}|${dateStr}`;
+          if (!woGroups.has(gkey)) {
+            woGroups.set(gkey, { hospId, type: gtype, date: dateStr, items: new Set() });
+          }
+          woGroups.get(gkey).items.add(acId);
+        }
+      }
+    }
+
+    // Create work orders
+    for (const [, g] of woGroups) {
+      try {
+        const ds = g.date.replace(/-/g, '');
+        const { rows: cnt } = await pool.query(
+          "SELECT COUNT(*)::int AS c FROM work_orders WHERE order_no LIKE $1", [`IMP-${ds}-%`]);
+        const orderNo = `IMP-${ds}-${String(cnt[0].c + 1).padStart(4, '0')}`;
+
+        const { rows: wo } = await pool.query(`
+          INSERT INTO work_orders
+            (order_no, hospital_id, type, status, started_at, completed_at, approved_at)
+          VALUES ($1,$2,$3,'approved',$4,$4,$4) RETURNING id
+        `, [orderNo, g.hospId, g.type, g.date]);
+        const woId = wo[0].id;
+
+        for (const acId of g.items) {
+          await pool.query(`
+            INSERT INTO work_order_items (work_order_id, ac_unit_id)
+            SELECT $1,$2 WHERE NOT EXISTS (
+              SELECT 1 FROM work_order_items WHERE work_order_id=$1 AND ac_unit_id=$2
+            )
+          `, [woId, acId]);
+
+          const nextDate = addMonths(g.date, PM_INTERVAL);
+          await pool.query(`
+            UPDATE ac_units
+            SET next_pm_date = GREATEST(COALESCE(next_pm_date,$1::date),$1::date), updated_at=NOW()
+            WHERE id=$2
+          `, [nextDate, acId]);
+        }
+        results.wos_created++;
+      } catch (err) {
+        results.errors.push(`WO ${g.date}/${g.type}: ${err.message}`);
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
