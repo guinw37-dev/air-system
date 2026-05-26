@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Clock, CheckCircle, CalendarDays, Plus, Wind } from 'lucide-react'
 import dayjs from 'dayjs'
@@ -153,12 +153,15 @@ export default function PMSchedule() {
     api.get(`/pm?${params}`).then((r) => setList(r.data)).finally(() => setLoading(false))
   }, [filter, hospital])
 
-  const filtered = list.filter((a) =>
+  const filtered = useMemo(() => list.filter((a) =>
     !search ||
     a.ac_code?.toLowerCase().includes(search.toLowerCase()) ||
     a.ac_name?.toLowerCase().includes(search.toLowerCase()) ||
     a.dept_name?.toLowerCase().includes(search.toLowerCase())
-  )
+  ), [list, search])
+
+  // O(1) lookup instead of O(n) find() per row
+  const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected])
 
   const toggleSelect = (ac) => {
     // can only select same hospital
@@ -272,7 +275,7 @@ export default function PMSchedule() {
                   <tr>
                     <th className="py-3 px-4 w-10">
                       <input type="checkbox" className="accent-blue-600"
-                        checked={selected.length === filtered.length && filtered.length > 0}
+                        checked={selectedIds.size === filtered.length && filtered.length > 0}
                         onChange={(e) => e.target.checked ? selectAll() : setSelected([])}
                       />
                     </th>
@@ -290,7 +293,7 @@ export default function PMSchedule() {
                     <tr><td colSpan={8} className="py-16 text-center text-gray-400">ไม่พบข้อมูล</td></tr>
                   )}
                   {filtered.map((ac) => {
-                    const isSelected = selected.find((s) => s.id === ac.id)
+                    const isSelected = selectedIds.has(ac.id)
                     const pm = PM_STATUS[ac.pm_status] || { label: ac.pm_status, color: 'bg-gray-100 text-gray-600' }
                     return (
                       <tr
