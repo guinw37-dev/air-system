@@ -20,6 +20,11 @@ export default function Dashboard() {
   const [recentWos, setRecentWos] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Daily view
+  const [dailyDate, setDailyDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [dailyWos, setDailyWos] = useState([])
+  const [dailyLoading, setDailyLoading] = useState(false)
+
   useEffect(() => {
     Promise.all([
       api.get('/stats'),
@@ -29,6 +34,13 @@ export default function Dashboard() {
       setRecentWos(w.data)
     }).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    setDailyLoading(true)
+    api.get(`/stats/daily?date=${dailyDate}`)
+      .then((r) => setDailyWos(r.data))
+      .finally(() => setDailyLoading(false))
+  }, [dailyDate])
 
   if (loading) return <PageSpinner />
 
@@ -125,6 +137,72 @@ export default function Dashboard() {
               {typeData.length === 0 && <p className="text-sm text-gray-400">ยังไม่มีข้อมูล</p>}
             </div>
           </div>
+        </div>
+
+        {/* Daily view */}
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h3 className="font-semibold text-gray-800">ใบงานรายวัน</h3>
+            <input
+              type="date"
+              className="input w-auto text-sm"
+              value={dailyDate}
+              onChange={(e) => setDailyDate(e.target.value)}
+            />
+          </div>
+          {dailyLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-blue-600" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เลขที่</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">โรงพยาบาล</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ประเภท</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">สถานะ</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ช่าง</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เครื่อง</th>
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เวลา</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyWos.map((wo) => {
+                    const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
+                    const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
+                    return (
+                      <tr
+                        key={wo.id}
+                        onClick={() => navigate(`/work-orders/${wo.id}`)}
+                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <td className="py-2.5 px-3 font-medium text-blue-600">{wo.order_no}</td>
+                        <td className="py-2.5 px-3 text-gray-700">{wo.hospital_name}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+                        </td>
+                        <td className="py-2.5 px-3 text-gray-600">{wo.tech1_name}</td>
+                        <td className="py-2.5 px-3 text-gray-500">{wo.item_count}</td>
+                        <td className="py-2.5 px-3 text-gray-400 text-xs">{dayjs(wo.created_at).format('HH:mm')}</td>
+                      </tr>
+                    )
+                  })}
+                  {dailyWos.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-gray-400 text-sm">
+                        ไม่มีใบงานในวันที่ {dayjs(dailyDate).format('DD/MM/YYYY')}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Recent WOs — table */}

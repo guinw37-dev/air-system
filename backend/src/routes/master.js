@@ -196,6 +196,34 @@ router.get('/ac-units/:id', authMiddleware, async (req, res) => {
   res.json(rows[0]);
 });
 
+// GET /api/master/ac-units/:id/history — work order history for a specific AC
+router.get('/ac-units/:id/history', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        wo.id, wo.order_no, wo.type, wo.status,
+        wo.started_at, wo.completed_at, wo.approved_at,
+        h.name hospital_name,
+        t1.name tech1_name, t2.name tech2_name,
+        woi.measurements, woi.checklist, woi.has_repair, woi.repair_notes,
+        COUNT(p.id)::int AS photo_count
+      FROM work_order_items woi
+      JOIN work_orders wo ON wo.id = woi.work_order_id
+      JOIN hospitals h    ON wo.hospital_id = h.id
+      LEFT JOIN users t1  ON wo.tech1_id = t1.id
+      LEFT JOIN users t2  ON wo.tech2_id = t2.id
+      LEFT JOIN ac_photos p ON p.work_order_item_id = woi.id
+      WHERE woi.ac_unit_id = $1
+      GROUP BY wo.id, h.name, t1.name, t2.name,
+               woi.measurements, woi.checklist, woi.has_repair, woi.repair_notes
+      ORDER BY wo.created_at DESC
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/ac-units', authMiddleware, requireRole('admin', 'owner'), async (req, res) => {
   const { department_id, ac_code, name, type, capacity_btu, pm_interval_months, notes } = req.body;
   if (!department_id || !ac_code) return res.status(400).json({ error: 'department_id and ac_code required' });

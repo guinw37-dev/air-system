@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, ClipboardList, Wrench, Database,
-  Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck
+  Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 
 const NAV = [
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
   { path: '/repair-logs',  icon: Wrench,           label: 'แจ้งซ่อม',       roles: null },
-  { path: '/pm',           icon: CalendarCheck,   label: 'PM Schedule',   roles: null },
+  { path: '/pm',             icon: CalendarCheck, label: 'PM Schedule',   roles: null },
+  { path: '/cleaning-status',icon: Activity,      label: 'ติดตามการล้าง', roles: null },
   { path: '/work-orders',  icon: ClipboardList,   label: 'ใบงาน',          roles: null },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'owner'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin'] },
