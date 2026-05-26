@@ -18,6 +18,7 @@ app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/photos', require('./routes/photos'));
 app.use('/api/repair-logs', require('./routes/repairLogs'));
+app.use('/api/pdf',         require('./routes/pdf'));
 
 // Health check
 app.get('/api/health', (req, res) => {
