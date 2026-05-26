@@ -117,10 +117,12 @@ function generateHtml(wo, items, photos, sigs) {
 <html lang="th">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+    font-family: 'Sarabun', 'TH Sarabun New', 'Garuda', 'Noto Sans Thai', sans-serif;
     font-size: 9pt;
     color: #222;
   }
@@ -386,9 +388,9 @@ function renderItemPage(wo, item, phasePhotos, m, c, isMajor, typeLabel, dateStr
 
 function renderSigPage(wo, sigMap, typeLabel, dateStr, itemCount) {
   const roles = [
-    { role: 'tech1',  label: 'ช่างผู้ปฏิบัติงาน 1' },
-    { role: 'tech2',  label: 'ช่างผู้ปฏิบัติงาน 2' },
-    { role: 'owner',  label: 'ผู้ตรวจรับงาน' },
+    { role: 'tech',        label: `ช่างผู้ปฏิบัติงาน${wo.tech1_name ? ' (' + wo.tech1_name + (wo.tech2_name ? ' / ' + wo.tech2_name : '') + ')' : ''}` },
+    { role: 'area_owner',  label: 'เจ้าของพื้นที่' },
+    { role: 'engineering', label: 'แผนกวิศวกรรม' },
   ];
 
   const sigCols = roles.map(r => {
