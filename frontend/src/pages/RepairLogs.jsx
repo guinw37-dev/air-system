@@ -149,13 +149,12 @@ export default function RepairLogs() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ใบงาน</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">วันที่</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ค่าใช้จ่าย</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {logs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-gray-400">ไม่พบรายการ</td>
+                      <td colSpan={6} className="py-16 text-center text-gray-400">ไม่พบรายการ</td>
                     </tr>
                   )}
                   {logs.map((log) => (
@@ -187,9 +186,6 @@ export default function RepairLogs() {
                       </td>
                       <td className="py-3 px-4 text-blue-600 text-xs">{log.order_no || '-'}</td>
                       <td className="py-3 px-4 text-gray-400 text-xs">{dayjs(log.created_at).format('DD/MM/YY')}</td>
-                      <td className="py-3 px-4 text-gray-600">
-                        {log.petty_cash ? `฿${Number(log.petty_cash).toLocaleString()}` : '-'}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -212,8 +208,6 @@ export default function RepairLogs() {
               <textarea className="input" rows={2} value={editForm.cause} onChange={(e) => setEditForm({ ...editForm, cause: e.target.value })} /></div>
             <div><label className="label">วิธีแก้ไข</label>
               <textarea className="input" rows={2} value={editForm.solution} onChange={(e) => setEditForm({ ...editForm, solution: e.target.value })} /></div>
-            <div><label className="label">ค่าใช้จ่าย (บาท)</label>
-              <input type="number" className="input" value={editForm.petty_cash} onChange={(e) => setEditForm({ ...editForm, petty_cash: e.target.value })} /></div>
             <div>
               <label className="label">สถานะ</label>
               <select className="input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
