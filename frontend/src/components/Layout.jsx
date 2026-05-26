@@ -8,8 +8,8 @@ import { useAuthStore } from '../store/auth'
 
 const NAV = [
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
-  { path: '/work-orders',  icon: ClipboardList,   label: 'ใบงาน',          roles: null },
   { path: '/repair-logs',  icon: Wrench,           label: 'แจ้งซ่อม',       roles: null },
+  { path: '/work-orders',  icon: ClipboardList,   label: 'ใบงาน',          roles: null },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'owner'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin'] },
 ]
