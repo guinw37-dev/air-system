@@ -8,9 +8,11 @@ const { authMiddleware } = require('../middleware/auth');
 const PHOTO_POINTS = require('../config/photoPoints');
 
 // ── Storage ────────────────────────────────────────────────────────────────
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(process.env.UPLOAD_DIR || 'uploads', 'photos', String(req.params.itemId));
+    const dir = path.join(UPLOAD_DIR, 'photos', String(req.params.itemId));
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -75,7 +77,7 @@ router.delete('/:photoId', authMiddleware, async (req, res) => {
     [req.params.photoId]
   );
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  const filePath = path.join(process.env.UPLOAD_DIR || 'uploads', rows[0].url.replace('/uploads/', ''));
+  const filePath = path.join(UPLOAD_DIR, rows[0].url.replace('/uploads/', ''));
   fs.unlink(filePath, () => {});
   res.json({ message: 'deleted' });
 });
