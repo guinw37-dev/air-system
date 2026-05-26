@@ -2,9 +2,39 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const pool = require('./db/pool');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ── Startup migration: fix signatures role constraint ─────────────────────
+;(async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE signatures
+        DROP CONSTRAINT IF EXISTS signatures_role_check;
+    `);
+    await pool.query(`
+      ALTER TABLE signatures
+        ADD CONSTRAINT signatures_role_check
+        CHECK (role IN ('tech', 'area_owner', 'engineering'));
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'signatures_wo_role_unique'
+        ) THEN
+          ALTER TABLE signatures
+            ADD CONSTRAINT signatures_wo_role_unique
+            UNIQUE (work_order_id, role);
+        END IF;
+      END $$;
+    `);
+    console.log('[migration] signatures constraint updated');
+  } catch (err) {
+    console.error('[migration] signatures error:', err.message);
+  }
+})();
 
 // Middleware
 app.use(cors());

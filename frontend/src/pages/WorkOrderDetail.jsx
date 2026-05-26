@@ -114,14 +114,18 @@ export default function WorkOrderDetail() {
   }
 
   const saveSig = async (dataUrl) => {
-    const res = await api.post(`/work-orders/${id}/signatures`, {
-      role: sigRole,
-      signature_data: dataUrl,
-    })
-    setSigRole(null)
-    load()
-    if (res.data?.auto_submitted) {
-      alert('เซ็นครบทั้ง 3 ฝ่าย — ส่งงานอัตโนมัติแล้ว')
+    try {
+      const res = await api.post(`/work-orders/${id}/signatures`, {
+        role: sigRole,
+        signature_data: dataUrl,
+      })
+      setSigRole(null)
+      load()
+      if (res.data?.auto_submitted) {
+        alert('เซ็นครบทั้ง 3 ฝ่าย — ส่งงานอัตโนมัติแล้ว')
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'บันทึกลายเซ็นไม่สำเร็จ')
     }
   }
 
