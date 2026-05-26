@@ -135,10 +135,10 @@ export default function CleaningStatus() {
     }
   }
 
-  // Breadcrumb label
+    // Breadcrumb labels
   const selBuildingName = buildings.find((b) => b.id === selBuilding)?.name
-  const selFloorName    = floors.find((f) => f.id === selFloor)?.name
-  const selDeptName     = depts.find((d) => d.id === selDept)?.name
+  const selFloorName    = selBuilding ? floors.find((f) => f.id === selFloor)?.name : null
+  const selDeptName     = selFloor    ? depts.find((d) => d.id === selDept)?.name   : null
 
   return (
     <Layout title="ติดตามสถานะการล้าง">
@@ -165,122 +165,86 @@ export default function CleaningStatus() {
 
         {selHospital && !loading && <>
 
-          {/* ── Cascading Selector ──────────────────────────────────── */}
-          <div className="card p-0 overflow-hidden">
+          {/* ── Cascading Dropdowns ─────────────────────────────────── */}
+          <div className="card">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Building */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">อาคาร</label>
+                <select
+                  className="input"
+                  value={selBuilding || ''}
+                  onChange={(e) => pickBuilding(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">ทั้งหมด ({floorData.length} เครื่อง)</option>
+                  {buildings.map((b) => {
+                    const bAcs = floorData.filter((ac) => ac.building_id === b.id)
+                    const c = { red: 0, yellow: 0, green: 0 }
+                    for (const ac of bAcs) { const s = getStatus(ac.days).code; if (c[s] !== undefined) c[s]++ }
+                    return (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({bAcs.length}) {c.red ? `🔴${c.red}` : ''}{c.yellow ? `🟡${c.yellow}` : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              {/* Floor — only when building selected */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">ชั้น</label>
+                <select
+                  className="input"
+                  value={selFloor || ''}
+                  disabled={!selBuilding}
+                  onChange={(e) => pickFloor(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">{selBuilding ? `ทุกชั้น (${floors.length} ชั้น)` : '— เลือกอาคารก่อน'}</option>
+                  {floors.map((f) => {
+                    const fAcs = floorData.filter((ac) => ac.floor_id === f.id && ac.building_id === selBuilding)
+                    const c = { red: 0, yellow: 0 }
+                    for (const ac of fAcs) { const s = getStatus(ac.days).code; if (c[s] !== undefined) c[s]++ }
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({fAcs.length}) {c.red ? `🔴${c.red}` : ''}{c.yellow ? `🟡${c.yellow}` : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              {/* Dept — only when floor selected */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">แผนก / ห้อง</label>
+                <select
+                  className="input"
+                  value={selDept || ''}
+                  disabled={!selFloor}
+                  onChange={(e) => pickDept(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">{selFloor ? `ทุกแผนก (${depts.length} แผนก)` : '— เลือกชั้นก่อน'}</option>
+                  {depts.map((d) => {
+                    const dAcs = floorData.filter((ac) => ac.dept_id === d.id && ac.floor_id === selFloor)
+                    return (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({dAcs.length})
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+            </div>
 
             {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex-wrap">
-              <span
-                className="cursor-pointer hover:text-blue-600 font-medium"
-                onClick={() => { setSelBuilding(null); setSelFloor(null); setSelDept(null) }}
-              >
-                ทั้งหมด ({floorData.length})
-              </span>
-              {selBuildingName && <>
-                <ChevronRight className="h-3 w-3 shrink-0 text-gray-300" />
-                <span
-                  className="cursor-pointer hover:text-blue-600 font-medium text-blue-700"
-                  onClick={() => { setSelFloor(null); setSelDept(null) }}
-                >
-                  {selBuildingName}
-                </span>
-              </>}
-              {selFloorName && <>
-                <ChevronRight className="h-3 w-3 shrink-0 text-gray-300" />
-                <span
-                  className="cursor-pointer hover:text-blue-600 font-medium text-blue-700"
-                  onClick={() => setSelDept(null)}
-                >
-                  {selFloorName}
-                </span>
-              </>}
-              {selDeptName && <>
-                <ChevronRight className="h-3 w-3 shrink-0 text-gray-300" />
-                <span className="font-semibold text-blue-800">{selDeptName}</span>
-              </>}
-            </div>
-
-            {/* Row 1: Buildings */}
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="text-xs text-gray-400 font-medium mb-2">อาคาร</p>
-              <div className="flex gap-2 flex-wrap">
-                {buildings.map((b) => {
-                  const bAcs = floorData.filter((ac) => ac.building_id === b.id)
-                  const active = selBuilding === b.id
-                  return (
-                    <button
-                      key={b.id}
-                      onClick={() => pickBuilding(active ? null : b.id)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        active
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:text-blue-600'
-                      }`}
-                    >
-                      <span>{b.name}</span>
-                      <StatusDots acs={bAcs} />
-                    </button>
-                  )
-                })}
+            {(selBuilding || selFloor || selDept) && (
+              <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+                <span className="cursor-pointer hover:text-blue-600" onClick={() => { setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>ทั้งหมด</span>
+                {selBuildingName && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-700 font-medium">{selBuildingName}</span></>}
+                {selFloorName    && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-700 font-medium">{selFloorName}</span></>}
+                {selDeptName     && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-800 font-semibold">{selDeptName}</span></>}
+                <button className="ml-2 text-gray-400 hover:text-red-500 text-xs" onClick={() => { setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>✕ ล้าง</button>
               </div>
-            </div>
-
-            {/* Row 2: Floors (visible always, filtered by building) */}
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="text-xs text-gray-400 font-medium mb-2">ชั้น</p>
-              <div className="flex gap-2 flex-wrap">
-                {floors.map((f) => {
-                  const fAcs = floorData.filter((ac) =>
-                    ac.floor_id === f.id && (!selBuilding || ac.building_id === selBuilding))
-                  const active = selFloor === f.id
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => pickFloor(active ? null : f.id)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        active
-                          ? 'bg-teal-600 text-white border-teal-600'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300 hover:text-teal-600'
-                      }`}
-                    >
-                      <span>{f.name}</span>
-                      <StatusDots acs={fAcs} />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Row 3: Departments */}
-            <div className="px-4 py-3">
-              <p className="text-xs text-gray-400 font-medium mb-2">แผนก / ห้อง</p>
-              <div className="flex gap-2 flex-wrap">
-                {depts.map((d) => {
-                  const dAcs = floorData.filter((ac) =>
-                    ac.dept_id === d.id &&
-                    (!selBuilding || ac.building_id === selBuilding) &&
-                    (!selFloor    || ac.floor_id    === selFloor))
-                  const active = selDept === d.id
-                  return (
-                    <button
-                      key={d.id}
-                      onClick={() => pickDept(active ? null : d.id)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        active
-                          ? 'bg-purple-600 text-white border-purple-600'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:text-purple-600'
-                      }`}
-                    >
-                      <span className="max-w-[160px] truncate">{d.name}</span>
-                      <StatusDots acs={dAcs} />
-                    </button>
-                  )
-                })}
-                {depts.length === 0 && (
-                  <span className="text-xs text-gray-300">— เลือกชั้นเพื่อกรอง</span>
-                )}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* ── Status summary for current selection ─────────────── */}

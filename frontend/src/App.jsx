@@ -10,6 +10,7 @@ import RepairLogs from './pages/RepairLogs'
 import MasterData from './pages/MasterData'
 import Users from './pages/Users'
 import PMSchedule from './pages/PMSchedule'
+import PMPlan from './pages/PMPlan'
 import CleaningStatus from './pages/CleaningStatus'
 import ImportPage from './pages/ImportPage'
 
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
         <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
+        <Route path="/pm-plan" element={<RequireAuth><PMPlan /></RequireAuth>} />
         <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
         <Route path="/import" element={
           <RequireAuth><RequireRole roles={['admin', 'owner']}><ImportPage /></RequireRole></RequireAuth>
