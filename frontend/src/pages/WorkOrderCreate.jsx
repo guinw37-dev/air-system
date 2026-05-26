@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/auth'
 
 const TYPES = [
   { value: 'major', label: 'ล้างใหญ่', desc: 'ล้างคอยล์เย็น/ร้อน + วัดค่า' },
-  { value: 'minor', label: 'ล้างเล็ก', desc: 'เปลี่ยนกรอง + ตรวจสอบ' },
+  { value: 'minor', label: 'ล้างย่อย', desc: 'เปลี่ยนกรอง + ตรวจสอบ' },
   { value: 'fan',   label: 'ล้างพัดลม', desc: 'ทำความสะอาดพัดลม' },
 ]
 

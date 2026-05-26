@@ -52,6 +52,6 @@ export const STATUS_LABEL = {
 
 export const TYPE_LABEL = {
   major: { label: 'ล้างใหญ่',   color: 'bg-blue-100 text-blue-800' },
-  minor: { label: 'ล้างเล็ก',   color: 'bg-purple-100 text-purple-800' },
+  minor: { label: 'ล้างย่อย',   color: 'bg-purple-100 text-purple-800' },
   fan:   { label: 'ล้างพัดลม', color: 'bg-teal-100 text-teal-800' },
 }
