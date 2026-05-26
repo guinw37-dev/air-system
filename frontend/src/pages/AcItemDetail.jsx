@@ -101,10 +101,10 @@ export default function AcItemDetail() {
     setUploadingPoint({ ...uploadingPoint, loading: true })
     try {
       const fd = new FormData()
-      fd.append('photo', file)
       fd.append('phase', phase)
       fd.append('point_no', String(point_no))
       fd.append('label', label)
+      fd.append('photo', file) // must be last — multer reads body fields before file
       await api.post(`/photos/items/${itemId}`, fd)
       const r = await api.get(`/photos/items/${itemId}`)
       setPhotos(r.data)
