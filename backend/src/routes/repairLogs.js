@@ -37,6 +37,24 @@ router.get('/', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
+// POST /api/repair-logs — manual create (no work order)
+router.post('/', authMiddleware, async (req, res) => {
+  const { ac_unit_id, problem } = req.body;
+  if (!ac_unit_id || !problem) {
+    return res.status(400).json({ error: 'ac_unit_id and problem required' });
+  }
+  try {
+    const { rows } = await pool.query(`
+      INSERT INTO repair_logs (ac_unit_id, problem, status, reported_by)
+      VALUES ($1, $2, 'open', $3)
+      RETURNING *
+    `, [ac_unit_id, problem, req.user.id]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/repair-logs/:id
 router.get('/:id', authMiddleware, async (req, res) => {
   const { rows } = await pool.query(`
