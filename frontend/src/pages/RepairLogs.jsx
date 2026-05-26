@@ -45,6 +45,7 @@ export default function RepairLogs() {
   const [hospitals, setHospitals] = useState([])
   const [selHospital, setSelHospital] = useState('')
   const [acList, setAcList] = useState([])
+  const [acSearch, setAcSearch] = useState('')
   const [createForm, setCreateForm] = useState({ ac_unit_id: '', problem: '' })
   const [creating, setCreating] = useState(false)
 
@@ -64,6 +65,8 @@ export default function RepairLogs() {
   useEffect(() => {
     if (!selHospital) { setAcList([]); setCreateForm((f) => ({ ...f, ac_unit_id: '' })); return }
     api.get(`/master/ac-units?hospital_id=${selHospital}`).then((r) => setAcList(r.data))
+    setAcSearch('')
+    setCreateForm((f) => ({ ...f, ac_unit_id: '' }))
   }, [selHospital])
 
   const openDetail = (log) => {
@@ -240,12 +243,34 @@ export default function RepairLogs() {
             </div>
             <div>
               <label className="label">เครื่องแอร์ *</label>
-              <select className="input" value={createForm.ac_unit_id} onChange={(e) => setCreateForm({ ...createForm, ac_unit_id: e.target.value })} disabled={!selHospital}>
-                <option value="">-- เลือกเครื่อง --</option>
-                {acList.map((a) => (
-                  <option key={a.id} value={a.id}>{a.ac_code} — {a.ac_name} ({a.dept_name})</option>
-                ))}
-              </select>
+              <input
+                className="input mb-1"
+                placeholder="ค้นหา รหัส / ชื่อ / แผนก..."
+                value={acSearch}
+                disabled={!selHospital}
+                onChange={(e) => { setAcSearch(e.target.value); setCreateForm((f) => ({ ...f, ac_unit_id: '' })) }}
+              />
+              {selHospital && (
+                <div className="border border-gray-200 rounded-xl max-h-48 overflow-y-auto">
+                  {acList
+                    .filter((a) => !acSearch || [a.ac_code, a.ac_name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.ac_name}`) }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${
+                          createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        <span className="font-medium">{a.ac_code}</span>
+                        {a.ac_name ? ` — ${a.ac_name}` : ''}
+                        <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
+                      </button>
+                    ))
+                  }
+                </div>
+              )}
             </div>
             <div>
               <label className="label">รายละเอียดปัญหา *</label>
