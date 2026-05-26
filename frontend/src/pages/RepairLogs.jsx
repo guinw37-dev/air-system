@@ -16,6 +16,17 @@ const STATUS_COLOR = {
   done:        'bg-green-100 text-green-700',
 }
 const STATUS_TH = { open: 'รอซ่อม', in_progress: 'กำลังซ่อม', done: 'เสร็จแล้ว' }
+const CLEANING_TYPES = [
+  { value: '',      label: '— ไม่มี —' },
+  { value: 'major', label: 'ล้างใหญ่' },
+  { value: 'minor', label: 'ล้างย่อย' },
+  { value: 'fan',   label: 'ล้างพัดลม' },
+]
+const CLEANING_COLOR = {
+  major: 'bg-blue-100 text-blue-700',
+  minor: 'bg-teal-100 text-teal-700',
+  fan:   'bg-purple-100 text-purple-700',
+}
 
 function Modal({ title, onClose, children }) {
   return (
@@ -37,7 +48,7 @@ export default function RepairLogs() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [selected, setSelected] = useState(null)
-  const [editForm, setEditForm] = useState({ cause: '', solution: '', status: '', petty_cash: '' })
+  const [editForm, setEditForm] = useState({ cause: '', solution: '', status: '', cleaning_type: '' })
   const [saving, setSaving] = useState(false)
 
   // Create modal
@@ -71,19 +82,21 @@ export default function RepairLogs() {
 
   const openDetail = (log) => {
     setSelected(log)
-    setEditForm({ cause: log.cause || '', solution: log.solution || '', status: log.status, petty_cash: log.petty_cash || '' })
+    setEditForm({ cause: log.cause || '', solution: log.solution || '', status: log.status, cleaning_type: log.cleaning_type || '' })
   }
 
   const saveEdit = async () => {
     setSaving(true)
     try {
-      await api.patch(`/repair-logs/${selected.id}`, {
+      const res = await api.patch(`/repair-logs/${selected.id}`, {
         cause: editForm.cause || undefined,
         solution: editForm.solution || undefined,
         status: editForm.status || undefined,
-        petty_cash: editForm.petty_cash ? Number(editForm.petty_cash) : undefined,
+        cleaning_type: editForm.cleaning_type || null,
       })
-      setSelected(null); load()
+      setSelected(null)
+      load()
+      if (res.data?.pm_updated) alert('อัปเดตแผน PM เรียบร้อย')
     } catch (err) { alert(err.response?.data?.error || 'เกิดข้อผิดพลาด') }
     finally { setSaving(false) }
   }
@@ -147,6 +160,7 @@ export default function RepairLogs() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานที่</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ปัญหา</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ล้างด้วย</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ใบงาน</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">วันที่</th>
                   </tr>
@@ -154,7 +168,7 @@ export default function RepairLogs() {
                 <tbody className="divide-y divide-gray-50">
                   {logs.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-gray-400">ไม่พบรายการ</td>
+                      <td colSpan={7} className="py-16 text-center text-gray-400">ไม่พบรายการ</td>
                     </tr>
                   )}
                   {logs.map((log) => (
@@ -183,6 +197,13 @@ export default function RepairLogs() {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[log.status] || 'bg-gray-100 text-gray-600'}`}>
                           {STATUS_TH[log.status] || log.status}
                         </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {log.cleaning_type ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CLEANING_COLOR[log.cleaning_type]}`}>
+                            {CLEANING_TYPES.find((t) => t.value === log.cleaning_type)?.label}
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
                       </td>
                       <td className="py-3 px-4 text-blue-600 text-xs">{log.order_no || '-'}</td>
                       <td className="py-3 px-4 text-gray-400 text-xs">{dayjs(log.created_at).format('DD/MM/YY')}</td>
@@ -215,6 +236,24 @@ export default function RepairLogs() {
                 <option value="in_progress">กำลังซ่อม</option>
                 <option value="done">เสร็จแล้ว</option>
               </select>
+            </div>
+            <div>
+              <label className="label">ล้างแอร์ด้วย (ตัดแผน PM)</label>
+              <select
+                className="input"
+                value={editForm.cleaning_type}
+                onChange={(e) => setEditForm({ ...editForm, cleaning_type: e.target.value })}
+              >
+                {CLEANING_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+              {editForm.cleaning_type && editForm.status === 'done' && (
+                <p className="text-xs text-green-600 mt-1">✓ บันทึกแล้วจะอัปเดต next_pm_date อัตโนมัติ</p>
+              )}
+              {editForm.cleaning_type && editForm.status !== 'done' && (
+                <p className="text-xs text-orange-500 mt-1">* ต้องตั้งสถานะ "เสร็จแล้ว" ถึงจะตัด PM</p>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => setSelected(null)} className="btn-secondary flex-1">ยกเลิก</button>

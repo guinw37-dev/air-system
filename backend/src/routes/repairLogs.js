@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
+const dayjs = require('dayjs');
 
 // GET /api/repair-logs?hospital_id=&status=&ac_unit_id=
 router.get('/', authMiddleware, async (req, res) => {
@@ -71,21 +72,56 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
 // PATCH /api/repair-logs/:id
 router.patch('/:id', authMiddleware, async (req, res) => {
-  const { cause, solution, status, petty_cash } = req.body;
-  const resolved_at = status === 'done' ? 'NOW()' : 'NULL';
-  const { rows } = await pool.query(`
-    UPDATE repair_logs
-    SET cause = COALESCE($1, cause),
-        solution = COALESCE($2, solution),
-        status = COALESCE($3, status),
-        petty_cash = COALESCE($4, petty_cash),
-        resolved_at = CASE WHEN $3 = 'done' THEN NOW() ELSE resolved_at END,
-        updated_at = NOW()
-    WHERE id = $5
-    RETURNING *
-  `, [cause, solution, status, petty_cash, req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  res.json(rows[0]);
+  const { cause, solution, status, cleaning_type } = req.body;
+
+  // Validate cleaning_type if provided
+  if (cleaning_type && !['major', 'minor', 'fan'].includes(cleaning_type)) {
+    return res.status(400).json({ error: 'cleaning_type must be major, minor, or fan' });
+  }
+
+  try {
+    const { rows } = await pool.query(`
+      UPDATE repair_logs
+      SET cause         = COALESCE($1, cause),
+          solution      = COALESCE($2, solution),
+          status        = COALESCE($3, status),
+          cleaning_type = $4,
+          resolved_at   = CASE WHEN $3 = 'done' THEN NOW() ELSE resolved_at END,
+          updated_at    = NOW()
+      WHERE id = $5
+      RETURNING *
+    `, [cause || null, solution || null, status || null, cleaning_type || null, req.params.id]);
+
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+
+    // If resolved + cleaning_type → update PM schedule
+    if (status === 'done' && cleaning_type) {
+      const log = rows[0];
+      const { rows: ac } = await pool.query(
+        'SELECT pm_interval_months FROM ac_units WHERE id = $1',
+        [log.ac_unit_id]
+      );
+      if (ac.length) {
+        const interval = ac[0].pm_interval_months || 2;
+        const nextDate = dayjs().add(interval, 'month').format('YYYY-MM-DD');
+
+        await pool.query(
+          'UPDATE ac_units SET next_pm_date = $1, updated_at = NOW() WHERE id = $2',
+          [nextDate, log.ac_unit_id]
+        );
+
+        await pool.query(`
+          INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
+          VALUES ($1, $2, $3, NOW(), NULL, 'done')
+          ON CONFLICT DO NOTHING
+        `, [log.ac_unit_id, cleaning_type, nextDate]);
+      }
+    }
+
+    res.json({ ...rows[0], pm_updated: status === 'done' && !!cleaning_type });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

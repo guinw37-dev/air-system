@@ -32,8 +32,16 @@ const PORT = process.env.PORT || 3001;
       END $$;
     `);
     console.log('[migration] signatures constraint updated');
+
+    // Add cleaning_type to repair_logs
+    await pool.query(`
+      ALTER TABLE repair_logs
+        ADD COLUMN IF NOT EXISTS cleaning_type VARCHAR(10)
+        CHECK (cleaning_type IN ('major', 'minor', 'fan'));
+    `);
+    console.log('[migration] repair_logs.cleaning_type ready');
   } catch (err) {
-    console.error('[migration] signatures error:', err.message);
+    console.error('[migration] error:', err.message);
   }
 })();
 
