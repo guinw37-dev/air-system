@@ -38,6 +38,9 @@ export default function AcItemDetail() {
   const [uploadingPoint, setUploadingPoint] = useState(null) // { phase, point_no, label }
   const fileInputRef = useRef(null)
 
+  // Lightbox
+  const [lightbox, setLightbox] = useState(null) // { url, label } | null
+
   const load = async () => {
     try {
       const [woRes, photosRes] = await Promise.all([
@@ -259,6 +262,7 @@ export default function AcItemDetail() {
                             photoUrl={photoUrl}
                             onCapture={() => triggerUpload(phase, pt.point_no, pt.label)}
                             onDelete={() => deletePhoto(existing?.id)}
+                            onView={() => setLightbox({ url: photoUrl(existing?.url), label: `${pt.point_no}. ${pt.label}` })}
                           />
                         )
                       })}
@@ -281,6 +285,7 @@ export default function AcItemDetail() {
                             photoUrl={photoUrl}
                             onCapture={() => triggerUpload(phase, pn, label)}
                             onDelete={() => deletePhoto(existing?.id)}
+                            onView={() => setLightbox({ url: photoUrl(existing?.url), label })}
                           />
                         )
                       })}
@@ -383,11 +388,36 @@ export default function AcItemDetail() {
           </div>
         )}
       </div>
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black flex flex-col"
+          onClick={() => setLightbox(null)}
+        >
+          <div className="flex items-center justify-between px-4 py-3 shrink-0">
+            <p className="text-white text-sm font-medium truncate pr-4">{lightbox.label}</p>
+            <button
+              onClick={() => setLightbox(null)}
+              className="text-white text-3xl leading-none shrink-0"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center overflow-hidden px-2 pb-4">
+            <img
+              src={lightbox.url}
+              alt={lightbox.label}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }
 
-function PhotoCell({ label, required, photo, uploading, canEdit, photoUrl, onCapture, onDelete }) {
+function PhotoCell({ label, required, photo, uploading, canEdit, photoUrl, onCapture, onDelete, onView }) {
   return (
     <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
       {photo ? (
@@ -395,7 +425,8 @@ function PhotoCell({ label, required, photo, uploading, canEdit, photoUrl, onCap
           <img
             src={photoUrl(photo.url)}
             alt={label}
-            className="w-full aspect-square object-cover"
+            className="w-full aspect-square object-cover cursor-zoom-in"
+            onClick={onView}
           />
           {canEdit && (
             <button
