@@ -28,7 +28,7 @@ export default function WorkOrderDetail() {
   const [addingAc, setAddingAc] = useState(null) // ac_unit_id being added
 
   // Signature modal
-  const [sigRole, setSigRole] = useState(null) // 'tech1' | 'tech2' | 'owner'
+  const [sigRole, setSigRole] = useState(null) // 'tech' | 'area_owner' | 'engineering'
 
   // Action states
   const [actionLoading, setActionLoading] = useState(false)
@@ -114,12 +114,15 @@ export default function WorkOrderDetail() {
   }
 
   const saveSig = async (dataUrl) => {
-    await api.post(`/work-orders/${id}/signatures`, {
+    const res = await api.post(`/work-orders/${id}/signatures`, {
       role: sigRole,
       signature_data: dataUrl,
     })
     setSigRole(null)
     load()
+    if (res.data?.auto_submitted) {
+      alert('เซ็นครบทั้ง 3 ฝ่าย — ส่งงานอัตโนมัติแล้ว')
+    }
   }
 
   const downloadPdf = () => {
@@ -237,18 +240,26 @@ export default function WorkOrderDetail() {
 
         {/* Signatures */}
         <div>
-          <h2 className="font-semibold text-gray-800 mb-2">ลายเซ็น</h2>
+          <h2 className="font-semibold text-gray-800 mb-2">ลายเซ็นปิดงาน</h2>
           <div className="flex flex-col gap-2">
             {[
-              { role: 'tech1', label: `ช่าง 1 (${wo.tech1_name || '-'})` },
-              wo.tech2_name && { role: 'tech2', label: `ช่าง 2 (${wo.tech2_name})` },
-              { role: 'owner', label: 'เจ้าของ/ผู้อนุมัติ' },
-            ].filter(Boolean).map(({ role, label }) => {
+              {
+                role: 'tech',
+                label: `ช่างผู้ปฏิบัติงาน (${wo.tech1_name || '-'}${wo.tech2_name ? ` / ${wo.tech2_name}` : ''})`,
+                canSign: canEdit && (user?.id === wo.tech1_id || user?.id === wo.tech2_id || isOwnerAdmin),
+              },
+              {
+                role: 'area_owner',
+                label: 'เจ้าของพื้นที่',
+                canSign: canEdit,
+              },
+              {
+                role: 'engineering',
+                label: 'แผนกวิศวกรรม',
+                canSign: canEdit,
+              },
+            ].map(({ role, label, canSign }) => {
               const sig = wo.signatures?.find((s) => s.role === role)
-              const canSign = canEdit &&
-                ((role === 'tech1' && user?.id === wo.tech1_id) ||
-                 (role === 'tech2' && user?.id === wo.tech2_id) ||
-                 (role === 'owner' && isOwnerAdmin))
               return (
                 <div key={role} className="card flex items-center justify-between">
                   <div>
@@ -261,19 +272,22 @@ export default function WorkOrderDetail() {
                   </div>
                   {sig ? (
                     <img src={sig.signature_data} alt="sig" className="h-12 w-24 object-contain border rounded-lg" />
+                  ) : canSign ? (
+                    <button onClick={() => setSigRole(role)} className="flex items-center gap-1 text-blue-600 text-sm">
+                      <PenLine className="h-4 w-4" /> เซ็น
+                    </button>
                   ) : (
-                    canSign ? (
-                      <button onClick={() => setSigRole(role)} className="flex items-center gap-1 text-blue-600 text-sm">
-                        <PenLine className="h-4 w-4" /> เซ็น
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400">ยังไม่ได้เซ็น</span>
-                    )
+                    <span className="text-xs text-gray-400">ยังไม่ได้เซ็น</span>
                   )}
                 </div>
               )
             })}
           </div>
+          {wo.status === 'in_progress' && (
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              * เซ็นครบทั้ง 3 ฝ่าย → ระบบส่งงานอัตโนมัติ
+            </p>
+          )}
         </div>
 
         {/* Actions */}

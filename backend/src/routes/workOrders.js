@@ -181,14 +181,14 @@ router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
 });
 
 // ── POST /api/work-orders/:id/signatures ──────────────────────────────────
-// บันทึกลายเซ็น
+// บันทึกลายเซ็น (tech / area_owner / engineering)
 router.post('/:id/signatures', authMiddleware, async (req, res) => {
-  const { role, signature_data, user_id } = req.body;
+  const { role, signature_data } = req.body;
   if (!role || !signature_data) {
     return res.status(400).json({ error: 'role and signature_data required' });
   }
-  if (!['tech1', 'tech2', 'owner'].includes(role)) {
-    return res.status(400).json({ error: 'role must be tech1, tech2, or owner' });
+  if (!['tech', 'area_owner', 'engineering'].includes(role)) {
+    return res.status(400).json({ error: 'role must be tech, area_owner, or engineering' });
   }
   try {
     // upsert signature by role
@@ -198,8 +198,38 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
       ON CONFLICT (work_order_id, role)
       DO UPDATE SET signature_data = EXCLUDED.signature_data, signed_at = NOW()
       RETURNING *
-    `, [req.params.id, user_id || req.user.id, role, signature_data]);
-    res.status(201).json(rows[0]);
+    `, [req.params.id, req.user.id, role, signature_data]);
+
+    // Check if all 3 roles signed → auto-submit (in_progress → pending_approval)
+    const { rows: sigs } = await pool.query(
+      `SELECT role FROM signatures WHERE work_order_id = $1`,
+      [req.params.id]
+    );
+    const signedRoles = new Set(sigs.map((s) => s.role));
+    const allSigned = ['tech', 'area_owner', 'engineering'].every((r) => signedRoles.has(r));
+
+    let autoSubmitted = false;
+    if (allSigned) {
+      const { rowCount } = await pool.query(`
+        UPDATE work_orders
+        SET status = 'pending_approval', completed_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'in_progress'
+      `, [req.params.id]);
+
+      if (rowCount > 0) {
+        autoSubmitted = true;
+        // auto-create repair_logs for items with has_repair = true
+        await pool.query(`
+          INSERT INTO repair_logs (ac_unit_id, work_order_id, work_order_item_id, problem, status, reported_by)
+          SELECT wi.ac_unit_id, wi.work_order_id, wi.id, wi.repair_notes, 'open', $1
+          FROM work_order_items wi
+          WHERE wi.work_order_id = $2 AND wi.has_repair = true
+          ON CONFLICT DO NOTHING
+        `, [req.user.id, req.params.id]);
+      }
+    }
+
+    res.status(201).json({ ...rows[0], auto_submitted: autoSubmitted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
