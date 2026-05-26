@@ -100,12 +100,13 @@ CREATE TABLE IF NOT EXISTS work_order_items (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Photos (รูปภาพก่อน/หลัง)
+-- Photos (รูปภาพก่อน/ระหว่าง/หลัง)
 CREATE TABLE IF NOT EXISTS ac_photos (
   id SERIAL PRIMARY KEY,
   work_order_item_id INT NOT NULL REFERENCES work_order_items(id) ON DELETE CASCADE,
-  phase VARCHAR(10) NOT NULL CHECK (phase IN ('before','after')),
+  phase VARCHAR(10) NOT NULL CHECK (phase IN ('before','during','after')),
   point_no INT NOT NULL DEFAULT 1,
+  label VARCHAR(150),
   url TEXT NOT NULL,
   filename TEXT,
   taken_at TIMESTAMP DEFAULT NOW()

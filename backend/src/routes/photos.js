@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const PHOTO_POINTS = require('../config/photoPoints');
 
 // ── Storage ────────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
@@ -27,23 +28,31 @@ const upload = multer({
   }
 });
 
+// ── GET /api/photos/points/:woType ─────────────────────────────────────────
+// คืน photo point config ตาม work order type (major/minor/fan)
+router.get('/points/:woType', authMiddleware, (req, res) => {
+  const points = PHOTO_POINTS[req.params.woType];
+  if (!points) return res.status(404).json({ error: 'Unknown work order type' });
+  res.json(points);
+});
+
 // ── POST /api/photos/items/:itemId ─────────────────────────────────────────
-// upload รูป (before/after)
+// upload รูป (before/during/after) พร้อม label
 router.post('/items/:itemId', authMiddleware, upload.single('photo'), async (req, res) => {
-  const { phase, point_no } = req.body;
+  const { phase, point_no, label } = req.body;
   if (!phase || !point_no || !req.file) {
     return res.status(400).json({ error: 'phase, point_no, and photo required' });
   }
-  if (!['before', 'after'].includes(phase)) {
-    return res.status(400).json({ error: 'phase must be before or after' });
+  if (!['before', 'during', 'after'].includes(phase)) {
+    return res.status(400).json({ error: 'phase must be before, during, or after' });
   }
   try {
     const url = `/uploads/photos/${req.params.itemId}/${req.file.filename}`;
     const { rows } = await pool.query(`
-      INSERT INTO ac_photos (work_order_item_id, phase, point_no, url, filename)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO ac_photos (work_order_item_id, phase, point_no, label, url, filename)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
-    `, [req.params.itemId, phase, parseInt(point_no), url, req.file.filename]);
+    `, [req.params.itemId, phase, parseInt(point_no), label || null, url, req.file.filename]);
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -66,7 +75,6 @@ router.delete('/:photoId', authMiddleware, async (req, res) => {
     [req.params.photoId]
   );
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  // delete file
   const filePath = path.join(process.env.UPLOAD_DIR || 'uploads', rows[0].url.replace('/uploads/', ''));
   fs.unlink(filePath, () => {});
   res.json({ message: 'deleted' });
