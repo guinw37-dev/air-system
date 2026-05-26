@@ -9,6 +9,7 @@ import AcItemDetail from './pages/AcItemDetail'
 import RepairLogs from './pages/RepairLogs'
 import MasterData from './pages/MasterData'
 import Users from './pages/Users'
+import PMSchedule from './pages/PMSchedule'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/work-orders/:id" element={<RequireAuth><WorkOrderDetail /></RequireAuth>} />
         <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
+        <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
         <Route path="/master" element={
           <RequireAuth><RequireRole roles={['admin', 'owner']}><MasterData /></RequireRole></RequireAuth>
         } />

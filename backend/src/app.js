@@ -20,6 +20,7 @@ app.use('/api/photos', require('./routes/photos'));
 app.use('/api/repair-logs', require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
 app.use('/api/stats',       require('./routes/stats'));
+app.use('/api/pm',          require('./routes/pm'));
 
 // Health check
 app.get('/api/health', (req, res) => {
