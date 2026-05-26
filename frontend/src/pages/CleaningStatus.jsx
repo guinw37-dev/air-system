@@ -125,9 +125,14 @@ export default function CleaningStatus() {
     setHistoryAc(ac)
     setHistoryLoading(true)
     setHistory([])
-    const r = await api.get(`/master/ac-units/${ac.id}/history`)
-    setHistory(r.data)
-    setHistoryLoading(false)
+    try {
+      const r = await api.get(`/master/ac-units/${ac.id}/history`)
+      setHistory(r.data)
+    } catch (err) {
+      console.error('history error:', err)
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   // Breadcrumb label
@@ -341,7 +346,9 @@ export default function CleaningStatus() {
                           <td className="py-2.5 px-4 font-semibold text-blue-700">{ac.ac_code}</td>
                           <td className="py-2.5 px-3 text-gray-600">{ac.ac_type || '-'}</td>
                           <td className="py-2.5 px-3 text-gray-500 hidden md:table-cell">
-                            {ac.capacity_btu ? Number(ac.capacity_btu).toLocaleString() : '-'}
+                            {ac.capacity_btu && !isNaN(Number(ac.capacity_btu)) && Number(ac.capacity_btu) > 0
+                              ? Number(ac.capacity_btu).toLocaleString()
+                              : '-'}
                           </td>
                           <td className="py-2.5 px-3 text-gray-700 max-w-[140px] truncate">{ac.dept_name}</td>
                           <td className="py-2.5 px-3 text-gray-500 hidden sm:table-cell">{ac.floor_name}</td>
@@ -401,7 +408,7 @@ export default function CleaningStatus() {
                 <p className="text-xs text-blue-300 mt-0.5">
                   {historyAc.ac_type} · {historyAc.dept_name} · {historyAc.floor_name} · {historyAc.building_name}
                 </p>
-                {historyAc.capacity_btu && (
+                {historyAc.capacity_btu && !isNaN(Number(historyAc.capacity_btu)) && Number(historyAc.capacity_btu) > 0 && (
                   <p className="text-xs text-blue-400">{Number(historyAc.capacity_btu).toLocaleString()} BTU</p>
                 )}
               </div>
@@ -417,35 +424,42 @@ export default function CleaningStatus() {
               ) : history.length === 0 ? (
                 <p className="text-center text-gray-400 py-10 text-sm">ยังไม่มีประวัติการล้าง / ซ่อม</p>
               ) : (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
                   {history.map((h) => {
                     const s = STATUS_LABEL[h.status] || { label: h.status, color: 'bg-gray-100 text-gray-700' }
                     const t = TYPE_LABEL[h.type]    || { label: h.type,   color: 'bg-gray-100 text-gray-700' }
+                    const workDate = h.approved_at || h.completed_at || h.started_at
                     return (
-                      <div key={h.id} className="border border-gray-200 rounded-xl p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-gray-900">{h.order_no}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              {h.tech1_name}{h.tech2_name ? ` / ${h.tech2_name}` : ''}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+                      <div key={h.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                        {/* Header: type + date */}
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                          <div className="flex items-center gap-2">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
+                            <span className="text-sm font-bold text-gray-800">
+                              {workDate ? dayjs(workDate).format('DD MMM BBBB') : '-'}
+                            </span>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+                        </div>
+                        {/* Body */}
+                        <div className="px-4 py-3 flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-mono text-blue-700 mb-1">{h.order_no}</p>
+                            {(h.tech1_name || h.tech2_name) && (
+                              <p className="text-xs text-gray-500">
+                                ช่าง: {h.tech1_name}{h.tech2_name ? ` / ${h.tech2_name}` : ''}
+                              </p>
+                            )}
+                            {h.has_repair && (
+                              <div className="mt-2 bg-red-50 rounded-lg px-2 py-1.5">
+                                <p className="text-xs text-red-700 font-medium">⚠ แจ้งซ่อม{h.repair_notes ? ': ' + h.repair_notes : ''}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400 shrink-0 text-right">
+                            {h.photo_count > 0 && <p>📷 {h.photo_count} รูป</p>}
                           </div>
                         </div>
-                        <div className="flex gap-4 mt-2 text-xs text-gray-400 flex-wrap">
-                          <span>เริ่ม {dayjs(h.started_at).format('DD/MM/YY HH:mm')}</span>
-                          {h.approved_at && <span>✓ อนุมัติ {dayjs(h.approved_at).format('DD/MM/YY')}</span>}
-                          <span>📷 {h.photo_count} รูป</span>
-                        </div>
-                        {h.has_repair && (
-                          <div className="mt-2 bg-red-50 rounded-lg px-3 py-2">
-                            <p className="text-xs text-red-700 font-medium">⚠ แจ้งซ่อม</p>
-                            {h.repair_notes && <p className="text-xs text-red-600 mt-0.5">{h.repair_notes}</p>}
-                          </div>
-                        )}
                       </div>
                     )
                   })}
