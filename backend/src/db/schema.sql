@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS ac_units (
   ac_code VARCHAR(50) UNIQUE NOT NULL,
   name VARCHAR(100) NOT NULL,
   type VARCHAR(30) NOT NULL CHECK (type IN ('FCU','Split','AHU','VRF','Fan')),
-  capacity_btu VARCHAR(20),
+  capacity_btu VARCHAR(50),
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','broken','inactive')),
   pm_interval_months INT DEFAULT 2,
   next_pm_date DATE,
