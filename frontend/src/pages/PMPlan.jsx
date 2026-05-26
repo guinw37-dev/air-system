@@ -93,6 +93,7 @@ function PlanModal({ ac, month, year, onClose, onSaved }) {
 
 export default function PMPlan() {
   const [hospitals, setHospitals] = useState([])
+  const [hospitalBuildings, setHospitalBuildings] = useState([]) // buildings list for selected hospital
   const [selHospital, setSelHospital] = useState('')
   const [year, setYear] = useState(dayjs().year())
   const [loading, setLoading] = useState(false)
@@ -109,30 +110,31 @@ export default function PMPlan() {
     api.get('/master/hospitals').then((r) => setHospitals(r.data))
   }, [])
 
-  const load = () => {
+  // When hospital changes → load buildings list, reset building + data
+  useEffect(() => {
+    setSelBuilding('')
+    setData([])
+    setHospitalBuildings([])
     if (!selHospital) return
+    api.get(`/master/buildings?hospital_id=${selHospital}`)
+      .then((r) => setHospitalBuildings(r.data))
+      .catch(() => {})
+  }, [selHospital])
+
+  const load = () => {
+    if (!selHospital || !selBuilding) return
     setLoading(true)
-    api.get(`/pm/yearly-plan?hospital_id=${selHospital}&year=${year}`)
+    api.get(`/pm/yearly-plan?hospital_id=${selHospital}&year=${year}&building_id=${selBuilding}`)
       .then((r) => setData(r.data))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
-    setSelBuilding('')
+    setData([])
     load()
-  }, [selHospital, year])
+  }, [selBuilding, year])
 
-  const buildings = useMemo(() => {
-    const map = {}
-    for (const ac of data) {
-      if (!map[ac.building_id]) map[ac.building_id] = ac.building_name
-    }
-    return Object.entries(map).map(([id, name]) => ({ id, name }))
-  }, [data])
-
-  const filtered = useMemo(() =>
-    selBuilding ? data.filter((ac) => String(ac.building_id) === selBuilding) : data
-  , [data, selBuilding])
+  const filtered = data
 
   const today = dayjs()
 
@@ -162,12 +164,18 @@ export default function PMPlan() {
               {years.map((y) => <option key={y} value={y}>{y + 543} (CE {y})</option>)}
             </select>
           </div>
-          {selHospital && buildings.length > 0 && (
+          {selHospital && (
             <div className="flex items-center gap-2">
-              <label className="text-sm font-semibold text-gray-700 shrink-0">อาคาร</label>
-              <select className="input max-w-xs" value={selBuilding} onChange={(e) => setSelBuilding(e.target.value)}>
-                <option value="">ทั้งหมด ({data.length} เครื่อง)</option>
-                {buildings.map((b) => (
+              <label className="text-sm font-semibold text-gray-700 shrink-0">
+                อาคาร <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="input max-w-xs"
+                value={selBuilding}
+                onChange={(e) => setSelBuilding(e.target.value)}
+              >
+                <option value="">— เลือกอาคาร —</option>
+                {hospitalBuildings.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
@@ -178,10 +186,13 @@ export default function PMPlan() {
         {!selHospital && (
           <div className="text-center text-gray-400 py-20 text-sm">เลือกโรงพยาบาลเพื่อดูแผน PM</div>
         )}
+        {selHospital && !selBuilding && (
+          <div className="text-center text-orange-400 py-20 text-sm">เลือกอาคารเพื่อโหลดข้อมูล (ป้องกัน browser ค้าง)</div>
+        )}
 
-        {selHospital && loading && <PageSpinner />}
+        {selHospital && selBuilding && loading && <PageSpinner />}
 
-        {selHospital && !loading && (
+        {selHospital && selBuilding && !loading && (
           <>
             {/* Legend */}
             <div className="flex gap-4 flex-wrap text-xs">

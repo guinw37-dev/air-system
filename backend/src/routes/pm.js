@@ -54,10 +54,11 @@ router.get('/', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
-// GET /api/pm/yearly-plan?hospital_id=&year=
+// GET /api/pm/yearly-plan?hospital_id=&year=&building_id=
 router.get('/yearly-plan', authMiddleware, async (req, res) => {
-  const { hospital_id, year = new Date().getFullYear() } = req.query;
+  const { hospital_id, year = new Date().getFullYear(), building_id } = req.query;
   if (!hospital_id) return res.status(400).json({ error: 'hospital_id required' });
+  if (!building_id) return res.status(400).json({ error: 'building_id required — เลือกอาคารก่อน' });
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -81,11 +82,11 @@ router.get('/yearly-plan', authMiddleware, async (req, res) => {
       JOIN buildings b   ON f.building_id = b.id
       LEFT JOIN pm_plan pp ON pp.ac_unit_id = a.id
         AND EXTRACT(YEAR FROM COALESCE(pp.actual_date, pp.scheduled_date)) = $2
-      WHERE b.hospital_id = $1
+      WHERE b.hospital_id = $1 AND b.id = $3
       GROUP BY a.id, a.ac_code, a.name, a.pm_interval_months, a.next_pm_date,
                d.name, f.name, b.name, b.id
-      ORDER BY b.name, f.name, a.ac_code
-    `, [hospital_id, year]);
+      ORDER BY f.name, a.ac_code
+    `, [hospital_id, year, building_id]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
