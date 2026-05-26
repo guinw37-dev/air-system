@@ -4,9 +4,15 @@ const pool = require('./pool');
 async function migrate() {
   try {
     await pool.query(`
-      ALTER TABLE signatures
-      ADD CONSTRAINT IF NOT EXISTS signatures_order_role_unique
-      UNIQUE (work_order_id, role);
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'signatures_order_role_unique'
+        ) THEN
+          ALTER TABLE signatures
+          ADD CONSTRAINT signatures_order_role_unique UNIQUE (work_order_id, role);
+        END IF;
+      END $$;
     `);
     console.log('Migration v2 success');
   } catch (err) {
