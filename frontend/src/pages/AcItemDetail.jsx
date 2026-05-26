@@ -45,7 +45,7 @@ export default function AcItemDetail() {
         api.get(`/photos/items/${itemId}`),
       ])
       const woData = woRes.data
-      const itemData = woData.items?.find((i) => i.id === itemId)
+      const itemData = woData.items?.find((i) => String(i.id) === String(itemId))
       setWo(woData)
       setItem(itemData)
       setPhotos(photosRes.data)
