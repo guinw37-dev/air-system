@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const dayjs = require('dayjs');
@@ -50,9 +50,15 @@ router.get('/work-orders/:id', authMiddleware, async (req, res) => {
 
     const html = generateHtml(wo, items, photos, sigs);
 
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH ||
+      '/usr/bin/chromium' ||
+      '/usr/bin/chromium-browser';
+
     const browser = await puppeteer.launch({
+      executablePath,
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
