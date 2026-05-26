@@ -50,9 +50,16 @@ router.get('/work-orders/:id', authMiddleware, async (req, res) => {
 
     const html = generateHtml(wo, items, photos, sigs);
 
-    const executablePath =
-      process.env.PUPPETEER_EXECUTABLE_PATH ||
-      '/usr/bin/chromium-browser';
+    // Use env override, or nix-installed chromium (in PATH), or fallback paths
+    const { execSync } = require('child_process');
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (!executablePath) {
+      try { executablePath = execSync('which chromium').toString().trim(); } catch (_) {}
+    }
+    if (!executablePath) {
+      try { executablePath = execSync('which chromium-browser').toString().trim(); } catch (_) {}
+    }
+    if (!executablePath) executablePath = '/usr/bin/chromium';
 
     const browser = await puppeteer.launch({
       executablePath,
