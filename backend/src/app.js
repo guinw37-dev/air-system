@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const pool = require('./db/pool');
 
 const app = express();
@@ -41,6 +42,8 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
+fs.mkdirSync(path.join(UPLOAD_DIR, 'photos'), { recursive: true });
+console.log(`[upload] serving from ${UPLOAD_DIR}`);
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 // Routes
