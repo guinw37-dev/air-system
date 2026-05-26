@@ -2,10 +2,13 @@ const jwt = require('jsonwebtoken');
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // Allow token via query string for browser-opened endpoints (e.g. PDF download)
+  const token = (header && header.startsWith('Bearer '))
+    ? header.split(' ')[1]
+    : req.query.token;
+  if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const token = header.split(' ')[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload;

@@ -124,7 +124,8 @@ export default function WorkOrderDetail() {
 
   const downloadPdf = () => {
     const base = uploadsBase || ''
-    window.open(`${base}/api/pdf/work-orders/${id}`, '_blank')
+    const token = useAuthStore.getState().token
+    window.open(`${base}/api/pdf/work-orders/${id}?token=${token}`, '_blank')
   }
 
   const filteredAc = acList.filter((a) =>
