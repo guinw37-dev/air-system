@@ -2,4 +2,4 @@
 cmds = ['npm run build']
 
 [start]
-cmd = 'npx serve dist -l 3000'
+cmd = 'npx serve dist -l 3000 -s'
