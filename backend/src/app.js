@@ -19,6 +19,7 @@ app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/photos', require('./routes/photos'));
 app.use('/api/repair-logs', require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
+app.use('/api/stats',       require('./routes/stats'));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -7,10 +7,18 @@ import WorkOrderCreate from './pages/WorkOrderCreate'
 import WorkOrderDetail from './pages/WorkOrderDetail'
 import AcItemDetail from './pages/AcItemDetail'
 import RepairLogs from './pages/RepairLogs'
+import MasterData from './pages/MasterData'
+import Users from './pages/Users'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
   return token ? children : <Navigate to="/login" replace />
+}
+
+function RequireRole({ children, roles }) {
+  const user = useAuthStore((s) => s.user)
+  if (!roles.includes(user?.role)) return <Navigate to="/" replace />
+  return children
 }
 
 export default function App() {
@@ -24,6 +32,12 @@ export default function App() {
         <Route path="/work-orders/:id" element={<RequireAuth><WorkOrderDetail /></RequireAuth>} />
         <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
+        <Route path="/master" element={
+          <RequireAuth><RequireRole roles={['admin', 'owner']}><MasterData /></RequireRole></RequireAuth>
+        } />
+        <Route path="/users" element={
+          <RequireAuth><RequireRole roles={['admin']}><Users /></RequireRole></RequireAuth>
+        } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
