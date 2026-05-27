@@ -12,7 +12,7 @@ router.get('/floor-status', authMiddleware, async (req, res) => {
         a.id, a.ac_code, a.name ac_name, a.type ac_type, a.capacity_btu,
         d.name dept_name, d.id dept_id,
         f.name floor_name, f.id floor_id,
-        b.name building_name, b.id building_id,
+        b.name building_name, b.id building_id, COALESCE(b.site, h.name) AS site,
         h.name hospital_name, h.id hospital_id,
         (
           SELECT wo.approved_at
@@ -111,6 +111,160 @@ router.get('/daily', authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/stats/contract-summary?hospital_id=&year=YYYY
+router.get('/contract-summary', authMiddleware, async (req, res) => {
+  const { hospital_id, year } = req.query;
+  if (!hospital_id) return res.status(400).json({ error: 'hospital_id required' });
+  const y = year || new Date().getFullYear();
+  try {
+    // Plan = total AC count by site + ac_type
+    const { rows: plan } = await pool.query(`
+      SELECT COALESCE(b.site, h.name) AS site, a.type AS ac_type, COUNT(a.id)::int AS plan
+      FROM ac_units a
+      JOIN departments d ON a.department_id = d.id
+      JOIN floors f ON d.floor_id = f.id
+      JOIN buildings b ON f.building_id = b.id
+      JOIN hospitals h ON b.hospital_id = h.id
+      WHERE h.id = $1 AND a.type IS NOT NULL AND a.type <> ''
+      GROUP BY COALESCE(b.site, h.name), a.type
+      ORDER BY COALESCE(b.site, h.name), a.type
+    `, [hospital_id]);
+
+    // Actual = distinct ACs cleaned per type in year (cumulative)
+    const { rows: actual } = await pool.query(`
+      SELECT wo.type AS wo_type, COALESCE(b.site, h.name) AS site,
+             a.type AS ac_type, COUNT(DISTINCT a.id)::int AS actual
+      FROM work_order_items woi
+      JOIN work_orders wo ON wo.id = woi.work_order_id
+      JOIN ac_units a ON a.id = woi.ac_unit_id
+      JOIN departments d ON a.department_id = d.id
+      JOIN floors f ON d.floor_id = f.id
+      JOIN buildings b ON f.building_id = b.id
+      JOIN hospitals h ON b.hospital_id = h.id
+      WHERE wo.status = 'approved'
+        AND EXTRACT(YEAR FROM wo.approved_at AT TIME ZONE 'Asia/Bangkok') = $2
+        AND h.id = $1
+      GROUP BY wo.type, COALESCE(b.site, h.name), a.type
+    `, [hospital_id, y]);
+
+    // Total AC count per type (for bar chart %)
+    const { rows: totals } = await pool.query(`
+      SELECT a.type AS ac_type, COUNT(a.id)::int AS total
+      FROM ac_units a
+      JOIN departments d ON a.department_id = d.id
+      JOIN floors f ON d.floor_id = f.id
+      JOIN buildings b ON f.building_id = b.id
+      WHERE b.hospital_id = $1 AND a.type IS NOT NULL AND a.type <> ''
+      GROUP BY a.type
+    `, [hospital_id]);
+
+    const actualMap = {};
+    for (const r of actual) {
+      const key = `${r.wo_type}::${r.site}::${r.ac_type}`;
+      actualMap[key] = r.actual;
+    }
+
+    const breakdown = plan.map((p) => {
+      const maj = actualMap[`major::${p.site}::${p.ac_type}`] || 0;
+      const min = actualMap[`minor::${p.site}::${p.ac_type}`] || 0;
+      const fan = actualMap[`fan::${p.site}::${p.ac_type}`] || 0;
+      return { site: p.site, ac_type: p.ac_type, plan: p.plan, major_actual: maj, minor_actual: min, fan_actual: fan };
+    });
+
+    const totalByType = Object.fromEntries(totals.map((t) => [t.ac_type, t.total]));
+    const woTypeTotals = { major: 0, minor: 0, fan: 0 };
+    const woPlan = { major: 0, minor: 0, fan: 0 };
+    for (const r of actual) {
+      if (woTypeTotals[r.wo_type] !== undefined) woTypeTotals[r.wo_type] += r.actual;
+    }
+    // plan for each wo_type = total distinct ACs in hospital
+    const { rows: totalAc } = await pool.query(
+      `SELECT COUNT(a.id)::int AS cnt FROM ac_units a
+       JOIN departments d ON a.department_id=d.id JOIN floors f ON d.floor_id=f.id
+       JOIN buildings b ON f.building_id=b.id WHERE b.hospital_id=$1`, [hospital_id]);
+    woPlan.major = totalAc[0].cnt;
+    woPlan.minor = totalAc[0].cnt;
+    woPlan.fan   = totalAc[0].cnt;
+
+    res.json({ year: y, breakdown, totalByType, woTypeTotals, woPlan });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stats/daily-count?hospital_id=&date=YYYY-MM-DD
+router.get('/daily-count', authMiddleware, async (req, res) => {
+  const { hospital_id, date } = req.query;
+  if (!hospital_id || !date) return res.status(400).json({ error: 'hospital_id and date required' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT wo.type, COUNT(DISTINCT woi.ac_unit_id)::int AS count
+      FROM work_orders wo
+      JOIN work_order_items woi ON woi.work_order_id = wo.id
+      WHERE wo.hospital_id = $1 AND wo.status = 'approved'
+        AND DATE(wo.approved_at AT TIME ZONE 'Asia/Bangkok') = $2
+      GROUP BY wo.type
+    `, [hospital_id, date]);
+    const result = { major: 0, minor: 0, fan: 0 };
+    for (const r of rows) if (result[r.type] !== undefined) result[r.type] = r.count;
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Deduction notes ───────────────────────────────────────────────────────
+
+// GET /api/stats/deductions?hospital_id=&month=YYYY-MM
+router.get('/deductions', authMiddleware, async (req, res) => {
+  const { hospital_id, month } = req.query;
+  if (!hospital_id || !month) return res.status(400).json({ error: 'hospital_id and month required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.*, u.name AS created_by_name FROM deduction_notes d
+       LEFT JOIN users u ON u.id = d.created_by
+       WHERE d.hospital_id=$1 AND d.month=$2 ORDER BY d.created_at`,
+      [hospital_id, month]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/stats/deductions
+router.post('/deductions', authMiddleware, async (req, res) => {
+  const { hospital_id, month, notes } = req.body;
+  if (!hospital_id || !month) return res.status(400).json({ error: 'hospital_id and month required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO deduction_notes (hospital_id, month, notes, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [hospital_id, month, notes || '', req.user.id]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/stats/deductions/:id
+router.put('/deductions/:id', authMiddleware, async (req, res) => {
+  const { notes } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE deduction_notes SET notes=$1, updated_at=NOW() WHERE id=$2 RETURNING *`,
+      [notes || '', req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/stats/deductions/:id
+router.delete('/deductions/:id', authMiddleware, async (req, res) => {
+  await pool.query('DELETE FROM deduction_notes WHERE id=$1', [req.params.id]);
+  res.json({ message: 'deleted' });
 });
 
 // GET /api/stats/rejected-count

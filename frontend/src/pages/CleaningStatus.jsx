@@ -45,6 +45,7 @@ export default function CleaningStatus() {
   const [loading, setLoading]       = useState(false)
 
   // Cascading selection
+  const [selSite, setSelSite]         = useState(null)
   const [selBuilding, setSelBuilding] = useState(null)
   const [selFloor, setSelFloor]       = useState(null)
   const [selDept, setSelDept]         = useState(null)
@@ -61,7 +62,7 @@ export default function CleaningStatus() {
   useEffect(() => {
     if (!selHospital) return
     setLoading(true)
-    setSelBuilding(null); setSelFloor(null); setSelDept(null)
+    setSelSite(null); setSelBuilding(null); setSelFloor(null); setSelDept(null)
     Promise.all([
       api.get(`/stats/floor-status?hospital_id=${selHospital}`),
       api.get(`/stats/monthly-detail?hospital_id=${selHospital}`),
@@ -72,47 +73,57 @@ export default function CleaningStatus() {
   }, [selHospital])
 
   // Reset lower levels when upper changes
+  const pickSite     = (s)  => { setSelSite(s); setSelBuilding(null); setSelFloor(null); setSelDept(null) }
   const pickBuilding = (id) => { setSelBuilding(id); setSelFloor(null); setSelDept(null) }
   const pickFloor    = (id) => { setSelFloor(id); setSelDept(null) }
   const pickDept     = (id) => { setSelDept(id) }
 
   // Unique lists (derived from full data)
+  const sites = useMemo(() => {
+    const set = new Set(floorData.map((ac) => ac.site).filter(Boolean))
+    return Array.from(set).sort()
+  }, [floorData])
+
   const buildings = useMemo(() => {
+    const src = selSite ? floorData.filter((ac) => ac.site === selSite) : floorData
     const map = {}
-    for (const ac of floorData) {
+    for (const ac of src) {
       if (!map[ac.building_id]) map[ac.building_id] = { id: ac.building_id, name: ac.building_name }
     }
     return Object.values(map)
-  }, [floorData])
+  }, [floorData, selSite])
 
   const floors = useMemo(() => {
-    const src = selBuilding ? floorData.filter((ac) => ac.building_id === selBuilding) : floorData
+    const src = selBuilding ? floorData.filter((ac) => ac.building_id === selBuilding)
+      : selSite ? floorData.filter((ac) => ac.site === selSite) : floorData
     const map = {}
     for (const ac of src) {
       if (!map[ac.floor_id]) map[ac.floor_id] = { id: ac.floor_id, name: ac.floor_name }
     }
     return Object.values(map)
-  }, [floorData, selBuilding])
+  }, [floorData, selSite, selBuilding])
 
   const depts = useMemo(() => {
     const src = selFloor ? floorData.filter((ac) => ac.floor_id === selFloor)
       : selBuilding ? floorData.filter((ac) => ac.building_id === selBuilding)
+      : selSite ? floorData.filter((ac) => ac.site === selSite)
       : floorData
     const map = {}
     for (const ac of src) {
       if (!map[ac.dept_id]) map[ac.dept_id] = { id: ac.dept_id, name: ac.dept_name }
     }
     return Object.values(map)
-  }, [floorData, selBuilding, selFloor])
+  }, [floorData, selSite, selBuilding, selFloor])
 
   // Filtered AC list for display
   const filteredAcs = useMemo(() => {
     let list = floorData
+    if (selSite)     list = list.filter((ac) => ac.site === selSite)
     if (selBuilding) list = list.filter((ac) => ac.building_id === selBuilding)
     if (selFloor)    list = list.filter((ac) => ac.floor_id    === selFloor)
     if (selDept)     list = list.filter((ac) => ac.dept_id === selDept)
     return list
-  }, [floorData, selBuilding, selFloor, selDept])
+  }, [floorData, selSite, selBuilding, selFloor, selDept])
 
   // Status summary for filtered
   const statusCount = useMemo(() => {
@@ -136,6 +147,7 @@ export default function CleaningStatus() {
   }
 
     // Breadcrumb labels
+  const selSiteName     = selSite || null
   const selBuildingName = buildings.find((b) => b.id === selBuilding)?.name
   const selFloorName    = selBuilding ? floors.find((f) => f.id === selFloor)?.name : null
   const selDeptName     = selFloor    ? depts.find((d) => d.id === selDept)?.name   : null
@@ -167,7 +179,29 @@ export default function CleaningStatus() {
 
           {/* ── Cascading Dropdowns ─────────────────────────────────── */}
           <div className="card">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Site */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">สถานที่</label>
+                <select
+                  className="input"
+                  value={selSite || ''}
+                  onChange={(e) => pickSite(e.target.value || null)}
+                >
+                  <option value="">ทั้งหมด ({floorData.length} เครื่อง)</option>
+                  {sites.map((s) => {
+                    const sAcs = floorData.filter((ac) => ac.site === s)
+                    const c = { red: 0, yellow: 0, green: 0 }
+                    for (const ac of sAcs) { const st = getStatus(ac.days).code; if (c[st] !== undefined) c[st]++ }
+                    return (
+                      <option key={s} value={s}>
+                        {s} ({sAcs.length}) {c.red ? `🔴${c.red}` : ''}{c.yellow ? `🟡${c.yellow}` : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
               {/* Building */}
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">อาคาร</label>
@@ -176,7 +210,7 @@ export default function CleaningStatus() {
                   value={selBuilding || ''}
                   onChange={(e) => pickBuilding(e.target.value ? Number(e.target.value) : null)}
                 >
-                  <option value="">ทั้งหมด ({floorData.length} เครื่อง)</option>
+                  <option value="">{selSite ? `ทุกอาคาร (${buildings.length} อาคาร)` : '— เลือกสถานที่ก่อน'}</option>
                   {buildings.map((b) => {
                     const bAcs = floorData.filter((ac) => ac.building_id === b.id)
                     const c = { red: 0, yellow: 0, green: 0 }
@@ -190,7 +224,7 @@ export default function CleaningStatus() {
                 </select>
               </div>
 
-              {/* Floor — only when building selected */}
+              {/* Floor */}
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">ชั้น</label>
                 <select
@@ -213,7 +247,7 @@ export default function CleaningStatus() {
                 </select>
               </div>
 
-              {/* Dept — only when floor selected */}
+              {/* Dept */}
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">แผนก / ห้อง</label>
                 <select
@@ -236,13 +270,14 @@ export default function CleaningStatus() {
             </div>
 
             {/* Breadcrumb */}
-            {(selBuilding || selFloor || selDept) && (
+            {(selSite || selBuilding || selFloor || selDept) && (
               <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
-                <span className="cursor-pointer hover:text-blue-600" onClick={() => { setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>ทั้งหมด</span>
+                <span className="cursor-pointer hover:text-blue-600" onClick={() => { setSelSite(null); setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>ทั้งหมด</span>
+                {selSiteName     && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-600 font-medium">{selSiteName}</span></>}
                 {selBuildingName && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-700 font-medium">{selBuildingName}</span></>}
                 {selFloorName    && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-700 font-medium">{selFloorName}</span></>}
                 {selDeptName     && <><ChevronRight className="h-3 w-3 text-gray-300" /><span className="text-blue-800 font-semibold">{selDeptName}</span></>}
-                <button className="ml-2 text-gray-400 hover:text-red-500 text-xs" onClick={() => { setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>✕ ล้าง</button>
+                <button className="ml-2 text-gray-400 hover:text-red-500 text-xs" onClick={() => { setSelSite(null); setSelBuilding(null); setSelFloor(null); setSelDept(null) }}>✕ ล้าง</button>
               </div>
             )}
           </div>
@@ -255,6 +290,7 @@ export default function CleaningStatus() {
                 {selDeptName ? ` — ${selDeptName}`
                   : selFloorName ? ` — ${selFloorName}`
                   : selBuildingName ? ` — ${selBuildingName}`
+                  : selSiteName ? ` — ${selSiteName}`
                   : ' — ทั้งหมด'}
                 <span className="ml-1 text-xs font-normal text-gray-400">({filteredAcs.length} เครื่อง)</span>
               </p>

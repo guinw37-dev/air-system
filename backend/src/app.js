@@ -44,6 +44,24 @@ const PORT = process.env.PORT || 3001;
   await run('ac_units.pm_cycle_pos', async () => {
     await pool.query(`ALTER TABLE ac_units ADD COLUMN IF NOT EXISTS pm_cycle_pos SMALLINT NOT NULL DEFAULT 0;`);
   });
+
+  await run('buildings.site', async () => {
+    await pool.query(`ALTER TABLE buildings ADD COLUMN IF NOT EXISTS site VARCHAR(100);`);
+  });
+
+  await run('deduction_notes table', async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS deduction_notes (
+        id         SERIAL PRIMARY KEY,
+        hospital_id INT NOT NULL REFERENCES hospitals(id),
+        month      CHAR(7) NOT NULL,
+        notes      TEXT,
+        created_by INT REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+  });
 })();
 
 // Middleware

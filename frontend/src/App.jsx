@@ -12,6 +12,7 @@ import Users from './pages/Users'
 import PMSchedule from './pages/PMSchedule'
 import PMPlan from './pages/PMPlan'
 import CleaningStatus from './pages/CleaningStatus'
+import CleaningDashboard from './pages/CleaningDashboard'
 import ImportPage from './pages/ImportPage'
 
 function RequireAuth({ children }) {
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
         <Route path="/pm-plan" element={<RequireAuth><PMPlan /></RequireAuth>} />
         <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
+        <Route path="/cleaning-dashboard" element={<RequireAuth><CleaningDashboard /></RequireAuth>} />
         <Route path="/import" element={
           <RequireAuth><RequireRole roles={['admin', 'owner']}><ImportPage /></RequireRole></RequireAuth>
         } />

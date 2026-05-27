@@ -81,10 +81,11 @@ router.post('/ac-units', authMiddleware, requireRole('admin', 'owner'), upload.s
       const row = data[i];
       const rowNum = i + 2;
       try {
-        const hospitalName = strVal(row, 'hospital', 'โรงพยาบาล', 'Hospital');
+        const hospitalName = strVal(row, 'hospital', 'โรงพยาบาล/สัญญาบริการ', 'โรงพยาบาล', 'Hospital');
+        const siteName     = strVal(row, 'site', 'สถานที่') || hospitalName;
         const buildingName = strVal(row, 'building', 'อาคาร', 'Building') || 'Main';
         const floorName    = strVal(row, 'floor', 'ชั้น', 'Floor') || 'ชั้น 1';
-        const deptName     = strVal(row, 'department', 'แผนก', 'ห้อง', 'Department') || 'ทั่วไป';
+        const deptName     = strVal(row, 'department', 'แผนก/ห้อง', 'แผนก', 'ห้อง', 'Department') || 'ทั่วไป';
         const acCode       = strVal(row, 'ac_code', 'รหัส', 'AC Code', 'ชื่อทรัพย์สิน');
         const acName       = strVal(row, 'ac_name', 'ชื่อ', 'Name');
         const acType       = strVal(row, 'ac_type', 'ประเภท', 'Type', 'ประเภททรัพย์สิน');
@@ -108,13 +109,24 @@ router.post('/ac-units', authMiddleware, requireRole('admin', 'owner'), upload.s
           }
         );
 
-        // Building
-        const bId = await getOrCreate(bCache, `${hId}::${buildingName}`,
-          () => pool.query('SELECT id FROM buildings WHERE hospital_id=$1 AND LOWER(name)=LOWER($2)',
-            [hId, buildingName]).then(r => r.rows),
-          () => pool.query('INSERT INTO buildings (hospital_id, name, code) VALUES ($1,$2,$3) RETURNING id',
-            [hId, buildingName, buildingName.slice(0, 20)]).then(r => r.rows)
-        );
+        // Building — upsert with site
+        const bCacheKey = `${hId}::${buildingName}`;
+        let bId = bCache[bCacheKey];
+        if (bId === undefined) {
+          const { rows: bRows } = await pool.query(
+            'SELECT id FROM buildings WHERE hospital_id=$1 AND LOWER(name)=LOWER($2)', [hId, buildingName]);
+          if (bRows.length) {
+            bId = bRows[0].id;
+            await pool.query('UPDATE buildings SET site=$1 WHERE id=$2 AND (site IS NULL OR site=$1)',
+              [siteName, bId]);
+          } else {
+            const { rows: ins } = await pool.query(
+              'INSERT INTO buildings (hospital_id, name, code, site) VALUES ($1,$2,$3,$4) RETURNING id',
+              [hId, buildingName, buildingName.slice(0, 20), siteName]);
+            bId = ins[0].id;
+          }
+          bCache[bCacheKey] = bId;
+        }
 
         // Floor
         const fId = await getOrCreate(fCache, `${bId}::${floorName}`,
