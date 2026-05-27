@@ -45,6 +45,10 @@ const PORT = process.env.PORT || 3001;
     await pool.query(`ALTER TABLE ac_units ADD COLUMN IF NOT EXISTS pm_cycle_pos SMALLINT NOT NULL DEFAULT 0;`);
   });
 
+  await run('drop ac_units type check constraint', async () => {
+    await pool.query(`ALTER TABLE ac_units DROP CONSTRAINT IF EXISTS ac_units_type_check;`);
+  });
+
   await run('buildings.site', async () => {
     await pool.query(`ALTER TABLE buildings ADD COLUMN IF NOT EXISTS site VARCHAR(100);`);
   });
