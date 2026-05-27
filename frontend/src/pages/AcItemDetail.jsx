@@ -81,7 +81,7 @@ export default function AcItemDetail() {
   if (loading) return <PageSpinner />
   if (!item) return <div className="p-4 text-red-600">ไม่พบข้อมูล</div>
 
-  const canEdit = wo.status === 'in_progress'
+  const canEdit = ['in_progress', 'rejected'].includes(wo?.status)
   const woType = wo.type
   const acType = item.ac_type || ''
 

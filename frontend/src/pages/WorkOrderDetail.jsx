@@ -34,6 +34,7 @@ export default function WorkOrderDetail() {
   const [actionLoading, setActionLoading] = useState(false)
   const [approveNotes, setApproveNotes] = useState('')
   const [showReject, setShowReject] = useState(false)
+  const [showResubmitConfirm, setShowResubmitConfirm] = useState(false)
 
   const load = useCallback(() => {
     api.get(`/work-orders/${id}`).then((r) => setWo(r.data)).finally(() => setLoading(false))
@@ -115,7 +116,7 @@ export default function WorkOrderDetail() {
   }
 
   const resubmit = async () => {
-    if (!confirm('ส่งงานใหม่อีกครั้ง? ลายเซ็นเดิมจะถูกลบ')) return
+    setShowResubmitConfirm(false)
     setActionLoading(true)
     try {
       await api.patch(`/work-orders/${id}/resubmit`)
@@ -135,8 +136,8 @@ export default function WorkOrderDetail() {
       })
       setSigRole(null)
       load()
-      if (res.data?.auto_submitted) {
-        alert('เซ็นครบทั้ง 3 ฝ่าย — ส่งงานอัตโนมัติแล้ว')
+      if (res.data?.auto_approved) {
+        alert('เซ็นครบทั้ง 3 ฝ่าย — อนุมัติอัตโนมัติแล้ว ✓')
       }
     } catch (err) {
       alert(err.response?.data?.error || 'บันทึกลายเซ็นไม่สำเร็จ')
@@ -183,7 +184,7 @@ export default function WorkOrderDetail() {
             </div>
             {isTechAdmin && (
               <button
-                onClick={resubmit}
+                onClick={() => setShowResubmitConfirm(true)}
                 disabled={actionLoading}
                 className="mt-3 w-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
               >
@@ -297,7 +298,7 @@ export default function WorkOrderDetail() {
               {
                 role: 'engineering',
                 label: 'แผนกวิศวกรรม',
-                canSign: canEdit,
+                canSign: canEdit && isOwnerAdmin,
               },
             ].map(({ role, label, canSign }) => {
               const sig = wo.signatures?.find((s) => s.role === role)
@@ -326,8 +327,17 @@ export default function WorkOrderDetail() {
           </div>
           {wo.status === 'in_progress' && (
             <p className="text-xs text-gray-400 mt-2 text-center">
-              * เซ็นครบทั้ง 3 ฝ่าย → ระบบส่งงานอัตโนมัติ
+              * เซ็นครบทั้ง 3 ฝ่าย → อนุมัติอัตโนมัติ (วิศวกรรมเซ็นสุดท้าย)
             </p>
+          )}
+          {/* Reject during signing — admin/owner only */}
+          {wo.status === 'in_progress' && isOwnerAdmin && (
+            <button
+              onClick={() => setShowReject(true)}
+              className="mt-2 w-full border border-red-300 text-red-600 text-sm font-medium py-2 rounded-xl hover:bg-red-50 transition-colors"
+            >
+              ไม่อนุมัติ / ส่งคืนแก้ไข
+            </button>
           )}
         </div>
 
@@ -407,6 +417,19 @@ export default function WorkOrderDetail() {
       {sigRole && (
         <Modal title="ลายเซ็น" onClose={() => setSigRole(null)}>
           <SignaturePad onSave={saveSig} onCancel={() => setSigRole(null)} />
+        </Modal>
+      )}
+
+      {/* Resubmit confirm modal */}
+      {showResubmitConfirm && (
+        <Modal title="ส่งงานใหม่อีกครั้ง?" onClose={() => setShowResubmitConfirm(false)}>
+          <p className="text-sm text-gray-600 mb-4">ลายเซ็นเดิมจะถูกลบทั้งหมด จากนั้นทีมช่างสามารถแก้ไขและเซ็นใหม่ได้</p>
+          <div className="flex gap-2">
+            <button onClick={() => setShowResubmitConfirm(false)} className="btn-secondary flex-1">ยกเลิก</button>
+            <button onClick={resubmit} disabled={actionLoading} className="btn-primary flex-1">
+              {actionLoading ? 'กำลังส่ง...' : 'ยืนยัน'}
+            </button>
+          </div>
         </Modal>
       )}
 

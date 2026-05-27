@@ -200,7 +200,7 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
       RETURNING *
     `, [req.params.id, req.user.id, role, signature_data]);
 
-    // Check if all 3 roles signed → auto-submit (in_progress → pending_approval)
+    // Check if all 3 roles signed → auto-approve immediately
     const { rows: sigs } = await pool.query(
       `SELECT role FROM signatures WHERE work_order_id = $1`,
       [req.params.id]
@@ -208,16 +208,24 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
     const signedRoles = new Set(sigs.map((s) => s.role));
     const allSigned = ['tech', 'area_owner', 'engineering'].every((r) => signedRoles.has(r));
 
-    let autoSubmitted = false;
+    let autoApproved = false;
     if (allSigned) {
+      // Fetch work order type for PM cycle
+      const { rows: woRows } = await pool.query(
+        'SELECT type FROM work_orders WHERE id = $1',
+        [req.params.id]
+      );
+      const woType = woRows[0]?.type;
+
       const { rowCount } = await pool.query(`
         UPDATE work_orders
-        SET status = 'pending_approval', completed_at = NOW(), updated_at = NOW()
+        SET status = 'approved', completed_at = NOW(), approved_at = NOW(), updated_at = NOW()
         WHERE id = $1 AND status = 'in_progress'
       `, [req.params.id]);
 
       if (rowCount > 0) {
-        autoSubmitted = true;
+        autoApproved = true;
+
         // auto-create repair_logs for items with has_repair = true
         await pool.query(`
           INSERT INTO repair_logs (ac_unit_id, work_order_id, work_order_item_id, problem, status, reported_by)
@@ -226,10 +234,34 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
           WHERE wi.work_order_id = $2 AND wi.has_repair = true
           ON CONFLICT DO NOTHING
         `, [req.user.id, req.params.id]);
+
+        // PM cycle update for each AC in this work order
+        const { rows: items } = await pool.query(
+          'SELECT ac_unit_id FROM work_order_items WHERE work_order_id = $1',
+          [req.params.id]
+        );
+        for (const item of items) {
+          const { rows: ac } = await pool.query(
+            'SELECT pm_cycle_pos FROM ac_units WHERE id = $1',
+            [item.ac_unit_id]
+          );
+          if (ac.length) {
+            const newPos = ((ac[0].pm_cycle_pos ?? 0) + 1) % 3;
+            const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
+            await pool.query(
+              'UPDATE ac_units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
+              [nextDate, newPos, item.ac_unit_id]
+            );
+            await pool.query(`
+              INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
+              VALUES ($1, $2, $3, NOW(), $4, 'done') ON CONFLICT DO NOTHING
+            `, [item.ac_unit_id, woType, nextDate, req.params.id]);
+          }
+        }
       }
     }
 
-    res.status(201).json({ ...rows[0], auto_submitted: autoSubmitted });
+    res.status(201).json({ ...rows[0], auto_approved: autoApproved });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -316,7 +348,7 @@ router.patch('/:id/reject', authMiddleware, requireRole('owner', 'admin'), async
   const { rows } = await pool.query(`
     UPDATE work_orders
     SET status = 'rejected', owner_id = $1, owner_notes = $2, updated_at = NOW()
-    WHERE id = $3 AND status = 'pending_approval'
+    WHERE id = $3 AND status IN ('in_progress', 'pending_approval')
     RETURNING *
   `, [req.user.id, notes.trim(), req.params.id]);
   if (!rows.length) return res.status(400).json({ error: 'Cannot reject — check status' });
