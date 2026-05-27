@@ -87,7 +87,7 @@ router.post('/ac-units', authMiddleware, requireRole('admin', 'owner'), upload.s
         const floorName    = strVal(row, 'floor', 'ชั้น', 'Floor') || 'ชั้น 1';
         const deptName     = strVal(row, 'department', 'แผนก/ห้อง', 'แผนก', 'ห้อง', 'Department') || 'ทั่วไป';
         const acCode       = strVal(row, 'ac_code', 'รหัส', 'AC Code', 'ชื่อทรัพย์สิน', 'เลขเครื่องจักร');
-        const acName       = strVal(row, 'ac_name', 'ชื่อ', 'Name');
+        const acName       = strVal(row, 'ac_name', 'ชื่อ', 'Name') || acCode;
         const acType       = strVal(row, 'ac_type', 'ประเภท', 'Type', 'ประเภททรัพย์สิน', 'ประเภทแอร์');
         const brand        = strVal(row, 'brand', 'ยี่ห้อ', 'Brand', 'ยี่ห้อ/Modal', 'ยี่ห้อ/Model');
         const btu          = intVal(row, 'capacity_btu', 'btu', 'BTU');
