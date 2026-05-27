@@ -338,13 +338,13 @@ export default function RepairLogs() {
               {selHospital && (
                 <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
                   {acList
-                    .filter((a) => !acSearch || [a.ac_code, a.ac_name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .filter((a) => !acSearch || [a.ac_code, a.name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
-                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.ac_name}`) }}
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.name}`) }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
                       >
-                        <span className="font-medium">{a.ac_code}</span>{a.ac_name ? ` — ${a.ac_name}` : ''}
+                        <span className="font-medium">{a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
                         <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
                       </button>
                     ))}
@@ -387,13 +387,13 @@ export default function RepairLogs() {
               {selHospital && (
                 <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
                   {acList
-                    .filter((a) => !acSearch || [a.ac_code, a.ac_name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .filter((a) => !acSearch || [a.ac_code, a.name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
-                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.ac_name}`) }}
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.name}`) }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
                       >
-                        <span className="font-medium">{a.ac_code}</span>{a.ac_name ? ` — ${a.ac_name}` : ''}
+                        <span className="font-medium">{a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
                         <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
                       </button>
                     ))}

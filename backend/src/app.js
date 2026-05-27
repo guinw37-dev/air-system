@@ -8,48 +8,42 @@ const pool = require('./db/pool');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ── Startup migration: fix signatures role constraint ─────────────────────
+// ── Startup migrations (each step independent) ───────────────────────────
 ;(async () => {
-  try {
-    await pool.query(`
-      ALTER TABLE signatures
-        DROP CONSTRAINT IF EXISTS signatures_role_check;
-    `);
-    await pool.query(`
-      ALTER TABLE signatures
-        ADD CONSTRAINT signatures_role_check
-        CHECK (role IN ('tech', 'area_owner', 'engineering'));
-    `);
+  const run = async (label, fn) => {
+    try { await fn(); console.log(`[migration] ${label} OK`); }
+    catch (err) { console.error(`[migration] ${label} ERR:`, err.message); }
+  };
+
+  await run('signatures role constraint', async () => {
+    await pool.query(`ALTER TABLE signatures DROP CONSTRAINT IF EXISTS signatures_role_check;`);
+    await pool.query(`ALTER TABLE signatures ADD CONSTRAINT signatures_role_check CHECK (role IN ('tech', 'area_owner', 'engineering'));`);
+  });
+
+  await run('signatures unique constraint', async () => {
     await pool.query(`
       DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'signatures_wo_role_unique'
-        ) THEN
-          ALTER TABLE signatures
-            ADD CONSTRAINT signatures_wo_role_unique
-            UNIQUE (work_order_id, role);
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'signatures_wo_role_unique') THEN
+          ALTER TABLE signatures ADD CONSTRAINT signatures_wo_role_unique UNIQUE (work_order_id, role);
         END IF;
       END $$;
     `);
-    console.log('[migration] signatures constraint updated');
+  });
 
-    // Add cleaning_type to repair_logs
+  await run('repair_logs.cleaning_type', async () => {
+    await pool.query(`ALTER TABLE repair_logs ADD COLUMN IF NOT EXISTS cleaning_type VARCHAR(10);`);
     await pool.query(`
-      ALTER TABLE repair_logs
-        ADD COLUMN IF NOT EXISTS cleaning_type VARCHAR(10)
-        CHECK (cleaning_type IN ('major', 'minor', 'fan'));
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'repair_logs_cleaning_type_check') THEN
+          ALTER TABLE repair_logs ADD CONSTRAINT repair_logs_cleaning_type_check CHECK (cleaning_type IN ('major', 'minor', 'fan'));
+        END IF;
+      END $$;
     `);
-    console.log('[migration] repair_logs.cleaning_type ready');
+  });
 
-    // Add pm_cycle_pos to ac_units (0=major, 1=minor, 2=minor → cycles every 2 months)
-    await pool.query(`
-      ALTER TABLE ac_units
-        ADD COLUMN IF NOT EXISTS pm_cycle_pos SMALLINT NOT NULL DEFAULT 0;
-    `);
-    console.log('[migration] ac_units.pm_cycle_pos ready');
-  } catch (err) {
-    console.error('[migration] error:', err.message);
-  }
+  await run('ac_units.pm_cycle_pos', async () => {
+    await pool.query(`ALTER TABLE ac_units ADD COLUMN IF NOT EXISTS pm_cycle_pos SMALLINT NOT NULL DEFAULT 0;`);
+  });
 })();
 
 // Middleware
