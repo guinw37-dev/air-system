@@ -311,6 +311,26 @@ export default function CleaningStatus() {
             </div>
           </div>
 
+          {/* Monthly chart */}
+          {monthlyData.length > 0 && (
+            <div className="card">
+              <h3 className="font-semibold text-gray-800 mb-4">สถิติการล้างรายเดือน (12 เดือนล่าสุด)</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={monthlyData} barGap={2} barCategoryGap="25%">
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="ล้างใหญ่"  fill="#1d4ed8" radius={[3,3,0,0]} />
+                  <Bar dataKey="ล้างย่อย"  fill="#0d9488" radius={[3,3,0,0]} />
+                  <Bar dataKey="ล้างพัดลม" fill="#7c3aed" radius={[3,3,0,0]} />
+                  <Bar dataKey="ซ่อม"      fill="#f97316" radius={[3,3,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* ── AC Table ──────────────────────────────────────────── */}
           <div className="card p-0 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -373,26 +393,6 @@ export default function CleaningStatus() {
               </div>
             )}
           </div>
-
-          {/* Monthly chart */}
-          {monthlyData.length > 0 && (
-            <div className="card">
-              <h3 className="font-semibold text-gray-800 mb-4">สถิติการล้างรายเดือน (12 เดือนล่าสุด)</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={monthlyData} barGap={2} barCategoryGap="25%">
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="ล้างใหญ่"  fill="#1d4ed8" radius={[3,3,0,0]} />
-                  <Bar dataKey="ล้างย่อย"  fill="#0d9488" radius={[3,3,0,0]} />
-                  <Bar dataKey="ล้างพัดลม" fill="#7c3aed" radius={[3,3,0,0]} />
-                  <Bar dataKey="ซ่อม"      fill="#f97316" radius={[3,3,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
 
         </>}
       </div>
