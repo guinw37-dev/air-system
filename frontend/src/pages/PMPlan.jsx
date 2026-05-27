@@ -7,7 +7,10 @@ import api from '../api/client'
 const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
-const TYPE_SHORT = { major: 'ใหญ่', minor: 'ย่อย', fan: 'พัดลม' }
+const TYPE_SHORT  = { major: 'ใหญ่', minor: 'ย่อย', fan: 'พัดลม' }
+// pm_cycle_pos: 0=major, 1=minor, 2=minor
+const CYCLE_LABEL = ['ใหญ่', 'ย่อย', 'ย่อย']
+const CYCLE_CLS   = ['text-blue-600 bg-blue-50', 'text-teal-600 bg-teal-50', 'text-teal-600 bg-teal-50']
 const TYPE_COLOR = {
   major: 'bg-blue-500',
   minor: 'bg-teal-500',
@@ -102,6 +105,7 @@ export default function PMPlan() {
 
   // Plan modal
   const [planModal, setPlanModal] = useState(null) // { ac, month }
+  const [generating, setGenerating] = useState(false)
 
   const currentMonth = dayjs().month() + 1
   const currentYear  = dayjs().year()
@@ -133,6 +137,21 @@ export default function PMPlan() {
     setData([])
     load()
   }, [selBuilding, year])
+
+  const generatePlan = async () => {
+    if (!selBuilding) return
+    if (!confirm(`สร้างแผน PM อัตโนมัติสำหรับปี ${year + 543}?\n(จะข้ามเดือนที่มีแผนอยู่แล้ว)`)) return
+    setGenerating(true)
+    try {
+      const r = await api.post('/pm/generate-plan', { building_id: selBuilding, year })
+      alert(`สร้างแผนสำเร็จ: เพิ่ม ${r.data.inserted} รายการ, ข้าม ${r.data.skipped} รายการ (มีอยู่แล้ว)`)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'เกิดข้อผิดพลาด')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   const filtered = data
 
@@ -194,6 +213,17 @@ export default function PMPlan() {
 
         {selHospital && selBuilding && !loading && (
           <>
+            {/* Generate button */}
+            <div className="flex justify-end">
+              <button
+                onClick={generatePlan}
+                disabled={generating}
+                className="btn-primary text-sm px-4 py-2"
+              >
+                {generating ? 'กำลังสร้าง...' : '✦ สร้างแผนอัตโนมัติ'}
+              </button>
+            </div>
+
             {/* Legend */}
             <div className="flex gap-4 flex-wrap text-xs">
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> ล้างใหญ่ (เสร็จ)</span>
@@ -212,6 +242,7 @@ export default function PMPlan() {
                       <th className="text-left py-2.5 px-3 font-medium sticky left-0 bg-gray-800 z-10 min-w-[110px]">รหัส</th>
                       <th className="text-left py-2.5 px-3 font-medium min-w-[140px]">ชื่อ / แผนก</th>
                       <th className="text-left py-2.5 px-3 font-medium">รอบ</th>
+                      <th className="text-center py-2.5 px-2 font-medium">ถัดไป</th>
                       {MONTHS.map((m, i) => (
                         <th
                           key={i}
@@ -229,7 +260,7 @@ export default function PMPlan() {
                   <tbody>
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={15} className="py-16 text-center text-gray-400">ไม่พบข้อมูล</td>
+                        <td colSpan={16} className="py-16 text-center text-gray-400">ไม่พบข้อมูล</td>
                       </tr>
                     )}
                     {filtered.map((ac) => {
@@ -252,6 +283,14 @@ export default function PMPlan() {
                           {/* Interval */}
                           <td className="py-2 px-3 text-gray-500 text-center">
                             {ac.pm_interval_months ? `${ac.pm_interval_months}ด.` : '-'}
+                          </td>
+                          {/* Next PM type */}
+                          <td className="py-2 px-2 text-center">
+                            {ac.pm_cycle_pos != null ? (
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CYCLE_CLS[ac.pm_cycle_pos]}`}>
+                                {CYCLE_LABEL[ac.pm_cycle_pos]}
+                              </span>
+                            ) : '-'}
                           </td>
                           {/* Month cells */}
                           {MONTHS.map((_, mi) => {

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const dayjs = require('dayjs');
 
 // GET /api/pm?hospital_id=&filter=overdue|due_soon|ok|all
 router.get('/', authMiddleware, async (req, res) => {
@@ -62,7 +63,7 @@ router.get('/yearly-plan', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT
-        a.id, a.ac_code, a.name ac_name, a.pm_interval_months, a.next_pm_date,
+        a.id, a.ac_code, a.name ac_name, a.pm_interval_months, a.next_pm_date, a.pm_cycle_pos,
         d.name dept_name, f.name floor_name, b.name building_name, b.id building_id,
         COALESCE(
           json_agg(
@@ -83,7 +84,7 @@ router.get('/yearly-plan', authMiddleware, async (req, res) => {
       LEFT JOIN pm_plan pp ON pp.ac_unit_id = a.id
         AND EXTRACT(YEAR FROM COALESCE(pp.actual_date, pp.scheduled_date)) = $2
       WHERE b.hospital_id = $1 AND b.id = $3
-      GROUP BY a.id, a.ac_code, a.name, a.pm_interval_months, a.next_pm_date,
+      GROUP BY a.id, a.ac_code, a.name, a.pm_interval_months, a.next_pm_date, a.pm_cycle_pos,
                d.name, f.name, b.name, b.id
       ORDER BY f.name, a.ac_code
     `, [hospital_id, year, building_id]);
@@ -109,6 +110,68 @@ router.post('/plan', authMiddleware, async (req, res) => {
       RETURNING *
     `, [ac_unit_id, planned_type, scheduled_date]);
     res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/pm/generate-plan — auto-generate planned entries for a year
+router.post('/generate-plan', authMiddleware, async (req, res) => {
+  const { building_id, year } = req.body;
+  if (!building_id || !year) return res.status(400).json({ error: 'building_id and year required' });
+
+  try {
+    const { rows: acs } = await pool.query(`
+      SELECT a.id, a.next_pm_date, a.pm_cycle_pos
+      FROM ac_units a
+      JOIN departments d ON a.department_id = d.id
+      JOIN floors f      ON d.floor_id = f.id
+      JOIN buildings b   ON f.building_id = b.id
+      WHERE b.id = $1
+    `, [building_id]);
+
+    const yearStart = dayjs(`${year}-01-01`);
+    const yearEnd   = dayjs(`${year}-12-31`);
+
+    let inserted = 0;
+    let skipped  = 0;
+
+    for (const ac of acs) {
+      if (!ac.next_pm_date) continue;
+
+      let date = dayjs(ac.next_pm_date);
+      let pos  = ac.pm_cycle_pos ?? 0;
+
+      // wind forward to first month within the year
+      while (date.isBefore(yearStart, 'month')) {
+        date = date.add(2, 'month');
+        pos  = (pos + 1) % 3;
+      }
+
+      while (!date.isAfter(yearEnd, 'month')) {
+        const scheduledDate = date.format('YYYY-MM-DD');
+        const plannedType   = pos === 0 ? 'major' : 'minor';
+
+        const { rowCount } = await pool.query(`
+          INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, status)
+          SELECT $1, $2, $3, 'planned'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM pm_plan
+            WHERE ac_unit_id = $1
+              AND DATE_TRUNC('month', COALESCE(actual_date, scheduled_date)) =
+                  DATE_TRUNC('month', $3::date)
+          )
+        `, [ac.id, plannedType, scheduledDate]);
+
+        if (rowCount > 0) inserted++;
+        else skipped++;
+
+        date = date.add(2, 'month');
+        pos  = (pos + 1) % 3;
+      }
+    }
+
+    res.json({ inserted, skipped, acs: acs.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

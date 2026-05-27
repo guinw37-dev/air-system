@@ -284,18 +284,17 @@ router.patch('/:id/approve', authMiddleware, requireRole('owner', 'admin'), asyn
     );
     for (const item of items) {
       const { rows: ac } = await pool.query(
-        'SELECT pm_interval_months FROM ac_units WHERE id = $1',
+        'SELECT pm_cycle_pos FROM ac_units WHERE id = $1',
         [item.ac_unit_id]
       );
       if (ac.length) {
-        const interval = ac[0].pm_interval_months || 2;
-        const nextDate = dayjs().add(interval, 'month').format('YYYY-MM-DD');
-        // update next_pm_date
+        const oldPos = ac[0].pm_cycle_pos ?? 0;
+        const newPos = (oldPos + 1) % 3;
+        const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
         await pool.query(
-          'UPDATE ac_units SET next_pm_date = $1, updated_at = NOW() WHERE id = $2',
-          [nextDate, item.ac_unit_id]
+          'UPDATE ac_units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
+          [nextDate, newPos, item.ac_unit_id]
         );
-        // insert pm_plan
         await pool.query(`
           INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
           VALUES ($1, $2, $3, NOW(), $4, 'done')

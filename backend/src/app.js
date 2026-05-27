@@ -40,6 +40,13 @@ const PORT = process.env.PORT || 3001;
         CHECK (cleaning_type IN ('major', 'minor', 'fan'));
     `);
     console.log('[migration] repair_logs.cleaning_type ready');
+
+    // Add pm_cycle_pos to ac_units (0=major, 1=minor, 2=minor → cycles every 2 months)
+    await pool.query(`
+      ALTER TABLE ac_units
+        ADD COLUMN IF NOT EXISTS pm_cycle_pos SMALLINT NOT NULL DEFAULT 0;
+    `);
+    console.log('[migration] ac_units.pm_cycle_pos ready');
   } catch (err) {
     console.error('[migration] error:', err.message);
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Wrench } from 'lucide-react'
+import { Plus, Wrench, Wind } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import api from '../api/client'
@@ -53,12 +53,21 @@ export default function RepairLogs() {
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false)
+  const [createType, setCreateType] = useState(null) // null | 'repair' | 'cleaning'
   const [hospitals, setHospitals] = useState([])
   const [selHospital, setSelHospital] = useState('')
   const [acList, setAcList] = useState([])
   const [acSearch, setAcSearch] = useState('')
-  const [createForm, setCreateForm] = useState({ ac_unit_id: '', problem: '' })
+  const [createForm, setCreateForm] = useState({ ac_unit_id: '', problem: '', cleaning_type: '' })
   const [creating, setCreating] = useState(false)
+
+  const closeCreate = () => {
+    setShowCreate(false)
+    setCreateType(null)
+    setSelHospital('')
+    setAcSearch('')
+    setCreateForm({ ac_unit_id: '', problem: '', cleaning_type: '' })
+  }
 
   const load = () => {
     setLoading(true)
@@ -72,6 +81,8 @@ export default function RepairLogs() {
     if (!showCreate) return
     api.get('/master/hospitals').then((r) => setHospitals(r.data))
   }, [showCreate])
+
+  const CLEAN_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'ล้างพัดลม' }
 
   useEffect(() => {
     if (!selHospital) { setAcList([]); setCreateForm((f) => ({ ...f, ac_unit_id: '' })); return }
@@ -102,16 +113,22 @@ export default function RepairLogs() {
   }
 
   const submitCreate = async () => {
-    if (!createForm.ac_unit_id || !createForm.problem.trim()) {
-      alert('กรุณาเลือกเครื่องแอร์และระบุปัญหา')
-      return
-    }
+    if (!createForm.ac_unit_id) { alert('กรุณาเลือกเครื่องแอร์'); return }
+    if (createType === 'repair' && !createForm.problem.trim()) { alert('กรุณาระบุปัญหา'); return }
+    if (createType === 'cleaning' && !createForm.cleaning_type) { alert('กรุณาเลือกประเภทการล้าง'); return }
+
+    const problem = createType === 'cleaning'
+      ? `ขอล้างแอร์ — ${CLEAN_LABEL[createForm.cleaning_type]}${createForm.problem.trim() ? ' / ' + createForm.problem.trim() : ''}`
+      : createForm.problem.trim()
+
     setCreating(true)
     try {
-      await api.post('/repair-logs', createForm)
-      setShowCreate(false)
-      setSelHospital('')
-      setCreateForm({ ac_unit_id: '', problem: '' })
+      await api.post('/repair-logs', {
+        ac_unit_id: createForm.ac_unit_id,
+        problem,
+        cleaning_type: createType === 'cleaning' ? createForm.cleaning_type : undefined,
+      })
+      closeCreate()
       load()
     } catch (err) { alert(err.response?.data?.error || 'เกิดข้อผิดพลาด') }
     finally { setCreating(false) }
@@ -122,7 +139,7 @@ export default function RepairLogs() {
       title="รายการแจ้งซ่อม"
       actions={
         <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-1.5 text-sm py-2">
-          <Plus className="h-4 w-4" /> แจ้งซ่อมใหม่
+          <Plus className="h-4 w-4" /> แจ้งงานใหม่
         </button>
       }
     >
@@ -263,10 +280,45 @@ export default function RepairLogs() {
         </Modal>
       )}
 
-      {/* Create modal */}
-      {showCreate && (
-        <Modal title="แจ้งซ่อมใหม่" onClose={() => { setShowCreate(false); setSelHospital('') }}>
+      {/* Create modal — type picker */}
+      {showCreate && !createType && (
+        <Modal title="แจ้งงานใหม่" onClose={closeCreate}>
+          <p className="text-sm text-gray-500 mb-4">เลือกประเภทงาน</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setCreateType('repair')}
+              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors group"
+            >
+              <span className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                <Wrench className="h-6 w-6 text-red-500" />
+              </span>
+              <div className="text-center">
+                <p className="font-semibold text-gray-800 text-sm">แจ้งซ่อม</p>
+                <p className="text-xs text-gray-400 mt-0.5">เสีย / ผิดปกติ / มีเสียง</p>
+              </div>
+            </button>
+            <button
+              onClick={() => setCreateType('cleaning')}
+              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+            >
+              <span className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                <Wind className="h-6 w-6 text-blue-500" />
+              </span>
+              <div className="text-center">
+                <p className="font-semibold text-gray-800 text-sm">ขอล้างแอร์</p>
+                <p className="text-xs text-gray-400 mt-0.5">ล้างใหญ่ / ล้างย่อย / พัดลม</p>
+              </div>
+            </button>
+          </div>
+          <button onClick={closeCreate} className="btn-secondary w-full mt-4">ยกเลิก</button>
+        </Modal>
+      )}
+
+      {/* Create modal — repair form */}
+      {showCreate && createType === 'repair' && (
+        <Modal title="แจ้งซ่อมปกติ" onClose={closeCreate}>
           <div className="flex flex-col gap-4">
+            <button onClick={() => setCreateType(null)} className="text-xs text-blue-600 hover:underline text-left">← เปลี่ยนประเภท</button>
             <div>
               <label className="label">โรงพยาบาล *</label>
               <select className="input" value={selHospital} onChange={(e) => setSelHospital(e.target.value)}>
@@ -284,24 +336,18 @@ export default function RepairLogs() {
                 onChange={(e) => { setAcSearch(e.target.value); setCreateForm((f) => ({ ...f, ac_unit_id: '' })) }}
               />
               {selHospital && (
-                <div className="border border-gray-200 rounded-xl max-h-48 overflow-y-auto">
+                <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
                   {acList
                     .filter((a) => !acSearch || [a.ac_code, a.ac_name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
+                      <button key={a.id} type="button"
                         onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.ac_name}`) }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${
-                          createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'
-                        }`}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
                       >
-                        <span className="font-medium">{a.ac_code}</span>
-                        {a.ac_name ? ` — ${a.ac_name}` : ''}
+                        <span className="font-medium">{a.ac_code}</span>{a.ac_name ? ` — ${a.ac_name}` : ''}
                         <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
                       </button>
-                    ))
-                  }
+                    ))}
                 </div>
               )}
             </div>
@@ -310,8 +356,72 @@ export default function RepairLogs() {
               <textarea className="input" rows={3} placeholder="อธิบายอาการ / ปัญหาที่พบ..." value={createForm.problem} onChange={(e) => setCreateForm({ ...createForm, problem: e.target.value })} />
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { setShowCreate(false); setSelHospital('') }} className="btn-secondary flex-1">ยกเลิก</button>
+              <button onClick={closeCreate} className="btn-secondary flex-1">ยกเลิก</button>
               <button onClick={submitCreate} disabled={creating} className="btn-primary flex-1">{creating ? 'กำลังบันทึก...' : 'แจ้งซ่อม'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Create modal — cleaning form */}
+      {showCreate && createType === 'cleaning' && (
+        <Modal title="ขอล้างแอร์" onClose={closeCreate}>
+          <div className="flex flex-col gap-4">
+            <button onClick={() => setCreateType(null)} className="text-xs text-blue-600 hover:underline text-left">← เปลี่ยนประเภท</button>
+            <div>
+              <label className="label">โรงพยาบาล *</label>
+              <select className="input" value={selHospital} onChange={(e) => setSelHospital(e.target.value)}>
+                <option value="">-- เลือก --</option>
+                {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">เครื่องแอร์ *</label>
+              <input
+                className="input mb-1"
+                placeholder="ค้นหา รหัส / ชื่อ / แผนก..."
+                value={acSearch}
+                disabled={!selHospital}
+                onChange={(e) => { setAcSearch(e.target.value); setCreateForm((f) => ({ ...f, ac_unit_id: '' })) }}
+              />
+              {selHospital && (
+                <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
+                  {acList
+                    .filter((a) => !acSearch || [a.ac_code, a.ac_name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .map((a) => (
+                      <button key={a.id} type="button"
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.ac_name}`) }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
+                      >
+                        <span className="font-medium">{a.ac_code}</span>{a.ac_name ? ` — ${a.ac_name}` : ''}
+                        <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="label">ประเภทการล้าง *</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'major', label: 'ล้างใหญ่',   cls: 'border-blue-400 bg-blue-600 text-white',   off: 'border-gray-200 text-gray-600' },
+                  { value: 'minor', label: 'ล้างย่อย',   cls: 'border-teal-400 bg-teal-600 text-white',   off: 'border-gray-200 text-gray-600' },
+                  { value: 'fan',   label: 'ล้างพัดลม', cls: 'border-purple-400 bg-purple-600 text-white', off: 'border-gray-200 text-gray-600' },
+                ].map((t) => (
+                  <button key={t.value} type="button"
+                    onClick={() => setCreateForm((f) => ({ ...f, cleaning_type: t.value }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${createForm.cleaning_type === t.value ? t.cls : t.off}`}
+                  >{t.label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="label">หมายเหตุ (ถ้ามี)</label>
+              <textarea className="input" rows={2} placeholder="รายละเอียดเพิ่มเติม..." value={createForm.problem} onChange={(e) => setCreateForm({ ...createForm, problem: e.target.value })} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={closeCreate} className="btn-secondary flex-1">ยกเลิก</button>
+              <button onClick={submitCreate} disabled={creating} className="btn-primary flex-1">{creating ? 'กำลังบันทึก...' : 'ส่งคำขอ'}</button>
             </div>
           </div>
         </Modal>

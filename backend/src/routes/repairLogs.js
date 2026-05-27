@@ -40,16 +40,19 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // POST /api/repair-logs — manual create (no work order)
 router.post('/', authMiddleware, async (req, res) => {
-  const { ac_unit_id, problem } = req.body;
+  const { ac_unit_id, problem, cleaning_type } = req.body;
   if (!ac_unit_id || !problem) {
     return res.status(400).json({ error: 'ac_unit_id and problem required' });
   }
+  if (cleaning_type && !['major', 'minor', 'fan'].includes(cleaning_type)) {
+    return res.status(400).json({ error: 'cleaning_type must be major, minor, or fan' });
+  }
   try {
     const { rows } = await pool.query(`
-      INSERT INTO repair_logs (ac_unit_id, problem, status, reported_by)
-      VALUES ($1, $2, 'open', $3)
+      INSERT INTO repair_logs (ac_unit_id, problem, cleaning_type, status, reported_by)
+      VALUES ($1, $2, $3, 'open', $4)
       RETURNING *
-    `, [ac_unit_id, problem, req.user.id]);
+    `, [ac_unit_id, problem, cleaning_type || null, req.user.id]);
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -94,20 +97,21 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
 
-    // If resolved + cleaning_type → update PM schedule
+    // If resolved + cleaning_type → advance PM cycle
     if (status === 'done' && cleaning_type) {
       const log = rows[0];
       const { rows: ac } = await pool.query(
-        'SELECT pm_interval_months FROM ac_units WHERE id = $1',
+        'SELECT pm_cycle_pos FROM ac_units WHERE id = $1',
         [log.ac_unit_id]
       );
       if (ac.length) {
-        const interval = ac[0].pm_interval_months || 2;
-        const nextDate = dayjs().add(interval, 'month').format('YYYY-MM-DD');
+        const oldPos = ac[0].pm_cycle_pos ?? 0;
+        const newPos = (oldPos + 1) % 3;
+        const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
 
         await pool.query(
-          'UPDATE ac_units SET next_pm_date = $1, updated_at = NOW() WHERE id = $2',
-          [nextDate, log.ac_unit_id]
+          'UPDATE ac_units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
+          [nextDate, newPos, log.ac_unit_id]
         );
 
         await pool.query(`
