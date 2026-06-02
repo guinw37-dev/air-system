@@ -62,7 +62,7 @@ export default function Notifications() {
           <button
             onClick={handleReadAll}
             disabled={markingAll}
-            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+            className="flex items-center gap-1 text-sm text-primary hover:text-primary-dark disabled:opacity-50"
           >
             <CheckCheck className="h-4 w-4" />
             อ่านทั้งหมด
@@ -75,32 +75,32 @@ export default function Notifications() {
           <PageSpinner />
         </div>
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-24 text-ink-muted">
           <Bell className="h-12 w-12 mb-3 opacity-40" />
           <p className="text-sm">ไม่มีการแจ้งเตือน</p>
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-line">
           {items.map((n) => {
             const isUnread = !n.read_at
             return (
               <button
                 key={n.id}
                 onClick={() => handleClick(n)}
-                className={`w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors ${
-                  isUnread ? 'bg-blue-50' : 'bg-white'
+                className={`w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-page transition-colors ${
+                  isUnread ? 'bg-primary-soft' : 'bg-surface'
                 }`}
               >
                 {/* Dot indicator */}
-                <span className={`mt-1.5 shrink-0 h-2.5 w-2.5 rounded-full ${isUnread ? 'bg-blue-500' : 'bg-transparent'}`} />
+                <span className={`mt-1.5 shrink-0 h-2.5 w-2.5 rounded-full ${isUnread ? 'bg-primary' : 'bg-transparent'}`} />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${isUnread ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                  <p className={`text-sm ${isUnread ? 'font-semibold text-ink' : 'text-ink-muted'}`}>
                     {n.message}
                   </p>
                   {n.order_no && (
-                    <p className="text-xs text-gray-500 mt-0.5">ใบงาน {n.order_no}</p>
+                    <p className="text-xs text-ink-muted mt-0.5">ใบงาน {n.order_no}</p>
                   )}
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-ink-muted mt-1">
                     {dayjs(n.created_at).fromNow()}
                   </p>
                 </div>

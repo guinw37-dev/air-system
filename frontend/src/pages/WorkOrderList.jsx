@@ -104,7 +104,7 @@ export default function WorkOrderList() {
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted" />
             <input
               className="input pl-9"
               placeholder="ค้นหาเลขที่ใบงาน, Site..."
@@ -119,8 +119,8 @@ export default function WorkOrderList() {
                 onClick={() => setStatus(s.value)}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   status === s.value
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface text-ink-muted border-line hover:border-primary'
                 }`}
               >
                 {s.label}
@@ -134,8 +134,8 @@ export default function WorkOrderList() {
                 onClick={() => setType(t.value)}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   type === t.value
-                    ? 'bg-teal-600 text-white border-teal-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface text-ink-muted border-line hover:border-primary'
                 }`}
               >
                 {t.label}
@@ -148,53 +148,53 @@ export default function WorkOrderList() {
         <div className="card overflow-hidden p-0">
           {loading ? (
             <div className="flex justify-center py-16">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
             </div>
           ) : !clientId ? (
-            <p className="py-16 text-center text-gray-400 text-sm">เลือก Client ก่อนเพื่อดูใบงาน</p>
+            <p className="py-16 text-center text-ink-muted text-sm">เลือก Client ก่อนเพื่อดูใบงาน</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-page border-b border-line">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">เลขที่ใบงาน</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client / Site</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">ประเภท</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">สถานะ</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">เครื่อง</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">รูป</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">วันที่</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">เลขที่ใบงาน</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">Client / Site</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ประเภท</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">สถานะ</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">เครื่อง</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">รูป</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">วันที่</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-line">
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-gray-400">ไม่พบใบงาน</td>
+                      <td colSpan={7} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
                     </tr>
                   )}
                   {filtered.map((wo) => {
-                    const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
-                    const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
+                    const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'badge-gray' }
+                    const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'badge-gray' }
                     return (
                       <tr
                         key={wo.id}
                         onClick={() => navigate(`/work-orders/${wo.id}`)}
-                        className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                        className="hover:bg-primary-soft/40 cursor-pointer transition-colors"
                       >
-                        <td className="py-3 px-4 font-semibold text-blue-700">{wo.order_no || `#${wo.id}`}</td>
-                        <td className="py-3 px-4 text-gray-700">
-                          <p className="text-xs text-gray-500">{wo.client_name || wo.hospital_name}</p>
+                        <td className="py-3 px-4 font-semibold text-primary">{wo.order_no || `#${wo.id}`}</td>
+                        <td className="py-3 px-4 text-ink">
+                          <p className="text-xs text-ink-muted">{wo.client_name || wo.hospital_name}</p>
                           <p>{wo.site_name || '-'}</p>
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
+                          <span className={`badge ${t.color}`}>{t.label}</span>
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+                          <span className={`badge ${s.color}`}>{s.label}</span>
                         </td>
-                        <td className="py-3 px-4 text-gray-600">{wo.item_count ?? (wo.items?.length ?? '-')}</td>
-                        <td className="py-3 px-4 text-gray-600">{wo.photo_count ?? '-'}</td>
-                        <td className="py-3 px-4 text-gray-400 text-xs">{dayjs(wo.created_at).format('DD/MM/YY HH:mm')}</td>
+                        <td className="py-3 px-4 text-ink-muted">{wo.item_count ?? (wo.items?.length ?? '-')}</td>
+                        <td className="py-3 px-4 text-ink-muted">{wo.photo_count ?? '-'}</td>
+                        <td className="py-3 px-4 text-ink-muted text-xs">{dayjs(wo.created_at).format('DD/MM/YY HH:mm')}</td>
                       </tr>
                     )
                   })}
@@ -203,7 +203,7 @@ export default function WorkOrderList() {
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-400">{filtered.length} รายการ</p>
+        <p className="text-xs text-ink-muted">{filtered.length} รายการ</p>
       </div>
     </Layout>
   )

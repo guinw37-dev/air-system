@@ -9,23 +9,24 @@ import api from '../api/client'
 
 const DAYS_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 
+// Calendar day cell color segments: major→warn, minor→primary, fan→success
 const TYPE_DOT = {
-  major: 'bg-orange-400',
-  minor: 'bg-blue-400',
-  fan:   'bg-teal-400',
+  major: 'bg-warn',
+  minor: 'bg-primary',
+  fan:   'bg-success',
 }
 const TYPE_BADGE = {
-  major: 'bg-orange-100 text-orange-800',
-  minor: 'bg-blue-100  text-blue-800',
-  fan:   'bg-teal-100  text-teal-800',
+  major: 'badge badge-warn',
+  minor: 'badge badge-primary',
+  fan:   'badge badge-success',
 }
 const TYPE_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'ล้างพัดลม' }
 
 const STATUS_BADGE = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  done:    'bg-green-100  text-green-800',
-  overdue: 'bg-red-100    text-red-800',
-  skipped: 'bg-gray-100   text-gray-600',
+  pending: 'badge badge-warn',
+  done:    'badge badge-success',
+  overdue: 'badge badge-danger',
+  skipped: 'badge badge-gray',
 }
 const STATUS_LABEL_MAP = { pending: 'รอดำเนินการ', done: 'เสร็จแล้ว', overdue: 'เลยกำหนด', skipped: 'ข้าม' }
 
@@ -42,13 +43,13 @@ function DayPopup({ date, items, onClose, onUnitClick }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-sm shadow-xl flex flex-col max-h-[80vh]">
+      <div className="relative bg-surface rounded-2xl w-full max-w-sm shadow-xl flex flex-col max-h-[80vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <h3 className="font-semibold text-gray-900 text-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
+          <h3 className="font-semibold text-ink text-sm">
             PM วันที่ {dayjs(date).format('D MMMM YYYY')}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-ink-muted hover:text-ink">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -56,7 +57,7 @@ function DayPopup({ date, items, onClose, onUnitClick }) {
         {/* List */}
         <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-2">
           {items.length === 0 && (
-            <p className="text-gray-400 text-sm text-center py-6">ไม่มีรายการ</p>
+            <p className="text-ink-muted text-sm text-center py-6">ไม่มีรายการ</p>
           )}
           {items.map((item, i) => {
             const eff = effectiveStatus(item)
@@ -64,20 +65,20 @@ function DayPopup({ date, items, onClose, onUnitClick }) {
               <button
                 key={i}
                 onClick={() => onUnitClick(item)}
-                className="w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                className="w-full text-left px-3 py-2.5 rounded-xl border border-line hover:bg-primary-soft hover:border-primary/30 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-blue-700 text-sm">{item.asset_code || '-'}</p>
+                  <p className="font-medium text-primary text-sm">{item.asset_code || '-'}</p>
                   <div className="flex gap-1 shrink-0">
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${TYPE_BADGE[item.planned_type] || 'bg-gray-100 text-gray-700'}`}>
+                    <span className={TYPE_BADGE[item.planned_type] || 'badge badge-gray'}>
                       {TYPE_LABEL[item.planned_type] || item.planned_type}
                     </span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[eff] || 'bg-gray-100 text-gray-700'}`}>
+                    <span className={STATUS_BADGE[eff] || 'badge badge-gray'}>
                       {STATUS_LABEL_MAP[eff] || eff}
                     </span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">{item.room_name || '-'}</p>
+                <p className="text-xs text-ink-muted mt-0.5">{item.room_name || '-'}</p>
               </button>
             )
           })}
@@ -107,17 +108,17 @@ function CalendarGrid({ year, month, calData, onDayClick }) {
   return (
     <div className="card p-0 overflow-hidden">
       {/* Day-of-week header */}
-      <div className="grid grid-cols-7 bg-gray-800 text-white text-xs font-medium">
+      <div className="grid grid-cols-7 bg-primary-dark text-white text-xs font-medium">
         {DAYS_TH.map((d) => (
           <div key={d} className="py-2 text-center">{d}</div>
         ))}
       </div>
 
       {/* Weeks */}
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
+      <div className="grid grid-cols-7 divide-x divide-y divide-line">
         {cells.map((day, idx) => {
           if (!day) {
-            return <div key={idx} className="min-h-[80px] bg-gray-50/50" />
+            return <div key={idx} className="min-h-[80px] bg-page/50" />
           }
           const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
           const items = calData[dateStr] || []
@@ -134,13 +135,13 @@ function CalendarGrid({ year, month, calData, onDayClick }) {
               onClick={() => items.length > 0 && onDayClick(dateStr, items)}
               className={`min-h-[80px] p-1.5 text-left flex flex-col gap-1 transition-colors ${
                 items.length > 0
-                  ? 'hover:bg-blue-50 cursor-pointer'
+                  ? 'hover:bg-primary-soft cursor-pointer'
                   : 'cursor-default'
-              } ${isToday ? 'bg-blue-50' : ''}`}
+              } ${isToday ? 'bg-primary-soft' : ''}`}
             >
               {/* Day number */}
               <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${
-                isToday ? 'bg-blue-600 text-white' : 'text-gray-700'
+                isToday ? 'bg-primary text-white' : 'text-ink'
               }`}>
                 {day}
               </span>
@@ -151,7 +152,7 @@ function CalendarGrid({ year, month, calData, onDayClick }) {
                   {typeKeys.map((type) => (
                     <div
                       key={type}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white ${TYPE_DOT[type] || 'bg-gray-400'}`}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white ${TYPE_DOT[type] || 'bg-ink-muted'}`}
                     >
                       <span className="flex-1 text-center leading-none">{counts[type]}</span>
                     </div>
@@ -240,7 +241,7 @@ export default function PMPlan() {
         {/* ── Selectors ── */}
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Client <span className="text-red-500">*</span></label>
+            <label className="label">Client <span className="text-danger">*</span></label>
             <select
               className="input min-w-[180px]"
               value={clientId}
@@ -253,7 +254,7 @@ export default function PMPlan() {
 
           {clientId && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Site</label>
+              <label className="label">Site</label>
               <select
                 className="input min-w-[160px]"
                 value={siteId}
@@ -266,7 +267,7 @@ export default function PMPlan() {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
+            <label className="label">ปี</label>
             <select
               className="input w-28"
               value={year}
@@ -278,7 +279,7 @@ export default function PMPlan() {
         </div>
 
         {!clientId && (
-          <div className="text-center text-gray-400 py-20 text-sm">เลือก Client เพื่อดูปฏิทิน PM</div>
+          <div className="text-center text-ink-muted py-20 text-sm">เลือก Client เพื่อดูปฏิทิน PM</div>
         )}
 
         {clientId && (
@@ -287,43 +288,43 @@ export default function PMPlan() {
             <div className="flex items-center justify-between">
               <button
                 onClick={prevMonth}
-                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                className="p-2 rounded-xl border border-line hover:bg-page transition-colors"
               >
-                <ChevronLeft className="h-4 w-4 text-gray-600" />
+                <ChevronLeft className="h-4 w-4 text-ink-muted" />
               </button>
 
               <div className="text-center">
-                <h2 className="font-bold text-gray-900 text-lg capitalize">{monthLabel}</h2>
-                <p className="text-xs text-gray-400">{totalThisMonth} รายการ PM เดือนนี้</p>
+                <h2 className="font-bold text-ink text-lg capitalize">{monthLabel}</h2>
+                <p className="text-xs text-ink-muted">{totalThisMonth} รายการ PM เดือนนี้</p>
               </div>
 
               <button
                 onClick={nextMonth}
-                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                className="p-2 rounded-xl border border-line hover:bg-page transition-colors"
               >
-                <ChevronRight className="h-4 w-4 text-gray-600" />
+                <ChevronRight className="h-4 w-4 text-ink-muted" />
               </button>
             </div>
 
             {/* ── Legend ── */}
-            <div className="flex gap-4 flex-wrap text-xs text-gray-600">
+            <div className="flex gap-4 flex-wrap text-xs text-ink-muted">
               {[
-                { label: 'ล้างใหญ่',   cls: 'bg-orange-400' },
-                { label: 'ล้างย่อย',   cls: 'bg-blue-400' },
-                { label: 'ล้างพัดลม', cls: 'bg-teal-400' },
+                { label: 'ล้างใหญ่',   cls: 'bg-warn' },
+                { label: 'ล้างย่อย',   cls: 'bg-primary' },
+                { label: 'ล้างพัดลม', cls: 'bg-success' },
               ].map(({ label, cls }) => (
                 <span key={label} className="flex items-center gap-1.5">
                   <span className={`w-3 h-3 rounded ${cls} inline-block`} />
                   {label}
                 </span>
               ))}
-              <span className="text-gray-400">ตัวเลขในแต่ละสีคือจำนวนเครื่อง · คลิกวันเพื่อดูรายละเอียด</span>
+              <span className="text-ink-muted/70">ตัวเลขในแต่ละสีคือจำนวนเครื่อง · คลิกวันเพื่อดูรายละเอียด</span>
             </div>
 
             {/* ── Calendar ── */}
             {loading ? (
               <div className="flex justify-center py-16">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
               </div>
             ) : (
               <CalendarGrid

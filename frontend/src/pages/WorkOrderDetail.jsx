@@ -87,10 +87,10 @@ export default function WorkOrderDetail() {
   }, [showAddUnit, wo])
 
   if (loading) return <PageSpinner />
-  if (!wo) return <div className="p-4 text-red-600">{error || 'ไม่พบใบงาน'}</div>
+  if (!wo) return <div className="p-4 text-danger">{error || 'ไม่พบใบงาน'}</div>
 
-  const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
-  const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
+  const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'badge-gray' }
+  const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'badge-gray' }
 
   const role = user?.role
   const isTech        = role === 'technician'
@@ -294,7 +294,7 @@ export default function WorkOrderDetail() {
       title={wo.order_no || `ใบงาน #${id}`}
       back="/work-orders"
       actions={
-        <button onClick={downloadPdf} className="p-1 rounded-lg text-gray-500 hover:bg-gray-100">
+        <button onClick={downloadPdf} className="p-1 rounded-lg text-ink-muted hover:bg-page">
           <FileText className="h-5 w-5" />
         </button>
       }
@@ -303,19 +303,19 @@ export default function WorkOrderDetail() {
 
         {/* Rejection banner */}
         {wo.status === 'rejected' && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <div className="bg-danger-soft border border-danger/30 rounded-xl px-4 py-3">
             <div className="flex items-start gap-2">
-              <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+              <XCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm font-semibold text-red-700">งานถูกตีกลับ</p>
-                <p className="text-xs text-red-600 mt-1">{wo.reject_reason || wo.owner_notes || '-'}</p>
+                <p className="text-sm font-semibold text-danger">งานถูกตีกลับ</p>
+                <p className="text-xs text-danger/80 mt-1">{wo.reject_reason || wo.owner_notes || '-'}</p>
               </div>
             </div>
             {(isTech || isAdmin || isCentralAdmin) && (
               <button
                 onClick={doResubmit}
                 disabled={actionLoading}
-                className="mt-3 w-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2.5 rounded-lg flex items-center justify-center gap-2"
+                className="btn-danger mt-3 w-full flex items-center justify-center gap-2"
               >
                 <CheckCircle className="h-4 w-4" />
                 {actionLoading ? 'กำลังส่ง...' : 'แก้ไขและส่งใหม่'}
@@ -327,8 +327,8 @@ export default function WorkOrderDetail() {
         {/* WO Info Card */}
         <div className="card">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${s.color}`}>{s.label}</span>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${t.color}`}>{t.label}</span>
+            <span className={`badge ${s.color}`}>{s.label}</span>
+            <span className={`badge ${t.color}`}>{t.label}</span>
           </div>
           <InfoRow label="Client"    value={wo.client_name || wo.hospital_name} />
           <InfoRow label="Site"      value={wo.site_name} />
@@ -344,11 +344,11 @@ export default function WorkOrderDetail() {
         {/* Units list */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-gray-800">อุปกรณ์ ({(wo.items || []).length} รายการ)</h2>
+            <h2 className="font-semibold text-ink">อุปกรณ์ ({(wo.items || []).length} รายการ)</h2>
             {editableStatus && (isAdmin || isCentralAdmin || isTech) && (
               <button
                 onClick={() => setShowAddUnit(true)}
-                className="flex items-center gap-1 text-blue-600 text-sm font-medium"
+                className="flex items-center gap-1 text-primary text-sm font-medium"
               >
                 <Plus className="h-4 w-4" /> แก้ไข
               </button>
@@ -360,44 +360,44 @@ export default function WorkOrderDetail() {
               const pCount  = unitPhotoCount(woUnitId)
               const iCount  = unitInspCount(woUnitId)
               return (
-                <div key={woUnitId} className="card cursor-pointer active:bg-gray-50"
+                <div key={woUnitId} className="card cursor-pointer active:bg-page"
                   onClick={() => navigate(`/work-orders/${id}/units/${woUnitId}`)}
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">{item.asset_code}</p>
-                      <p className="text-xs text-gray-500 truncate">{item.unit_name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="font-medium text-ink text-sm">{item.asset_code}</p>
+                      <p className="text-xs text-ink-muted truncate">{item.unit_name}</p>
+                      <p className="text-xs text-ink-muted/60 mt-0.5">
                         {item.room_name} {item.building_name ? `· ${item.building_name}` : ''}
                       </p>
                       <div className="flex items-center gap-3 mt-2">
-                        <span className={`flex items-center gap-1 text-xs ${pCount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        <span className={`flex items-center gap-1 text-xs ${pCount > 0 ? 'text-success' : 'text-ink-muted'}`}>
                           <Camera className="h-3.5 w-3.5" /> {pCount} รูป
                         </span>
-                        <span className={`flex items-center gap-1 text-xs ${iCount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        <span className={`flex items-center gap-1 text-xs ${iCount > 0 ? 'text-success' : 'text-ink-muted'}`}>
                           <ClipboardCheck className="h-3.5 w-3.5" /> {iCount} รายการ
                         </span>
                         {item.has_repair && (
-                          <span className="flex items-center gap-1 text-xs text-red-600">
+                          <span className="flex items-center gap-1 text-xs text-danger">
                             <Wrench className="h-3.5 w-3.5" /> แจ้งซ่อม
                           </span>
                         )}
                       </div>
                     </div>
-                    <ChevronRight className="h-5 w-5 text-gray-300 shrink-0 mt-1" />
+                    <ChevronRight className="h-5 w-5 text-line shrink-0 mt-1" />
                   </div>
                 </div>
               )
             })}
             {(wo.items || []).length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-8">ยังไม่มีอุปกรณ์ กด "แก้ไข" เพื่อเพิ่ม</p>
+              <p className="text-sm text-ink-muted text-center py-8">ยังไม่มีอุปกรณ์ กด "แก้ไข" เพื่อเพิ่ม</p>
             )}
           </div>
         </div>
 
         {/* Signatures */}
         <div>
-          <h2 className="font-semibold text-gray-800 mb-2">ลายเซ็น</h2>
+          <h2 className="font-semibold text-ink mb-2">ลายเซ็น</h2>
           <div className="flex flex-col gap-2">
             {/* Area owner signature — always show */}
             {(() => {
@@ -406,24 +406,24 @@ export default function WorkOrderDetail() {
               return (
                 <div className="card flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700">เจ้าของพื้นที่</p>
+                    <p className="text-sm font-medium text-ink">เจ้าของพื้นที่</p>
                     {sig && (
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-xs text-ink-muted mt-0.5">
                         {sig.signer_name} · {dayjs(sig.signed_at).format('DD/MM/YY HH:mm')}
                       </p>
                     )}
                   </div>
                   {sig ? (
-                    <img src={sig.signature_data} alt="sig" className="h-12 w-24 object-contain border rounded-lg" />
+                    <img src={sig.signature_data} alt="sig" className="h-12 w-24 object-contain border border-line rounded-lg" />
                   ) : canSign ? (
                     <button
                       onClick={() => { setSigRole('area_owner'); setSignerName('') }}
-                      className="flex items-center gap-1 text-blue-600 text-sm"
+                      className="flex items-center gap-1 text-primary text-sm"
                     >
                       <PenLine className="h-4 w-4" /> เซ็น
                     </button>
                   ) : (
-                    <span className="text-xs text-gray-400">ยังไม่ได้เซ็น</span>
+                    <span className="text-xs text-ink-muted">ยังไม่ได้เซ็น</span>
                   )}
                 </div>
               )
@@ -439,7 +439,7 @@ export default function WorkOrderDetail() {
             (wo.assignees || []).some((a) => a.id === user?.id)) && (
             <button
               onClick={openSignModal}
-              className="flex items-center justify-center gap-2 border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium py-2.5 rounded-xl text-sm transition-colors"
+              className="flex items-center justify-center gap-2 border border-primary/40 bg-primary-soft text-primary hover:bg-primary-soft/70 font-medium py-2.5 rounded-xl text-sm transition-colors"
             >
               <QrCode className="h-4 w-4" />
               ขอลายเซ็นเจ้าของพื้นที่
@@ -524,7 +524,7 @@ export default function WorkOrderDetail() {
           <div>
             <button
               onClick={() => setHistoryOpen((o) => !o)}
-              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+              className="flex items-center gap-2 text-sm font-medium text-ink-muted hover:text-ink"
             >
               {historyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               ประวัติสถานะ ({history.length})
@@ -532,7 +532,7 @@ export default function WorkOrderDetail() {
             {historyOpen && (
               <div className="mt-3 relative">
                 {/* vertical line */}
-                <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200" />
+                <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-line" />
                 <div className="flex flex-col gap-3">
                   {history.map((h, idx) => {
                     const toLabel   = STATUS_LABEL[h.to_status]
@@ -543,25 +543,25 @@ export default function WorkOrderDetail() {
                         {/* dot */}
                         <div className={`shrink-0 w-5 h-5 rounded-full border-2 z-10 mt-0.5 ${
                           isReject
-                            ? 'bg-red-100 border-red-400'
+                            ? 'bg-danger-soft border-danger'
                             : idx === history.length - 1
-                            ? 'bg-blue-600 border-blue-600'
-                            : 'bg-white border-gray-300'
+                            ? 'bg-primary border-primary'
+                            : 'bg-surface border-line'
                         }`} />
-                        <div className="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-2">
+                        <div className="flex-1 min-w-0 bg-page rounded-xl px-3 py-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {h.from_status && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${
-                                fromLabel?.color || 'bg-gray-100 text-gray-600'
+                              <span className={`badge ${
+                                fromLabel?.color || 'badge-gray'
                               }`}>
                                 {fromLabel?.label || h.from_status}
                               </span>
                             )}
                             {h.to_status && (
                               <>
-                                <span className="text-xs text-gray-400">→</span>
-                                <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${
-                                  toLabel?.color || 'bg-gray-100 text-gray-600'
+                                <span className="text-xs text-ink-muted">→</span>
+                                <span className={`badge ${
+                                  toLabel?.color || 'badge-gray'
                                 }`}>
                                   {toLabel?.label || h.to_status}
                                 </span>
@@ -569,12 +569,12 @@ export default function WorkOrderDetail() {
                             )}
                           </div>
                           {h.reason && (
-                            <p className="text-xs text-red-600 mt-1 flex items-start gap-1">
+                            <p className="text-xs text-danger mt-1 flex items-start gap-1">
                               <XCircle className="h-3 w-3 shrink-0 mt-0.5" />
                               {h.reason}
                             </p>
                           )}
-                          <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                          <div className="flex items-center gap-1 mt-1 text-xs text-ink-muted">
                             <User className="h-3 w-3" />
                             <span>{h.changed_by_name || '-'}</span>
                             <span className="ml-1">{dayjs(h.changed_at).format('DD/MM/YY HH:mm')}</span>
@@ -607,12 +607,12 @@ export default function WorkOrderDetail() {
                 <label
                   key={u.id}
                   className={`flex items-center gap-3 border rounded-xl px-3 py-2.5 cursor-pointer ${
-                    checked ? 'border-blue-400 bg-blue-50' : 'border-gray-100'
+                    checked ? 'border-primary bg-primary-soft' : 'border-line'
                   }`}
                 >
                   <input
                     type="checkbox"
-                    className="accent-blue-600"
+                    className="accent-primary"
                     checked={checked}
                     onChange={() =>
                       setSelectedUnitIds((ids) =>
@@ -621,17 +621,17 @@ export default function WorkOrderDetail() {
                     }
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{u.asset_code}</p>
-                    <p className="text-xs text-gray-500 truncate">{u.name} · {u.room_name} · {u.building_name}</p>
+                    <p className="text-sm font-medium text-ink">{u.asset_code}</p>
+                    <p className="text-xs text-ink-muted truncate">{u.name} · {u.room_name} · {u.building_name}</p>
                   </div>
                 </label>
               )
             })}
             {filteredUnitList.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-6">ไม่พบอุปกรณ์</p>
+              <p className="text-sm text-ink-muted text-center py-6">ไม่พบอุปกรณ์</p>
             )}
           </div>
-          <p className="text-xs text-gray-500 mb-3">เลือก {selectedUnitIds.length} รายการ</p>
+          <p className="text-xs text-ink-muted mb-3">เลือก {selectedUnitIds.length} รายการ</p>
           <div className="flex gap-2">
             <button onClick={() => setShowAddUnit(false)} className="btn-secondary flex-1">ยกเลิก</button>
             <button onClick={saveUnits} disabled={savingUnits} className="btn-primary flex-1">
@@ -660,7 +660,7 @@ export default function WorkOrderDetail() {
             onSave={saveSig}
             onCancel={() => { setSigRole(null); setSignerName('') }}
           />
-          {savingSig && <p className="text-xs text-gray-500 mt-2 text-center">กำลังบันทึก...</p>}
+          {savingSig && <p className="text-xs text-ink-muted mt-2 text-center">กำลังบันทึก...</p>}
         </Modal>
       )}
 
@@ -689,12 +689,12 @@ export default function WorkOrderDetail() {
             <img
               src={signModal.qrDataUrl}
               alt="QR ลายเซ็น"
-              className="w-48 h-48 rounded-xl border border-gray-200"
+              className="w-48 h-48 rounded-xl border border-line"
             />
 
             {/* Countdown */}
             <div className={`flex items-center gap-1.5 text-sm font-medium ${
-              countdown > 60 ? 'text-gray-600' : 'text-red-600'
+              countdown > 60 ? 'text-ink-muted' : 'text-danger'
             }`}>
               <Clock className="h-4 w-4" />
               {countdown > 0 ? `หมดอายุใน ${fmtCountdown(countdown)}` : 'ลิงก์หมดอายุแล้ว'}
@@ -703,8 +703,8 @@ export default function WorkOrderDetail() {
             {/* Status */}
             <div className={`w-full text-center py-2 rounded-xl text-sm font-medium ${
               signStatus?.signed
-                ? 'bg-green-50 text-green-700'
-                : 'bg-yellow-50 text-yellow-700'
+                ? 'bg-success-soft text-success'
+                : 'bg-warn-soft text-warn'
             }`}>
               {signStatus?.signed
                 ? `เซ็นแล้ว ✓ (${signStatus.signer_name})`
@@ -713,10 +713,10 @@ export default function WorkOrderDetail() {
 
             {/* Copyable link */}
             <div className="w-full">
-              <p className="text-xs text-gray-500 mb-1">ลิงก์สำหรับเจ้าของพื้นที่</p>
-              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
-                <span className="flex-1 text-xs text-gray-600 truncate">{signModal.link}</span>
-                <button onClick={copyLink} className="shrink-0 text-blue-600 hover:text-blue-800">
+              <p className="text-xs text-ink-muted mb-1">ลิงก์สำหรับเจ้าของพื้นที่</p>
+              <div className="flex items-center gap-2 border border-line rounded-xl px-3 py-2 bg-page">
+                <span className="flex-1 text-xs text-ink-muted truncate">{signModal.link}</span>
+                <button onClick={copyLink} className="shrink-0 text-primary hover:text-primary-dark">
                   <Copy className="h-4 w-4" />
                 </button>
               </div>
@@ -732,9 +732,9 @@ export default function WorkOrderDetail() {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-xs text-gray-900 font-medium text-right max-w-[60%] truncate">{value || '-'}</span>
+    <div className="flex justify-between py-1.5 border-b border-line last:border-0">
+      <span className="text-xs text-ink-muted">{label}</span>
+      <span className="text-xs text-ink font-medium text-right max-w-[60%] truncate">{value || '-'}</span>
     </div>
   )
 }
@@ -745,8 +745,8 @@ function Modal({ title, onClose, children }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-t-3xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <h3 className="font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none">&times;</button>
         </div>
         {children}
       </div>

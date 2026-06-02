@@ -15,7 +15,8 @@ const TABS = [
 ]
 
 const TYPE_LABELS = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' }
-const TYPE_COLORS = { major: '#1d4ed8', minor: '#0d9488', fan: '#7c3aed' }
+// Aligned to palette: major→primary, minor→success, fan→primary-dark
+const TYPE_COLORS = { major: '#1E7FC4', minor: '#10A56A', fan: '#163E5E' }
 
 function pct(actual, plan) {
   if (!plan) return 0
@@ -156,7 +157,7 @@ export default function CleaningDashboard() {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                  tab === t.key ? 'bg-blue-700 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  tab === t.key ? 'bg-primary text-white' : 'bg-surface border border-line text-ink-muted hover:bg-page'
                 }`}
               >
                 {t.label}
@@ -177,10 +178,10 @@ export default function CleaningDashboard() {
 
           {/* ── Bar chart ─────────────────────────────────────────── */}
           <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-4">ความคืบหน้าการล้าง ปี {year}</h3>
+            <h3 className="font-semibold text-ink mb-4">ความคืบหน้าการล้าง ปี {year}</h3>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={barData} barSize={60} barGap={8}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E3EDF5" />
                 <XAxis dataKey="name" tick={{ fontSize: 13 }} axisLine={false} tickLine={false} />
                 <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v, n, p) => [`${v}% (${p.payload.actual}/${p.payload.plan})`, 'ความคืบหน้า']} />
@@ -198,14 +199,14 @@ export default function CleaningDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Target per day */}
             <div className="card">
-              <p className="text-sm font-semibold text-gray-700 mb-3">จำนวนที่ต้องล้าง/วัน
-                <span className="text-xs font-normal text-gray-400 ml-1">({daysLeft} วันทำการที่เหลือ)</span>
+              <p className="text-sm font-semibold text-ink mb-3">จำนวนที่ต้องล้าง/วัน
+                <span className="text-xs font-normal text-ink-muted ml-1">({daysLeft} วันทำการที่เหลือ)</span>
               </p>
               <div className="flex gap-4">
                 {['major', 'minor', 'fan'].map((t) => (
-                  <div key={t} className="flex-1 bg-gray-50 rounded-xl p-3 text-center">
+                  <div key={t} className="flex-1 bg-page rounded-xl p-3 text-center">
                     <p className="text-2xl font-bold" style={{ color: TYPE_COLORS[t] }}>{dailyTarget[t]}</p>
-                    <p className="text-xs text-gray-500 mt-1">{TYPE_LABELS[t]}</p>
+                    <p className="text-xs text-ink-muted mt-1">{TYPE_LABELS[t]}</p>
                   </div>
                 ))}
               </div>
@@ -214,7 +215,7 @@ export default function CleaningDashboard() {
             {/* Actual per selected day */}
             <div className="card">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-gray-700">จำนวนที่ล้างได้/วัน</p>
+                <p className="text-sm font-semibold text-ink">จำนวนที่ล้างได้/วัน</p>
                 <input
                   type="date"
                   className="input w-auto text-xs"
@@ -224,11 +225,11 @@ export default function CleaningDashboard() {
               </div>
               <div className="flex gap-4">
                 {['major', 'minor', 'fan'].map((t) => (
-                  <div key={t} className="flex-1 bg-gray-50 rounded-xl p-3 text-center">
+                  <div key={t} className="flex-1 bg-page rounded-xl p-3 text-center">
                     <p className="text-2xl font-bold" style={{ color: TYPE_COLORS[t] }}>
                       {dailyCount?.[t] ?? '-'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">{TYPE_LABELS[t]}</p>
+                    <p className="text-xs text-ink-muted mt-1">{TYPE_LABELS[t]}</p>
                   </div>
                 ))}
               </div>
@@ -238,7 +239,7 @@ export default function CleaningDashboard() {
           {/* ── Deduction notes ───────────────────────────────────── */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-gray-700">แอร์ที่ปรับลดค่าบริการ — {dayjs().format('MM/YYYY')}</p>
+              <p className="text-sm font-semibold text-ink">แอร์ที่ปรับลดค่าบริการ — {dayjs().format('MM/YYYY')}</p>
               {isOwnerAdmin && (
                 <button
                   onClick={() => setEditNote({ notes: '' })}
@@ -249,18 +250,18 @@ export default function CleaningDashboard() {
               )}
             </div>
             {deductions.length === 0 ? (
-              <p className="text-sm text-gray-400">ยังไม่มีรายการ</p>
+              <p className="text-sm text-ink-muted">ยังไม่มีรายการ</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {deductions.map((d) => (
-                  <div key={d.id} className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2">
-                    <p className="flex-1 text-sm text-gray-800 whitespace-pre-wrap">{d.notes}</p>
+                  <div key={d.id} className="flex items-start gap-2 bg-warn-soft border border-warn/20 rounded-xl px-3 py-2">
+                    <p className="flex-1 text-sm text-ink whitespace-pre-wrap">{d.notes}</p>
                     {isOwnerAdmin && (
                       <div className="flex gap-1 shrink-0">
-                        <button onClick={() => setEditNote({ id: d.id, notes: d.notes })} className="text-gray-400 hover:text-blue-600">
+                        <button onClick={() => setEditNote({ id: d.id, notes: d.notes })} className="text-ink-muted hover:text-primary">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => deleteNote(d.id)} className="text-gray-400 hover:text-red-600">
+                        <button onClick={() => deleteNote(d.id)} className="text-ink-muted hover:text-danger">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -278,21 +279,21 @@ export default function CleaningDashboard() {
             const pctDone     = pct(totalActual, totalPlan)
             return (
               <div key={woType} className="card p-0 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-700">
+                <div className="px-4 py-3 border-b border-line bg-page flex items-center justify-between">
+                  <p className="text-sm font-semibold text-ink">
                     {TYPE_LABELS[woType]}
-                    <span className="ml-2 text-xs font-normal text-gray-500">{pctDone}%</span>
+                    <span className="ml-2 text-xs font-normal text-ink-muted">{pctDone}%</span>
                   </p>
-                  <div className="flex gap-2 text-xs text-gray-500">
-                    <span>Plan: <strong>{totalPlan}</strong></span>
-                    <span>Actual: <strong className="text-blue-700">{totalActual}</strong></span>
-                    <span>Balance: <strong className="text-red-600">{totalPlan - totalActual}</strong></span>
+                  <div className="flex gap-2 text-xs text-ink-muted">
+                    <span>Plan: <strong className="text-ink">{totalPlan}</strong></span>
+                    <span>Actual: <strong className="text-primary">{totalActual}</strong></span>
+                    <span>Balance: <strong className="text-danger">{totalPlan - totalActual}</strong></span>
                   </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                      <tr className="bg-page text-ink-muted border-b border-line">
                         <th className="text-left py-2 px-4 font-medium">สถานที่</th>
                         <th className="text-left py-2 px-3 font-medium">ประเภทแอร์</th>
                         <th className="text-right py-2 px-3 font-medium">Plan</th>
@@ -300,33 +301,33 @@ export default function CleaningDashboard() {
                         <th className="text-right py-2 px-4 font-medium">Balance</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-line">
                       {siteRows.map(({ site, rows }) => {
                         const sitePlan   = rows.reduce((s, r) => s + r.plan, 0)
                         const siteActual = rows.reduce((s, r) => s + (r[`${woType}_actual`] || 0), 0)
                         return rows.map((r, i) => (
-                          <tr key={`${site}-${r.ac_type}`} className="hover:bg-blue-50">
+                          <tr key={`${site}-${r.ac_type}`} className="hover:bg-primary-soft/40">
                             {i === 0 && (
-                              <td rowSpan={rows.length} className="py-2 px-4 font-medium text-gray-700 border-r border-gray-100 align-top">
+                              <td rowSpan={rows.length} className="py-2 px-4 font-medium text-ink border-r border-line align-top">
                                 {site}
-                                <div className="text-gray-400 font-normal mt-0.5">
+                                <div className="text-ink-muted font-normal mt-0.5">
                                   {pct(siteActual, sitePlan)}%
                                 </div>
                               </td>
                             )}
-                            <td className="py-2 px-3 text-gray-600">{r.ac_type}</td>
-                            <td className="py-2 px-3 text-right text-gray-700">{r.plan}</td>
-                            <td className="py-2 px-3 text-right text-blue-700 font-medium">{r[`${woType}_actual`] || 0}</td>
-                            <td className="py-2 px-4 text-right text-red-600 font-medium">{r.plan - (r[`${woType}_actual`] || 0)}</td>
+                            <td className="py-2 px-3 text-ink-muted">{r.ac_type}</td>
+                            <td className="py-2 px-3 text-right text-ink">{r.plan}</td>
+                            <td className="py-2 px-3 text-right text-primary font-medium">{r[`${woType}_actual`] || 0}</td>
+                            <td className="py-2 px-4 text-right text-danger font-medium">{r.plan - (r[`${woType}_actual`] || 0)}</td>
                           </tr>
                         ))
                       })}
                       {/* Total row */}
-                      <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                        <td className="py-2 px-4 text-gray-800" colSpan={2}>รวม</td>
-                        <td className="py-2 px-3 text-right text-gray-800">{totalPlan}</td>
-                        <td className="py-2 px-3 text-right text-blue-800">{totalActual}</td>
-                        <td className="py-2 px-4 text-right text-red-700">{totalPlan - totalActual}</td>
+                      <tr className="bg-page font-semibold border-t border-line">
+                        <td className="py-2 px-4 text-ink" colSpan={2}>รวม</td>
+                        <td className="py-2 px-3 text-right text-ink">{totalPlan}</td>
+                        <td className="py-2 px-3 text-right text-primary">{totalActual}</td>
+                        <td className="py-2 px-4 text-right text-danger">{totalPlan - totalActual}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -343,10 +344,10 @@ export default function CleaningDashboard() {
       {editNote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditNote(null)} />
-          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl p-5 flex flex-col gap-4">
+          <div className="relative bg-surface rounded-2xl w-full max-w-lg shadow-2xl p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-gray-800">{editNote.id ? 'แก้ไข' : 'เพิ่ม'}รายการปรับลด</p>
-              <button onClick={() => setEditNote(null)}><X className="h-5 w-5 text-gray-400" /></button>
+              <p className="font-semibold text-ink">{editNote.id ? 'แก้ไข' : 'เพิ่ม'}รายการปรับลด</p>
+              <button onClick={() => setEditNote(null)}><X className="h-5 w-5 text-ink-muted" /></button>
             </div>
             <textarea
               className="input min-h-[100px] resize-none"

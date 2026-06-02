@@ -11,9 +11,9 @@ const STATUSES = [
   { value: 'done', label: 'เสร็จแล้ว' },
 ]
 const STATUS_COLOR = {
-  open:        'bg-red-100 text-red-700',
-  in_progress: 'bg-yellow-100 text-yellow-700',
-  done:        'bg-green-100 text-green-700',
+  open:        'badge-danger',
+  in_progress: 'badge-warn',
+  done:        'badge-success',
 }
 const STATUS_TH = { open: 'รอซ่อม', in_progress: 'กำลังซ่อม', done: 'เสร็จแล้ว' }
 const CLEANING_TYPES = [
@@ -23,9 +23,9 @@ const CLEANING_TYPES = [
   { value: 'fan',   label: 'ล้างพัดลม' },
 ]
 const CLEANING_COLOR = {
-  major: 'bg-blue-100 text-blue-700',
-  minor: 'bg-teal-100 text-teal-700',
-  fan:   'bg-purple-100 text-purple-700',
+  major: 'badge-primary',
+  minor: 'badge-primary',
+  fan:   'badge-success',
 }
 
 function Modal({ title, onClose, children }) {
@@ -34,8 +34,8 @@ function Modal({ title, onClose, children }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-semibold text-gray-900 text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <h3 className="font-semibold text-ink text-lg">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none">&times;</button>
         </div>
         {children}
       </div>
@@ -153,8 +153,8 @@ export default function RepairLogs() {
               onClick={() => setStatus(s.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 status === s.value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-surface text-ink-muted border-line hover:border-primary'
               }`}
             >
               {s.label}
@@ -166,64 +166,64 @@ export default function RepairLogs() {
         <div className="card p-0 overflow-hidden">
           {loading ? (
             <div className="flex justify-center py-16">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-page border-b border-line">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">เครื่องแอร์</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานที่</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ปัญหา</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ล้างด้วย</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ใบงาน</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">วันที่</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">เครื่องแอร์</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">สถานที่</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ปัญหา</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">สถานะ</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ล้างด้วย</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ใบงาน</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">วันที่</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-line">
                   {logs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-gray-400">ไม่พบรายการ</td>
+                      <td colSpan={7} className="py-16 text-center text-ink-muted">ไม่พบรายการ</td>
                     </tr>
                   )}
                   {logs.map((log) => (
                     <tr
                       key={log.id}
                       onClick={() => openDetail(log)}
-                      className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                      className="hover:bg-primary-soft/40 cursor-pointer transition-colors"
                     >
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <Wrench className="h-4 w-4 text-gray-400 shrink-0" />
+                          <Wrench className="h-4 w-4 text-ink-muted shrink-0" />
                           <div>
-                            <p className="font-medium text-gray-900">{log.asset_code || log.ac_code}</p>
-                            <p className="text-xs text-gray-500">{log.ac_name}</p>
+                            <p className="font-medium text-ink">{log.asset_code || log.ac_code}</p>
+                            <p className="text-xs text-ink-muted">{log.ac_name}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-gray-600 text-xs">
+                      <td className="py-3 px-4 text-ink-muted text-xs">
                         <p>{log.dept_name}</p>
-                        <p className="text-gray-400">{log.floor_name} / {log.building_name}</p>
+                        <p className="text-ink-muted/60">{log.floor_name} / {log.building_name}</p>
                       </td>
-                      <td className="py-3 px-4 text-gray-700 max-w-xs">
+                      <td className="py-3 px-4 text-ink max-w-xs">
                         <p className="truncate">{log.problem || '-'}</p>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[log.status] || 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`badge ${STATUS_COLOR[log.status] || 'badge-gray'}`}>
                           {STATUS_TH[log.status] || log.status}
                         </span>
                       </td>
                       <td className="py-3 px-4">
                         {log.cleaning_type ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CLEANING_COLOR[log.cleaning_type]}`}>
+                          <span className={`badge ${CLEANING_COLOR[log.cleaning_type]}`}>
                             {CLEANING_TYPES.find((t) => t.value === log.cleaning_type)?.label}
                           </span>
-                        ) : <span className="text-gray-300 text-xs">—</span>}
+                        ) : <span className="text-line text-xs">—</span>}
                       </td>
-                      <td className="py-3 px-4 text-blue-600 text-xs">{log.order_no || '-'}</td>
-                      <td className="py-3 px-4 text-gray-400 text-xs">{dayjs(log.created_at).format('DD/MM/YY')}</td>
+                      <td className="py-3 px-4 text-primary text-xs">{log.order_no || '-'}</td>
+                      <td className="py-3 px-4 text-ink-muted text-xs">{dayjs(log.created_at).format('DD/MM/YY')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -231,16 +231,16 @@ export default function RepairLogs() {
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-400">{logs.length} รายการ</p>
+        <p className="text-xs text-ink-muted">{logs.length} รายการ</p>
       </div>
 
       {/* Edit modal */}
       {selected && (
         <Modal title={`${selected.ac_code} — ${selected.ac_name}`} onClose={() => setSelected(null)}>
           <div className="flex flex-col gap-4">
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs text-gray-500 mb-1">ปัญหา</p>
-              <p className="text-sm text-gray-900">{selected.problem || '-'}</p>
+            <div className="bg-page rounded-xl p-3">
+              <p className="text-xs text-ink-muted mb-1">ปัญหา</p>
+              <p className="text-sm text-ink">{selected.problem || '-'}</p>
             </div>
             <div><label className="label">สาเหตุ</label>
               <textarea className="input" rows={2} value={editForm.cause} onChange={(e) => setEditForm({ ...editForm, cause: e.target.value })} /></div>
@@ -266,10 +266,10 @@ export default function RepairLogs() {
                 ))}
               </select>
               {editForm.cleaning_type && editForm.status === 'done' && (
-                <p className="text-xs text-green-600 mt-1">✓ บันทึกแล้วจะอัปเดต next_pm_date อัตโนมัติ</p>
+                <p className="text-xs text-success mt-1">✓ บันทึกแล้วจะอัปเดต next_pm_date อัตโนมัติ</p>
               )}
               {editForm.cleaning_type && editForm.status !== 'done' && (
-                <p className="text-xs text-orange-500 mt-1">* ต้องตั้งสถานะ "เสร็จแล้ว" ถึงจะตัด PM</p>
+                <p className="text-xs text-warn mt-1">* ต้องตั้งสถานะ "เสร็จแล้ว" ถึงจะตัด PM</p>
               )}
             </div>
             <div className="flex gap-2">
@@ -283,30 +283,30 @@ export default function RepairLogs() {
       {/* Create modal — type picker */}
       {showCreate && !createType && (
         <Modal title="แจ้งงานใหม่" onClose={closeCreate}>
-          <p className="text-sm text-gray-500 mb-4">เลือกประเภทงาน</p>
+          <p className="text-sm text-ink-muted mb-4">เลือกประเภทงาน</p>
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setCreateType('repair')}
-              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors group"
+              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-line hover:border-danger hover:bg-danger-soft transition-colors group"
             >
-              <span className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
-                <Wrench className="h-6 w-6 text-red-500" />
+              <span className="w-12 h-12 rounded-full bg-danger-soft flex items-center justify-center group-hover:bg-danger/20 transition-colors">
+                <Wrench className="h-6 w-6 text-danger" />
               </span>
               <div className="text-center">
-                <p className="font-semibold text-gray-800 text-sm">แจ้งซ่อม</p>
-                <p className="text-xs text-gray-400 mt-0.5">เสีย / ผิดปกติ / มีเสียง</p>
+                <p className="font-semibold text-ink text-sm">แจ้งซ่อม</p>
+                <p className="text-xs text-ink-muted mt-0.5">เสีย / ผิดปกติ / มีเสียง</p>
               </div>
             </button>
             <button
               onClick={() => setCreateType('cleaning')}
-              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+              className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-line hover:border-primary hover:bg-primary-soft transition-colors group"
             >
-              <span className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                <Wind className="h-6 w-6 text-blue-500" />
+              <span className="w-12 h-12 rounded-full bg-primary-soft flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <Wind className="h-6 w-6 text-primary" />
               </span>
               <div className="text-center">
-                <p className="font-semibold text-gray-800 text-sm">ขอล้างแอร์</p>
-                <p className="text-xs text-gray-400 mt-0.5">ล้างใหญ่ / ล้างย่อย / พัดลม</p>
+                <p className="font-semibold text-ink text-sm">ขอล้างแอร์</p>
+                <p className="text-xs text-ink-muted mt-0.5">ล้างใหญ่ / ล้างย่อย / พัดลม</p>
               </div>
             </button>
           </div>
@@ -318,7 +318,7 @@ export default function RepairLogs() {
       {showCreate && createType === 'repair' && (
         <Modal title="แจ้งซ่อมปกติ" onClose={closeCreate}>
           <div className="flex flex-col gap-4">
-            <button onClick={() => setCreateType(null)} className="text-xs text-blue-600 hover:underline text-left">← เปลี่ยนประเภท</button>
+            <button onClick={() => setCreateType(null)} className="text-xs text-primary hover:underline text-left">← เปลี่ยนประเภท</button>
             <div>
               <label className="label">โรงพยาบาล *</label>
               <select className="input" value={selHospital} onChange={(e) => setSelHospital(e.target.value)}>
@@ -336,16 +336,16 @@ export default function RepairLogs() {
                 onChange={(e) => { setAcSearch(e.target.value); setCreateForm((f) => ({ ...f, ac_unit_id: '' })) }}
               />
               {selHospital && (
-                <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
+                <div className="border border-line rounded-xl max-h-40 overflow-y-auto">
                   {acList
                     .filter((a) => !acSearch || [(a.asset_code || a.ac_code), a.name, (a.room_name || a.dept_name), a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
                         onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.asset_code || a.ac_code} — ${a.name}`) }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-primary-soft border-b border-line last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-primary-soft text-primary font-medium' : 'text-ink'}`}
                       >
                         <span className="font-medium">{a.asset_code || a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
-                        <span className="text-xs text-gray-400 ml-1">({a.room_name || a.dept_name})</span>
+                        <span className="text-xs text-ink-muted ml-1">({a.room_name || a.dept_name})</span>
                       </button>
                     ))}
                 </div>
@@ -367,7 +367,7 @@ export default function RepairLogs() {
       {showCreate && createType === 'cleaning' && (
         <Modal title="ขอล้างแอร์" onClose={closeCreate}>
           <div className="flex flex-col gap-4">
-            <button onClick={() => setCreateType(null)} className="text-xs text-blue-600 hover:underline text-left">← เปลี่ยนประเภท</button>
+            <button onClick={() => setCreateType(null)} className="text-xs text-primary hover:underline text-left">← เปลี่ยนประเภท</button>
             <div>
               <label className="label">โรงพยาบาล *</label>
               <select className="input" value={selHospital} onChange={(e) => setSelHospital(e.target.value)}>
@@ -385,16 +385,16 @@ export default function RepairLogs() {
                 onChange={(e) => { setAcSearch(e.target.value); setCreateForm((f) => ({ ...f, ac_unit_id: '' })) }}
               />
               {selHospital && (
-                <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
+                <div className="border border-line rounded-xl max-h-40 overflow-y-auto">
                   {acList
                     .filter((a) => !acSearch || [(a.asset_code || a.ac_code), a.name, (a.room_name || a.dept_name), a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
                         onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.asset_code || a.ac_code} — ${a.name}`) }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-primary-soft border-b border-line last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-primary-soft text-primary font-medium' : 'text-ink'}`}
                       >
                         <span className="font-medium">{a.asset_code || a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
-                        <span className="text-xs text-gray-400 ml-1">({a.room_name || a.dept_name})</span>
+                        <span className="text-xs text-ink-muted ml-1">({a.room_name || a.dept_name})</span>
                       </button>
                     ))}
                 </div>
@@ -404,13 +404,13 @@ export default function RepairLogs() {
               <label className="label">ประเภทการล้าง *</label>
               <div className="flex gap-2">
                 {[
-                  { value: 'major', label: 'ล้างใหญ่',   cls: 'border-blue-400 bg-blue-600 text-white',   off: 'border-gray-200 text-gray-600' },
-                  { value: 'minor', label: 'ล้างย่อย',   cls: 'border-teal-400 bg-teal-600 text-white',   off: 'border-gray-200 text-gray-600' },
-                  { value: 'fan',   label: 'ล้างพัดลม', cls: 'border-purple-400 bg-purple-600 text-white', off: 'border-gray-200 text-gray-600' },
+                  { value: 'major', label: 'ล้างใหญ่' },
+                  { value: 'minor', label: 'ล้างย่อย' },
+                  { value: 'fan',   label: 'ล้างพัดลม' },
                 ].map((t) => (
                   <button key={t.value} type="button"
                     onClick={() => setCreateForm((f) => ({ ...f, cleaning_type: t.value }))}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${createForm.cleaning_type === t.value ? t.cls : t.off}`}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${createForm.cleaning_type === t.value ? 'bg-primary text-white border-primary' : 'bg-surface text-ink-muted border-line'}`}
                   >{t.label}</button>
                 ))}
               </div>

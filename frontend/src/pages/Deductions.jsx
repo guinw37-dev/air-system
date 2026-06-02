@@ -61,13 +61,13 @@ function MonthCell({ record, month, year, clientId, onSaved }) {
             <button
               onClick={save}
               disabled={saving}
-              className="flex-1 py-1 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
+              className="flex-1 py-1 rounded-input bg-primary text-white text-xs font-medium hover:brightness-95 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
             >
               <Check className="h-3 w-3" /> {saving ? '...' : 'บันทึก'}
             </button>
             <button
               onClick={cancel}
-              className="px-2 py-1 rounded-lg border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition-colors"
+              className="px-2 py-1 rounded-input border border-line text-ink-muted text-xs hover:bg-page transition-colors"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -79,21 +79,21 @@ function MonthCell({ record, month, year, clientId, onSaved }) {
 
   return (
     <td
-      className="px-3 py-2 align-top cursor-pointer group hover:bg-blue-50 transition-colors min-w-[160px]"
+      className="px-3 py-2 align-top cursor-pointer group hover:bg-primary-soft/40 transition-colors min-w-[160px]"
       onClick={() => setEditing(true)}
     >
       {record?.notes ? (
         <div className="flex items-start gap-1.5">
-          <p className="text-xs text-gray-700 flex-1 leading-relaxed whitespace-pre-wrap">{record.notes}</p>
-          <Pencil className="h-3 w-3 text-gray-300 group-hover:text-blue-500 shrink-0 mt-0.5 transition-colors" />
+          <p className="text-xs text-ink flex-1 leading-relaxed whitespace-pre-wrap">{record.notes}</p>
+          <Pencil className="h-3 w-3 text-ink-muted/40 group-hover:text-primary shrink-0 mt-0.5 transition-colors" />
         </div>
       ) : (
-        <div className="flex items-center gap-1 text-gray-300 group-hover:text-blue-400 transition-colors">
+        <div className="flex items-center gap-1 text-ink-muted/40 group-hover:text-primary transition-colors">
           <span className="text-xs">+ เพิ่มหมายเหตุ</span>
         </div>
       )}
       {record?.notes && record.created_by_name && (
-        <p className="text-[10px] text-gray-400 mt-1">{record.created_by_name}</p>
+        <p className="text-[10px] text-ink-muted mt-1">{record.created_by_name}</p>
       )}
     </td>
   )
@@ -140,7 +140,7 @@ export default function Deductions() {
 
   return (
     <Layout title="หักเงิน / Deductions">
-      <div className="p-6 flex flex-col gap-5">
+      <div className="p-4 lg:p-6 flex flex-col gap-5">
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap">
           <select
@@ -166,29 +166,29 @@ export default function Deductions() {
 
         {/* Grid table */}
         {!clientId ? (
-          <div className="card text-center py-12 text-gray-400 text-sm">เลือก Client เพื่อดูข้อมูล</div>
+          <div className="card text-center py-12 text-ink-muted text-sm">เลือก Client เพื่อดูข้อมูล</div>
         ) : loading ? (
           <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
           </div>
         ) : (
           <div className="card p-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <p className="text-sm font-semibold text-gray-700">
+            <div className="px-4 py-3 border-b border-line bg-page">
+              <p className="text-sm font-semibold text-ink">
                 หักเงิน ปี {year} — {clients.find((c) => String(c.id) === clientId)?.name || ''}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">คลิกที่ช่องเดือนเพื่อเพิ่ม / แก้ไขหมายเหตุ</p>
+              <p className="text-xs text-ink-muted mt-0.5">คลิกที่ช่องเดือนเพื่อเพิ่ม / แก้ไขหมายเหตุ</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-page border-b border-line">
                   <tr>
-                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase w-28">เดือน</th>
-                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">หมายเหตุ</th>
-                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase w-28">อัปเดตล่าสุด</th>
+                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-ink-muted uppercase w-28">เดือน</th>
+                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-ink-muted uppercase">หมายเหตุ</th>
+                    <th className="text-left py-2.5 px-3 text-xs font-semibold text-ink-muted uppercase w-28">อัปเดตล่าสุด</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-line">
                   {MONTH_NAMES.map((name, idx) => {
                     const m = idx + 1
                     const record = byMonth[m]
@@ -196,14 +196,14 @@ export default function Deductions() {
                     return (
                       <tr
                         key={m}
-                        className={`${isCurrentMonth ? 'bg-blue-50/40' : ''} hover:bg-gray-50`}
+                        className={`${isCurrentMonth ? 'bg-primary-soft/30' : ''} hover:bg-page`}
                       >
                         <td className="py-2.5 px-3 align-middle">
                           <div className="flex items-center gap-2">
                             {isCurrentMonth && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                             )}
-                            <span className={`text-sm font-medium ${isCurrentMonth ? 'text-blue-700' : 'text-gray-700'}`}>
+                            <span className={`text-sm font-medium ${isCurrentMonth ? 'text-primary' : 'text-ink'}`}>
                               {name}
                             </span>
                           </div>
@@ -215,7 +215,7 @@ export default function Deductions() {
                           clientId={clientId}
                           onSaved={load}
                         />
-                        <td className="py-2.5 px-3 align-middle text-xs text-gray-400 whitespace-nowrap">
+                        <td className="py-2.5 px-3 align-middle text-xs text-ink-muted whitespace-nowrap">
                           {record?.updated_at
                             ? dayjs(record.updated_at).format('DD/MM/YY')
                             : record

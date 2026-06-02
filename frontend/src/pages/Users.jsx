@@ -5,10 +5,10 @@ import api from '../api/client'
 
 const ROLES = ['admin', 'central_admin', 'approver', 'technician']
 const ROLE_COLOR = {
-  admin:         'bg-purple-100 text-purple-700',
-  central_admin: 'bg-blue-100 text-blue-700',
-  approver:      'bg-orange-100 text-orange-700',
-  technician:    'bg-gray-100 text-gray-700',
+  admin:         'badge-danger',
+  central_admin: 'badge-primary',
+  approver:      'badge-warn',
+  technician:    'badge-gray',
 }
 const ROLE_TH = {
   admin:         'ผู้ดูแลระบบ',
@@ -23,8 +23,8 @@ function Modal({ title, onClose, children }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-semibold text-gray-900 text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <h3 className="font-semibold text-ink text-lg">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none">&times;</button>
         </div>
         {children}
       </div>
@@ -76,39 +76,39 @@ export default function Users() {
 
         <div className="card p-0 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
+            <thead className="bg-page border-b border-line">
               <tr>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ชื่อ</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Username</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">โทรศัพท์</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ชื่อ</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">Username</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">Role</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">โทรศัพท์</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">สถานะ</th>
                 <th className="py-3 px-4" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-line">
               {users.map((u) => (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium text-gray-900 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold shrink-0">
+                <tr key={u.id} className="hover:bg-primary-soft/40">
+                  <td className="py-3 px-4 font-medium text-ink flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-primary-soft flex items-center justify-center text-primary text-xs font-bold shrink-0">
                       {u.name?.[0]?.toUpperCase()}
                     </div>
                     {u.name}
                   </td>
-                  <td className="py-3 px-4 text-gray-500 font-mono">{u.username}</td>
+                  <td className="py-3 px-4 text-ink-muted font-mono">{u.username}</td>
                   <td className="py-3 px-4">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLOR[u.role] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`badge ${ROLE_COLOR[u.role] || 'badge-gray'}`}>
                       {ROLE_TH[u.role] || u.role}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-500">{u.phone || '-'}</td>
+                  <td className="py-3 px-4 text-ink-muted">{u.phone || '-'}</td>
                   <td className="py-3 px-4">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`badge ${u.active ? 'badge-success' : 'badge-gray'}`}>
                       {u.active ? 'ใช้งาน' : 'ปิด'}
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    <button onClick={() => openEdit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50">
+                    <button onClick={() => openEdit(u)} className="p-1.5 text-ink-muted hover:text-primary rounded-lg hover:bg-primary-soft">
                       <Pencil className="h-4 w-4" />
                     </button>
                   </td>
@@ -137,8 +137,8 @@ export default function Users() {
             <div><label className="label">โทรศัพท์</label><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             {modal !== 'new' && (
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="h-4 w-4 accent-blue-600" />
-                <span className="text-sm text-gray-700">เปิดใช้งาน</span>
+                <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="h-4 w-4 accent-primary" />
+                <span className="text-sm text-ink">เปิดใช้งาน</span>
               </label>
             )}
             <div className="flex gap-2 mt-2">

@@ -73,7 +73,7 @@ export default function SignPage() {
   // ── Loading ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-page flex items-center justify-center">
         <Spinner className="h-10 w-10" />
       </div>
     )
@@ -83,20 +83,20 @@ export default function SignPage() {
   if (error) {
     const isExpiredOrUsed = error === 'expired' || error === 'used'
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center">
-          <AlertTriangle className="h-12 w-12 text-orange-400 mx-auto mb-3" />
+      <div className="min-h-screen bg-page flex items-center justify-center px-4">
+        <div className="card max-w-sm w-full text-center py-8 px-6">
+          <AlertTriangle className="h-12 w-12 text-warn mx-auto mb-3" />
           {isExpiredOrUsed ? (
             <>
-              <h2 className="text-lg font-semibold text-gray-800 mb-2">
+              <h2 className="text-lg font-semibold text-ink mb-2">
                 {error === 'expired' ? 'ลิงก์หมดอายุ' : 'ลิงก์ถูกใช้ไปแล้ว'}
               </h2>
-              <p className="text-sm text-gray-500">กรุณาขอลิงก์ใหม่จากช่างผู้รับผิดชอบ</p>
+              <p className="text-sm text-ink-muted">กรุณาขอลิงก์ใหม่จากช่างผู้รับผิดชอบ</p>
             </>
           ) : (
             <>
-              <h2 className="text-lg font-semibold text-gray-800 mb-2">ไม่พบลิงก์นี้</h2>
-              <p className="text-sm text-gray-500">{error === 'notfound' ? 'ลิงก์ไม่ถูกต้อง' : error}</p>
+              <h2 className="text-lg font-semibold text-ink mb-2">ไม่พบลิงก์นี้</h2>
+              <p className="text-sm text-ink-muted">{error === 'notfound' ? 'ลิงก์ไม่ถูกต้อง' : error}</p>
             </>
           )}
         </div>
@@ -107,11 +107,11 @@ export default function SignPage() {
   // ── Success ───────────────────────────────────────────────────────────────
   if (done) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center">
-          <CheckCircle className="h-14 w-14 text-green-500 mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-gray-800 mb-1">ขอบคุณ</h2>
-          <p className="text-base text-gray-600">ลงนามเรียบร้อยแล้ว</p>
+      <div className="min-h-screen bg-page flex items-center justify-center px-4">
+        <div className="card max-w-sm w-full text-center py-8 px-6">
+          <CheckCircle className="h-14 w-14 text-success mx-auto mb-3" />
+          <h2 className="text-xl font-bold text-ink mb-1">ขอบคุณ</h2>
+          <p className="text-base text-ink-muted">ลงนามเรียบร้อยแล้ว</p>
         </div>
       </div>
     )
@@ -119,17 +119,22 @@ export default function SignPage() {
 
   // ── Main form ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6">
+    <div className="min-h-screen bg-page px-4 py-8">
       <div className="max-w-sm mx-auto flex flex-col gap-4">
 
         {/* Header */}
         <div className="text-center mb-2">
-          <h1 className="text-lg font-bold text-gray-900">ลงนามรับทราบการซ่อมบำรุง</h1>
-          <p className="text-xs text-gray-500 mt-1">Air System — Technical Water</p>
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-soft mb-3">
+            <svg className="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold text-ink">ลงนามรับทราบการซ่อมบำรุง</h1>
+          <p className="text-xs text-ink-muted mt-1">Air System — Technical Water</p>
         </div>
 
         {/* Work order info */}
-        <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
+        <div className="card flex flex-col gap-2">
           <Row label="เลขที่ใบงาน" value={info.order_no || `#${info.id}`} />
           <Row label="ประเภทงาน"   value={info.type} />
           {info.client_name && <Row label="รพ. / ลูกค้า" value={info.client_name} />}
@@ -139,16 +144,16 @@ export default function SignPage() {
 
         {/* Units list */}
         {(info.units || []).length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-2">
+          <div className="card">
+            <p className="text-sm font-semibold text-ink mb-2">
               รายการอุปกรณ์ ({info.units.length})
             </p>
             <div className="flex flex-col gap-2">
               {info.units.map((u, i) => (
-                <div key={i} className="border border-gray-100 rounded-xl px-3 py-2">
-                  <p className="text-sm font-medium text-gray-900">{u.asset_code}</p>
-                  <p className="text-xs text-gray-500">{u.unit_name}</p>
-                  <p className="text-xs text-gray-400">
+                <div key={i} className="border border-line rounded-xl px-3 py-2 bg-page">
+                  <p className="text-sm font-medium text-ink">{u.asset_code}</p>
+                  <p className="text-xs text-ink-muted">{u.unit_name}</p>
+                  <p className="text-xs text-ink-muted/70">
                     {[u.room_name, u.floor_name, u.building_name].filter(Boolean).join(' · ')}
                   </p>
                 </div>
@@ -158,20 +163,20 @@ export default function SignPage() {
         )}
 
         {/* Signer form */}
-        <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-3">
+        <div className="card flex flex-col gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อ-นามสกุล *</label>
+            <label className="label">ชื่อ-นามสกุล *</label>
             <input
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="input"
               placeholder="ชื่อ-นามสกุลผู้ลงนาม"
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">ตำแหน่ง (ถ้ามี)</label>
+            <label className="label">ตำแหน่ง (ถ้ามี)</label>
             <input
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="input"
               placeholder="เช่น หัวหน้าพยาบาล"
               value={position}
               onChange={(e) => setPosition(e.target.value)}
@@ -179,7 +184,7 @@ export default function SignPage() {
           </div>
 
           {submitError && (
-            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{submitError}</p>
+            <p className="text-xs text-danger bg-danger-soft rounded-input px-3 py-2">{submitError}</p>
           )}
 
           {!showPad ? (
@@ -189,19 +194,19 @@ export default function SignPage() {
                 setSubmitError('')
                 setShowPad(true)
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl text-sm transition-colors"
+              className="btn-primary w-full py-3 text-base"
             >
               ลงลายเซ็น
             </button>
           ) : (
             <>
-              <p className="text-xs font-medium text-gray-600">ลายเซ็น *</p>
+              <p className="label">ลายเซ็น *</p>
               <SignaturePad
                 onSave={handleSave}
                 onCancel={() => setShowPad(false)}
               />
               {submitting && (
-                <p className="text-xs text-gray-500 text-center mt-1">กำลังบันทึก...</p>
+                <p className="text-xs text-ink-muted text-center mt-1">กำลังบันทึก...</p>
               )}
             </>
           )}
@@ -214,8 +219,8 @@ export default function SignPage() {
 function Row({ label, value }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-900 font-medium text-right max-w-[60%]">{value || '-'}</span>
+      <span className="text-ink-muted">{label}</span>
+      <span className="text-ink font-medium text-right max-w-[60%]">{value || '-'}</span>
     </div>
   )
 }
