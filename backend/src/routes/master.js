@@ -351,6 +351,19 @@ router.get('/inspection-template', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
+// GET /api/master/photo-points?equipment_type=ac|fan&work_type=major|minor|fan
+router.get('/photo-points', authMiddleware, async (req, res) => {
+  const { equipment_type, work_type } = req.query;
+  if (!equipment_type || !work_type) {
+    return res.status(400).json({ error: 'equipment_type และ work_type จำเป็น' });
+  }
+  const { rows } = await pool.query(
+    'SELECT point_no, label, required FROM photo_point_templates WHERE equipment_type=$1 AND work_type=$2 ORDER BY point_no',
+    [equipment_type, work_type]
+  );
+  res.json(rows);
+});
+
 // ── Users (role ใหม่ 4 แบบ; ตาราง users ไม่มี updated_at) ────────────────────
 
 router.get('/users', authMiddleware, async (req, res) => {
