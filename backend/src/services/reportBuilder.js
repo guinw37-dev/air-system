@@ -46,6 +46,10 @@ async function getReportData(woId, { publicBaseUrl = '' } = {}) {
   if (wouIds.length) {
     const { rows: insp } = await pool.query(`
       SELECT iv.work_order_unit_id, iv.value_before, iv.value_after, iv.checked, iv.note,
+             iv.val_r_before, iv.val_s_before, iv.val_t_before,
+             iv.val_r_after, iv.val_s_after, iv.val_t_after,
+             iv.val_ln_before, iv.val_l_before, iv.val_ln_after, iv.val_l_after,
+             iv.val_suction, iv.val_discharge, iv.refrigerant_type, iv.val_text,
              ti.id AS template_item_id, ti.category, ti.item_label, ti.value_type,
              ti.unit_label, ti.sort_order
       FROM inspection_values iv

@@ -6,8 +6,12 @@
  * renders grouped checklist + before/after inputs,
  * auto-saves (debounced 1.5 s) on any change.
  *
- * Photos uploaded per phase (before/after/measurement) via
+ * Photos uploaded per photo-point × phase (before/after) via
  * <input type="file" capture="environment">.
+ *
+ * New value_types: rst_amp | ln_vi | pressure_pair
+ * Photo points: fetched from GET /master/photo-points
+ * Team condition: PUT /work-orders/:id/condition (debounced online)
  *
  * TODO: area_owner no-login token flow is a later phase.
  */
@@ -19,12 +23,6 @@ import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { enqueueInspection, enqueuePhoto, getPendingPhotos } from '../lib/offline/sync'
 
-const PHASES = [
-  { key: 'before',      label: 'ก่อนล้าง' },
-  { key: 'after',       label: 'หลังล้าง' },
-  { key: 'measurement', label: 'การวัดค่า' },
-]
-
 export default function WorkOrderUnitDetail() {
   const { id: woId, unitId } = useParams()
   const navigate = useNavigate()
@@ -32,11 +30,12 @@ export default function WorkOrderUnitDetail() {
   const [wo, setWo]       = useState(null)
   const [item, setItem]   = useState(null)
   const [template, setTemplate] = useState([]) // [{id,category,item_label,value_type,unit_label,sort_order}]
+  const [photoPoints, setPhotoPoints] = useState([]) // [{point_no,label,required}]
   const [photos, setPhotos]     = useState([]) // flat list for this unit
   const [loading, setLoading]   = useState(true)
 
   // Inspection values keyed by template_item_id
-  const [values, setValues]         = useState({}) // { [template_item_id]: {value_before, value_after, checked, note} }
+  const [values, setValues]         = useState({}) // { [template_item_id]: { ...all LMT fields } }
   const [hasRepair, setHasRepair]   = useState(false)
   const [repairNotes, setRepairNotes] = useState('')
 
@@ -48,6 +47,7 @@ export default function WorkOrderUnitDetail() {
   const fileInputRef    = useRef(null)
   const [uploadingPhase, setUploadingPhase] = useState(null)
   const [uploadingPointNo, setUploadingPointNo] = useState(null)
+  const [uploadingLabel, setUploadingLabel] = useState(null)
 
   // Lightbox
   const [lightbox, setLightbox] = useState(null)
@@ -60,6 +60,17 @@ export default function WorkOrderUnitDetail() {
   const [repairProblem, setRepairProblem] = useState('')
   const [repairBusy, setRepairBusy]       = useState(false)
   const [repairDone, setRepairDone]       = useState(false)
+
+  // Team condition (ความเห็นทีมช่าง)
+  const [cond, setCond] = useState({
+    cond_ac_degraded: false,
+    cond_ac_old_5_7yr: false,
+    cond_external_degraded: false,
+    cond_external_detail: '',
+    cond_internal_degraded: false,
+    cond_internal_detail: '',
+  })
+  const condTimer = useRef(null)
 
   const submitRepairRequest = async () => {
     if (!repairProblem.trim()) return
@@ -104,10 +115,23 @@ export default function WorkOrderUnitDetail() {
       const seedVals = {}
       existing.forEach((i) => {
         seedVals[i.template_item_id] = {
-          value_before: i.value_before ?? '',
-          value_after:  i.value_after  ?? '',
-          checked:      !!i.checked,
-          note:         i.note ?? '',
+          value_before:   i.value_before   ?? '',
+          value_after:    i.value_after    ?? '',
+          checked:        !!i.checked,
+          note:           i.note           ?? '',
+          val_r_before:   i.val_r_before   ?? '',
+          val_s_before:   i.val_s_before   ?? '',
+          val_t_before:   i.val_t_before   ?? '',
+          val_r_after:    i.val_r_after    ?? '',
+          val_s_after:    i.val_s_after    ?? '',
+          val_t_after:    i.val_t_after    ?? '',
+          val_ln_before:  i.val_ln_before  ?? '',
+          val_l_before:   i.val_l_before   ?? '',
+          val_ln_after:   i.val_ln_after   ?? '',
+          val_l_after:    i.val_l_after    ?? '',
+          val_suction:    i.val_suction    ?? '',
+          val_discharge:  i.val_discharge  ?? '',
+          refrigerant_type: i.refrigerant_type ?? '',
         }
       })
       setValues(seedVals)
@@ -117,13 +141,27 @@ export default function WorkOrderUnitDetail() {
         setRepairNotes(itemData.repair_notes || '')
       }
 
-      // Load template
+      // Seed condition fields from WO
+      setCond({
+        cond_ac_degraded:      !!woData.cond_ac_degraded,
+        cond_ac_old_5_7yr:     !!woData.cond_ac_old_5_7yr,
+        cond_external_degraded: !!woData.cond_external_degraded,
+        cond_external_detail:   woData.cond_external_detail || '',
+        cond_internal_degraded: !!woData.cond_internal_degraded,
+        cond_internal_detail:   woData.cond_internal_detail || '',
+      })
+
+      // Load template + photo points
       if (itemData) {
-        const eqType = itemData.equipment_type || (itemData.family ? 'ac' : 'ac')
-        const tRes = await api.get(
-          `/master/inspection-template?equipment_type=${eqType}&type=${woData.type}`
-        ).catch(() => ({ data: [] }))
+        const eqType = itemData.equipment_type || 'ac'
+        const [tRes, ppRes] = await Promise.all([
+          api.get(`/master/inspection-template?equipment_type=${eqType}&type=${woData.type}`)
+            .catch(() => ({ data: [] })),
+          api.get(`/master/photo-points?equipment_type=${eqType}&work_type=${woData.type}`)
+            .catch(() => ({ data: [] })),
+        ])
         setTemplate(tRes.data || [])
+        setPhotoPoints(ppRes.data || [])
       }
     } finally {
       setLoading(false)
@@ -132,8 +170,8 @@ export default function WorkOrderUnitDetail() {
 
   useEffect(() => { load() }, [load])
 
-  // Debounced auto-save
-  const scheduleAutoSave = useCallback((nextValues, nextHasRepair, nextRepairNotes) => {
+  // Debounced auto-save inspection
+  const scheduleAutoSave = useCallback((nextValues) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaveStatus('saving')
     saveTimer.current = setTimeout(async () => {
@@ -142,17 +180,25 @@ export default function WorkOrderUnitDetail() {
           work_order_unit_id: Number(unitId),
           values: Object.entries(nextValues).map(([tid, v]) => ({
             template_item_id: Number(tid),
-            value_before: v.value_before || null,
-            value_after:  v.value_after  || null,
-            checked:      !!v.checked,
-            note:         v.note || null,
+            value_before:     v.value_before   || null,
+            value_after:      v.value_after    || null,
+            checked:          !!v.checked,
+            note:             v.note           || null,
+            val_r_before:     v.val_r_before   || null,
+            val_s_before:     v.val_s_before   || null,
+            val_t_before:     v.val_t_before   || null,
+            val_r_after:      v.val_r_after    || null,
+            val_s_after:      v.val_s_after    || null,
+            val_t_after:      v.val_t_after    || null,
+            val_ln_before:    v.val_ln_before  || null,
+            val_l_before:     v.val_l_before   || null,
+            val_ln_after:     v.val_ln_after   || null,
+            val_l_after:      v.val_l_after    || null,
+            val_suction:      v.val_suction    || null,
+            val_discharge:    v.val_discharge  || null,
+            refrigerant_type: v.refrigerant_type || null,
           })),
-          // has_repair/repair_notes intentionally omitted — repairs are raised
-          // via the explicit "ขอเปิด" action, not the inspection auto-save.
         }
-        // Persist to the offline outbox (IndexedDB) and let the sync engine push
-        // it to the server. Works the same online or offline; the global
-        // SyncIndicator shows whether it has reached the server yet.
         await enqueueInspection(woId, payload)
         setSaveStatus('saved')
       } catch {
@@ -167,19 +213,32 @@ export default function WorkOrderUnitDetail() {
       [tid]: { ...(values[tid] || {}), [field]: val },
     }
     setValues(next)
-    scheduleAutoSave(next, hasRepair, repairNotes)
+    scheduleAutoSave(next)
   }
 
-  const updateRepair = (newHasRepair, newRepairNotes) => {
-    setHasRepair(newHasRepair)
-    setRepairNotes(newRepairNotes)
-    scheduleAutoSave(values, newHasRepair, newRepairNotes)
+  // Condition debounced PUT (online only — no need to offline-queue)
+  const scheduleSaveCond = useCallback((nextCond) => {
+    if (condTimer.current) clearTimeout(condTimer.current)
+    condTimer.current = setTimeout(async () => {
+      try {
+        await api.put(`/work-orders/${woId}/condition`, nextCond)
+      } catch {
+        // silently ignore — not critical for offline flow
+      }
+    }, 1200)
+  }, [woId])
+
+  const updateCond = (field, val) => {
+    const next = { ...cond, [field]: val }
+    setCond(next)
+    scheduleSaveCond(next)
   }
 
   // Photo upload
-  const triggerPhotoUpload = (phase, pointNo) => {
+  const triggerPhotoUpload = (phase, pointNo, label) => {
     setUploadingPhase(phase)
     setUploadingPointNo(pointNo)
+    setUploadingLabel(label)
     fileInputRef.current.click()
   }
 
@@ -188,13 +247,11 @@ export default function WorkOrderUnitDetail() {
     if (!file) return
     e.target.value = ''
     try {
-      // Queue the photo (with its blob) in the outbox. Optimistically show it
-      // right away with a "รอ sync" badge; the engine uploads it when online.
       const fields = {
         work_order_unit_id: String(unitId),
         phase: uploadingPhase,
         point_no: String(uploadingPointNo),
-        label: `${uploadingPhase} ${uploadingPointNo}`,
+        label: uploadingLabel || `${uploadingPhase} ${uploadingPointNo}`,
       }
       const token = await enqueuePhoto(woId, fields, file)
       setPhotos((prev) => [
@@ -215,11 +272,12 @@ export default function WorkOrderUnitDetail() {
     } finally {
       setUploadingPhase(null)
       setUploadingPointNo(null)
+      setUploadingLabel(null)
     }
   }
 
   const deletePhoto = async (photo) => {
-    if (photo.pending) return // queued photos: leave to sync (kept simple for v1)
+    if (photo.pending) return
     if (!confirm('ลบรูปนี้?')) return
     try {
       await api.delete(`/work-orders/${woId}/photos/${photo.id}`)
@@ -232,7 +290,7 @@ export default function WorkOrderUnitDetail() {
   if (loading) return <PageSpinner />
   if (!item)   return <div className="p-4 text-red-600">ไม่พบข้อมูลอุปกรณ์ (unitId={unitId})</div>
 
-  const canEdit = ['in_progress', 'rejected'].includes(wo?.status)
+  const canEdit = ['draft', 'in_progress', 'rejected'].includes(wo?.status)
 
   // Group template by category
   const categories = []
@@ -243,9 +301,23 @@ export default function WorkOrderUnitDetail() {
     catMap[cat].push(ti)
   })
 
-  const photosByPhase = (phase) => photos.filter((p) => p.phase === phase)
-
   const photoUrl = (url) => (url ? `${uploadsBase}${url}` : null)
+
+  // Photo progress helpers
+  const photosForPhasePoint = (phase, pointNo) =>
+    photos.filter((p) => p.phase === phase && String(p.point_no) === String(pointNo))
+
+  const isUploading = (phase, pointNo) =>
+    uploadingPhase === phase && String(uploadingPointNo) === String(pointNo)
+
+  // Count photos per phase across required points
+  const requiredPoints = photoPoints.filter((pp) => pp.required)
+  const countDone = (phase) =>
+    requiredPoints.filter((pp) => photosForPhasePoint(phase, pp.point_no).length > 0).length
+
+  // Shared number input style
+  const numCls = (disabled) =>
+    `w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${disabled ? 'bg-gray-50' : ''}`
 
   return (
     <Layout
@@ -274,6 +346,7 @@ export default function WorkOrderUnitDetail() {
         {[
           { key: 'checklist', label: 'รายการตรวจ' },
           { key: 'photos',    label: 'รูปภาพ' },
+          { key: 'condition', label: 'ความเห็นทีมช่าง' },
         ].map((tb) => (
           <button
             key={tb.key}
@@ -315,6 +388,7 @@ export default function WorkOrderUnitDetail() {
                       <div key={ti.id} className="bg-white border border-gray-100 rounded-xl p-3">
                         <p className="text-sm font-medium text-gray-800 mb-2">{ti.item_label}</p>
 
+                        {/* ── check ── */}
                         {ti.value_type === 'check' && (
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -328,6 +402,7 @@ export default function WorkOrderUnitDetail() {
                           </label>
                         )}
 
+                        {/* ── number ── */}
                         {ti.value_type === 'number' && (
                           <div className="flex items-center gap-2">
                             <input
@@ -343,6 +418,7 @@ export default function WorkOrderUnitDetail() {
                           </div>
                         )}
 
+                        {/* ── before_after ── */}
                         {ti.value_type === 'before_after' && (
                           <div className="grid grid-cols-2 gap-2">
                             <div>
@@ -372,6 +448,7 @@ export default function WorkOrderUnitDetail() {
                           </div>
                         )}
 
+                        {/* ── text ── */}
                         {ti.value_type === 'text' && (
                           <textarea
                             rows={2}
@@ -381,6 +458,207 @@ export default function WorkOrderUnitDetail() {
                             onChange={(e) => updateValue(ti.id, 'note', e.target.value)}
                             className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
                           />
+                        )}
+
+                        {/* ── rst_amp — มอเตอร์ Blower แรงดัน/กระแส ── */}
+                        {ti.value_type === 'rst_amp' && (
+                          <div className="flex flex-col gap-3">
+                            {/* R/S/T ก่อน */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">R / S / T (A) — ก่อน</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { field: 'val_r_before', label: 'R' },
+                                  { field: 'val_s_before', label: 'S' },
+                                  { field: 'val_t_before', label: 'T' },
+                                ].map(({ field, label }) => (
+                                  <div key={field}>
+                                    <label className="text-xs text-gray-400 mb-0.5 block">{label}</label>
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      placeholder="0.0"
+                                      disabled={!canEdit}
+                                      value={v[field] || ''}
+                                      onChange={(e) => updateValue(ti.id, field, e.target.value)}
+                                      className={numCls(!canEdit)}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            {/* R/S/T หลัง */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">R / S / T (A) — หลัง</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { field: 'val_r_after', label: 'R' },
+                                  { field: 'val_s_after', label: 'S' },
+                                  { field: 'val_t_after', label: 'T' },
+                                ].map(({ field, label }) => (
+                                  <div key={field}>
+                                    <label className="text-xs text-gray-400 mb-0.5 block">{label}</label>
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      placeholder="0.0"
+                                      disabled={!canEdit}
+                                      value={v[field] || ''}
+                                      onChange={(e) => updateValue(ti.id, field, e.target.value)}
+                                      className={numCls(!canEdit)}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            {/* LN/L ก่อน */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">LN (V) / L (A) — ก่อน</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-gray-400 mb-0.5 block">LN (V)</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    placeholder="0.0"
+                                    disabled={!canEdit}
+                                    value={v.val_ln_before || ''}
+                                    onChange={(e) => updateValue(ti.id, 'val_ln_before', e.target.value)}
+                                    className={numCls(!canEdit)}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-gray-400 mb-0.5 block">L (A)</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    placeholder="0.0"
+                                    disabled={!canEdit}
+                                    value={v.val_l_before || ''}
+                                    onChange={(e) => updateValue(ti.id, 'val_l_before', e.target.value)}
+                                    className={numCls(!canEdit)}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            {/* LN/L หลัง */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">LN (V) / L (A) — หลัง</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-gray-400 mb-0.5 block">LN (V)</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    placeholder="0.0"
+                                    disabled={!canEdit}
+                                    value={v.val_ln_after || ''}
+                                    onChange={(e) => updateValue(ti.id, 'val_ln_after', e.target.value)}
+                                    className={numCls(!canEdit)}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-gray-400 mb-0.5 block">L (A)</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    placeholder="0.0"
+                                    disabled={!canEdit}
+                                    value={v.val_l_after || ''}
+                                    onChange={(e) => updateValue(ti.id, 'val_l_after', e.target.value)}
+                                    className={numCls(!canEdit)}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── ln_vi — ขณะ Compressor ทำงาน ── */}
+                        {ti.value_type === 'ln_vi' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-500 mb-0.5 block">LN (V)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="0.0"
+                                disabled={!canEdit}
+                                value={v.val_ln_after || ''}
+                                onChange={(e) => updateValue(ti.id, 'val_ln_after', e.target.value)}
+                                className={numCls(!canEdit)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 mb-0.5 block">L (A)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="0.0"
+                                disabled={!canEdit}
+                                value={v.val_l_after || ''}
+                                onChange={(e) => updateValue(ti.id, 'val_l_after', e.target.value)}
+                                className={numCls(!canEdit)}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── pressure_pair — น้ำยาแอร์ ── */}
+                        {ti.value_type === 'pressure_pair' && (
+                          <div className="flex flex-col gap-3">
+                            {/* Refrigerant selector */}
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">ชนิดน้ำยา</p>
+                              <div className="flex gap-2">
+                                {['R32', 'R410', 'R22'].map((r) => (
+                                  <button
+                                    key={r}
+                                    type="button"
+                                    disabled={!canEdit}
+                                    onClick={() => updateValue(ti.id, 'refrigerant_type', r)}
+                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                      v.refrigerant_type === r
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                    } disabled:opacity-50`}
+                                  >
+                                    {r}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {/* Suction */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-0.5 block">
+                                Suction (PSI) <span className="text-gray-400">ค่าอ้างอิง 135–140</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="135"
+                                disabled={!canEdit}
+                                value={v.val_suction || ''}
+                                onChange={(e) => updateValue(ti.id, 'val_suction', e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                              />
+                            </div>
+                            {/* Discharge */}
+                            <div>
+                              <label className="text-xs text-gray-500 mb-0.5 block">
+                                Discharge (PSI) <span className="text-gray-400">ค่าอ้างอิง &lt;450–500</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="450"
+                                disabled={!canEdit}
+                                value={v.val_discharge || ''}
+                                onChange={(e) => updateValue(ti.id, 'val_discharge', e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                              />
+                            </div>
+                          </div>
                         )}
                       </div>
                     )
@@ -441,68 +719,247 @@ export default function WorkOrderUnitDetail() {
         {/* ── Photos tab ── */}
         {tab === 'photos' && (
           <div className="flex flex-col gap-6">
-            {PHASES.map(({ key: phase, label }) => {
-              const phasePhotos = photosByPhase(phase)
-              return (
+            {/* Photo-point progress summary */}
+            {requiredPoints.length > 0 && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-800">
+                ถ่ายแล้ว {countDone('before')}/{requiredPoints.length} จุด (ก่อน)
+                &nbsp;·&nbsp;
+                {countDone('after')}/{requiredPoints.length} จุด (หลัง)
+              </div>
+            )}
+
+            {/* Point-based slots */}
+            {photoPoints.length > 0 ? (
+              ['before', 'after'].map((phase) => (
                 <div key={phase}>
                   <h3 className="font-semibold text-gray-800 text-sm mb-2">
-                    {label}
-                    <span className="ml-2 text-gray-400 font-normal text-xs">({phasePhotos.length} รูป)</span>
+                    {phase === 'before' ? 'ก่อนล้าง' : 'หลังล้าง'}
                   </h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {phasePhotos.map((p) => {
-                      const src = p.pending ? p.objectUrl : photoUrl(p.url)
+                  <div className="flex flex-col gap-3">
+                    {photoPoints.map((pp) => {
+                      const slotPhotos = photosForPhasePoint(phase, pp.point_no)
+                      const uploading = isUploading(phase, pp.point_no)
+                      const hasCover = slotPhotos.length > 0
                       return (
-                      <div key={p.id} className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                        <div className="relative">
-                          <img
-                            src={src}
-                            alt={p.label}
-                            className="w-full aspect-square object-cover cursor-zoom-in"
-                            onClick={() => setLightbox({ url: src, label: p.label })}
-                          />
-                          {p.pending && (
-                            <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                              รอ sync
+                        <div key={pp.point_no} className="bg-white border border-gray-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-gray-700">
+                              {pp.point_no}. {pp.label}
+                              {pp.required && <span className="ml-1 text-red-500">*</span>}
                             </span>
-                          )}
-                          {canEdit && !p.pending && (
-                            <button
-                              onClick={() => deletePhoto(p)}
-                              className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                            <span className={`text-xs font-semibold ${hasCover ? 'text-green-600' : 'text-gray-400'}`}>
+                              {hasCover ? `✓ ${slotPhotos.length} รูป` : 'ยังไม่มีรูป'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {slotPhotos.map((p) => {
+                              const src = p.pending ? p.objectUrl : photoUrl(p.url)
+                              return (
+                                <div key={p.id} className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                                  <div className="relative">
+                                    <img
+                                      src={src}
+                                      alt={p.label}
+                                      className="w-full aspect-square object-cover cursor-zoom-in"
+                                      onClick={() => setLightbox({ url: src, label: p.label })}
+                                    />
+                                    {p.pending && (
+                                      <span className="absolute top-1 left-1 bg-amber-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full">
+                                        รอ sync
+                                      </span>
+                                    )}
+                                    {canEdit && !p.pending && (
+                                      <button
+                                        onClick={() => deletePhoto(p)}
+                                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-5 h-5 flex items-center justify-center"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {/* Add photo */}
+                            {canEdit && (
+                              <button
+                                onClick={() => triggerPhotoUpload(phase, pp.point_no, `${pp.label} (${phase === 'before' ? 'ก่อน' : 'หลัง'})`)}
+                                disabled={uploading}
+                                className="rounded-lg border-2 border-dashed border-gray-300 aspect-square flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+                              >
+                                {uploading ? (
+                                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-blue-600" />
+                                ) : (
+                                  <>
+                                    <Camera className="h-5 w-5" />
+                                    <span className="text-[10px]">ถ่าย</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="px-2 py-1">
-                          <p className="text-xs text-gray-500 truncate">{p.label || `${phase}`}</p>
-                        </div>
-                      </div>
                       )
                     })}
-
-                    {/* Add photo button */}
-                    {canEdit && (
-                      <button
-                        onClick={() => triggerPhotoUpload(phase, phasePhotos.length + 1)}
-                        disabled={uploadingPhase === phase}
-                        className="rounded-xl border-2 border-dashed border-gray-300 aspect-square flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
-                      >
-                        {uploadingPhase === phase ? (
-                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-600" />
-                        ) : (
-                          <>
-                            <Camera className="h-7 w-7" />
-                            <span className="text-xs">ถ่ายรูป</span>
-                          </>
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
-              )
-            })}
+              ))
+            ) : (
+              /* Fallback: free phase tabs when no photo-point template */
+              [
+                { key: 'before',      label: 'ก่อนล้าง' },
+                { key: 'after',       label: 'หลังล้าง' },
+                { key: 'measurement', label: 'การวัดค่า' },
+              ].map(({ key: phase, label }) => {
+                const phasePhotos = photos.filter((p) => p.phase === phase)
+                return (
+                  <div key={phase}>
+                    <h3 className="font-semibold text-gray-800 text-sm mb-2">
+                      {label}
+                      <span className="ml-2 text-gray-400 font-normal text-xs">({phasePhotos.length} รูป)</span>
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {phasePhotos.map((p) => {
+                        const src = p.pending ? p.objectUrl : photoUrl(p.url)
+                        return (
+                          <div key={p.id} className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                            <div className="relative">
+                              <img
+                                src={src}
+                                alt={p.label}
+                                className="w-full aspect-square object-cover cursor-zoom-in"
+                                onClick={() => setLightbox({ url: src, label: p.label })}
+                              />
+                              {p.pending && (
+                                <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                  รอ sync
+                                </span>
+                              )}
+                              {canEdit && !p.pending && (
+                                <button
+                                  onClick={() => deletePhoto(p)}
+                                  className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            <div className="px-2 py-1">
+                              <p className="text-xs text-gray-500 truncate">{p.label || `${phase}`}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {canEdit && (
+                        <button
+                          onClick={() => triggerPhotoUpload(phase, phasePhotos.length + 1, `${label} ${phasePhotos.length + 1}`)}
+                          disabled={uploadingPhase === phase}
+                          className="rounded-xl border-2 border-dashed border-gray-300 aspect-square flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+                        >
+                          {uploadingPhase === phase ? (
+                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-600" />
+                          ) : (
+                            <>
+                              <Camera className="h-7 w-7" />
+                              <span className="text-xs">ถ่ายรูป</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── Condition tab — ความเห็นทีมช่าง ── */}
+        {tab === 'condition' && (
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-gray-400">
+              บันทึกอัตโนมัติ — ใช้ประกอบใบงานเมื่อส่งตรวจ
+            </p>
+
+            {/* ac_degraded */}
+            <div className="bg-white border border-gray-100 rounded-xl p-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-blue-600"
+                  disabled={!canEdit}
+                  checked={cond.cond_ac_degraded}
+                  onChange={(e) => updateCond('cond_ac_degraded', e.target.checked)}
+                />
+                <span className="text-sm text-gray-800">แอร์มีสภาพเสื่อมสภาพ</span>
+              </label>
+            </div>
+
+            {/* ac_old_5_7yr */}
+            <div className="bg-white border border-gray-100 rounded-xl p-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-blue-600"
+                  disabled={!canEdit}
+                  checked={cond.cond_ac_old_5_7yr}
+                  onChange={(e) => updateCond('cond_ac_old_5_7yr', e.target.checked)}
+                />
+                <span className="text-sm text-gray-800">อายุการใช้งาน 5–7 ปีขึ้นไป</span>
+              </label>
+            </div>
+
+            {/* external_degraded + detail */}
+            <div className="bg-white border border-gray-100 rounded-xl p-4">
+              <label className="flex items-center gap-3 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-blue-600"
+                  disabled={!canEdit}
+                  checked={cond.cond_external_degraded}
+                  onChange={(e) => updateCond('cond_external_degraded', e.target.checked)}
+                />
+                <span className="text-sm text-gray-800">ชุดนอก (Outdoor) เสื่อมสภาพ</span>
+              </label>
+              {cond.cond_external_degraded && (
+                <textarea
+                  rows={2}
+                  disabled={!canEdit}
+                  placeholder="รายละเอียดสภาพชุดนอก..."
+                  value={cond.cond_external_detail}
+                  onChange={(e) => updateCond('cond_external_detail', e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                />
+              )}
+            </div>
+
+            {/* internal_degraded + detail */}
+            <div className="bg-white border border-gray-100 rounded-xl p-4">
+              <label className="flex items-center gap-3 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-blue-600"
+                  disabled={!canEdit}
+                  checked={cond.cond_internal_degraded}
+                  onChange={(e) => updateCond('cond_internal_degraded', e.target.checked)}
+                />
+                <span className="text-sm text-gray-800">ชุดใน (Indoor) เสื่อมสภาพ</span>
+              </label>
+              {cond.cond_internal_degraded && (
+                <textarea
+                  rows={2}
+                  disabled={!canEdit}
+                  placeholder="รายละเอียดสภาพชุดใน..."
+                  value={cond.cond_internal_detail}
+                  onChange={(e) => updateCond('cond_internal_detail', e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                />
+              )}
+            </div>
+
+            {!canEdit && (
+              <p className="text-xs text-gray-400 text-center">ใบงานปิดแล้ว — ดูข้อมูลได้อย่างเดียว</p>
+            )}
           </div>
         )}
       </div>
