@@ -1,7 +1,6 @@
-node_modules/
 .env
 *.env
 !*.env.example
+node_modules/
 uploads/
 *.log
-.DS_Store
