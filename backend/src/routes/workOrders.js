@@ -323,14 +323,9 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
       "UPDATE work_orders SET status='pending_admin', completed_at=NOW(), updated_at=NOW() WHERE id=$1 RETURNING *",
       [req.params.id]
     );
-    // auto-create repair_logs for flagged units
-    await client.query(`
-      INSERT INTO repair_logs (client_id, unit_id, work_order_id, work_order_unit_id, problem, status, reported_by)
-      SELECT $1, wou.unit_id, wou.work_order_id, wou.id, wou.repair_notes, 'open', $2
-      FROM work_order_units wou
-      WHERE wou.work_order_id = $3 AND wou.has_repair = true AND wou.repair_notes IS NOT NULL
-      ON CONFLICT DO NOTHING
-    `, [wo.client_id, req.user.id, req.params.id]);
+    // NOTE: repair logging is now an explicit "ขอเปิด" action (POST
+    // /:id/repair-request), not an auto-side-effect of submit. The main repair
+    // workflow lives in the separate repair-report system.
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'pending_admin', changedBy: req.user.id });
     await client.query('COMMIT');
     res.json(rows[0]);
@@ -470,6 +465,37 @@ router.post('/:id/resubmit', authMiddleware, async (req, res) => {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
+});
+
+// ── POST /api/work-orders/:id/repair-request ────────────────────────────────
+// "ขอเปิด" — raise an open repair request for a unit when an abnormal condition
+// is found on-site. Creates a repair_logs row (status 'open'). This is the AC
+// path into the separate repair-report workflow; it is explicit (a button),
+// not a side-effect of submitting the work order.
+router.post('/:id/repair-request', authMiddleware, async (req, res) => {
+  const { work_order_unit_id, problem } = req.body;
+  if (!work_order_unit_id || !problem?.trim()) {
+    return res.status(400).json({ error: 'work_order_unit_id และ problem จำเป็น' });
+  }
+  const wo = await getWO(req.params.id);
+  if (!wo) return res.status(404).json({ error: 'Not found' });
+  try {
+    // guard: the unit belongs to this WO + fetch unit_id
+    const { rows: chk } = await pool.query(
+      'SELECT unit_id FROM work_order_units WHERE id=$1 AND work_order_id=$2',
+      [work_order_unit_id, req.params.id]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'work_order_unit not in this WO' });
+    const { rows } = await pool.query(`
+      INSERT INTO repair_logs
+        (client_id, unit_id, work_order_id, work_order_unit_id, problem, status, reported_by)
+      VALUES ($1, $2, $3, $4, $5, 'open', $6)
+      RETURNING *
+    `, [wo.client_id, chk[0].unit_id, req.params.id, work_order_unit_id, problem.trim(), req.user.id]);
+    // mark the unit row as flagged (kept for the WO summary view)
+    await pool.query('UPDATE work_order_units SET has_repair = true WHERE id = $1', [work_order_unit_id]);
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Signatures ──────────────────────────────────────────────────────────────

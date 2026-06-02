@@ -11,7 +11,9 @@ import SyncIndicator from './SyncIndicator'
 
 const NAV = [
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
-  { path: '/repair-logs',  icon: Wrench,           label: 'แจ้งซ่อม',       roles: null },
+  // 'แจ้งซ่อม' (RepairLogs) hidden from nav — repair reporting lives in the
+  // separate repair-report system. AC abnormalities are raised via "ขอเปิด".
+  // Route /repair-logs still resolves; just no nav entry.
   { path: '/pm',             icon: CalendarCheck,   label: 'PM Schedule',  roles: null },
   { path: '/pm-plan',        icon: TableProperties, label: 'PM Plan',      roles: null },
   { path: '/cleaning-status',    icon: Activity,        label: 'ติดตามการล้าง', roles: null },
