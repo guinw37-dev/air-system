@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS inspection_template_items (
   equipment_type VARCHAR(10) NOT NULL CHECK (equipment_type IN ('ac','fan')),
   category       VARCHAR(50),     -- 'ใช้งานทั้ง3' / 'แอร์น้ำยา' / 'FCU' / 'AHU' / 'fan'
   item_label     VARCHAR(200) NOT NULL,
-  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text')),
+  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair')),
   unit_label     VARCHAR(30),     -- หน่วย เช่น °C, A, V, RPM
   applies_major  BOOLEAN DEFAULT false,
   applies_minor  BOOLEAN DEFAULT false,
@@ -131,8 +131,24 @@ CREATE TABLE IF NOT EXISTS work_orders (
   completed_at     TIMESTAMPTZ,
   admin_checked_at TIMESTAMPTZ,    -- ด่าน 1: central_admin ตรวจแล้ว
   approved_at      TIMESTAMPTZ,    -- ด่าน 2: approver เซ็นปิดแล้ว
+  -- ความเห็นทีมช่าง (LMT form condition assessment)
+  cond_ac_degraded       BOOLEAN DEFAULT FALSE,
+  cond_ac_old_5_7yr      BOOLEAN DEFAULT FALSE,
+  cond_external_degraded BOOLEAN DEFAULT FALSE, cond_external_detail TEXT,
+  cond_internal_degraded BOOLEAN DEFAULT FALSE, cond_internal_detail TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- จุดถ่ายรูปบังคับ ต่อ ประเภทเครื่อง × ชนิดงาน
+CREATE TABLE IF NOT EXISTS photo_point_templates (
+  id             SERIAL PRIMARY KEY,
+  equipment_type VARCHAR(10) NOT NULL,   -- 'ac' | 'fan'
+  work_type      VARCHAR(10) NOT NULL,   -- 'major' | 'minor' | 'fan'
+  point_no       INT NOT NULL,
+  label          VARCHAR(120) NOT NULL,
+  required       BOOLEAN DEFAULT TRUE,
+  UNIQUE (equipment_type, work_type, point_no)
 );
 
 -- ช่างหลายคนต่อใบงาน
@@ -162,6 +178,13 @@ CREATE TABLE IF NOT EXISTS inspection_values (
   value_after        TEXT,
   checked            BOOLEAN,
   note               TEXT,
+  -- LMT structured values (rst_amp / ln_vi / pressure_pair)
+  val_r_before  DECIMAL(8,2), val_s_before DECIMAL(8,2), val_t_before DECIMAL(8,2),
+  val_r_after   DECIMAL(8,2), val_s_after  DECIMAL(8,2), val_t_after  DECIMAL(8,2),
+  val_ln_before DECIMAL(8,2), val_l_before DECIMAL(8,2),
+  val_ln_after  DECIMAL(8,2), val_l_after  DECIMAL(8,2),
+  val_suction   DECIMAL(8,2), val_discharge DECIMAL(8,2),
+  refrigerant_type VARCHAR(10), val_text TEXT,
   UNIQUE (work_order_unit_id, template_item_id)
 );
 

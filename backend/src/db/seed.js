@@ -1,7 +1,7 @@
 require('dotenv').config();
 const pool = require('./pool');
 const bcrypt = require('bcryptjs');
-const { MEASUREMENT_FIELDS, CHECKLIST_ITEMS } = require('../config/measurements');
+const { CHECKLIST_ITEMS } = require('../config/measurements');
 
 // Seed baseline data for the NEW schema (clients → sites → … → units).
 // Does NOT import equipment from Excel — that lives in import.js / a dedicated
@@ -48,52 +48,102 @@ async function seed() {
       `, [clientId, `${c.code}-MAIN`, c.name]);
     }
 
-    // ── Inspection template items (config → DB) ────────────
-    // category: acTypes=null → ใช้งานทั้ง3 ; acTypes set → แอร์น้ำยา (refrigerant AC)
-    let sort = 0;
-    for (const f of MEASUREMENT_FIELDS.major) {
+    // ── Inspection template (LMT Engineering form — EXACT order/categories) ──
+    // Clean reseed of the AC template: drop old AC items (and any inspection
+    // values referencing them) then insert the 27 LMT items. Safe on a fresh DB;
+    // re-runnable. (categories changed from Thai names → all3/refrigerant/fcu/ahu/other)
+    await client.query(`DELETE FROM inspection_values WHERE template_item_id IN
+      (SELECT id FROM inspection_template_items WHERE equipment_type='ac')`);
+    await client.query(`DELETE FROM inspection_template_items WHERE equipment_type='ac'`);
+
+    const LMT = [
+      // หมวด 1: ใช้งานทั้ง 3 ประเภท (all3) — major + minor
+      { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์ Blower (380V/220V)', type: 'rst_amp', minor: true },
+      { cat: 'all3', sort: 20, label: 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', type: 'number', unit: 'Ft/m', minor: true },
+      { cat: 'all3', sort: 30, label: 'ตรวจวัดอุณหภูมิ °C', type: 'number', unit: '°C', minor: true },
+      { cat: 'all3', sort: 40, label: 'ฉีดล้างทำความสะอาด Fan coil โดยใช้สารเคมีทิ้งไว้ 15 นาที และใช้ Water High Pressure Jet ฉีดล้างทำความสะอาด', type: 'check', minor: true },
+      { cat: 'all3', sort: 50, label: 'ตรวจสอบเสียง และการสั่นสะเทือนที่ผิดปกติของอุปกรณ์', type: 'check', minor: true },
+      { cat: 'all3', sort: 60, label: 'ตรวจสอบ และทำความสะอาด Filter', type: 'check', minor: true },
+      // หมวด 2: แอร์น้ำยา (refrigerant) — major only
+      { cat: 'refrigerant', sort: 110, label: 'ตรวจสอบแรงดันของสารทำความเย็น (R32/R410/R22)', type: 'pressure_pair' },
+      { cat: 'refrigerant', sort: 120, label: 'ตรวจวัดแรงดันไฟฟ้า และกระแสไฟฟ้าขณะที่ Compressor ทำงาน', type: 'ln_vi' },
+      { cat: 'refrigerant', sort: 130, label: 'ตรวจสอบการทำงานของรีโมท', type: 'check' },
+      { cat: 'refrigerant', sort: 140, label: 'ตรวจสอบความหนาแน่นของสายไฟฟ้า และสายชุดควบคุม', type: 'check' },
+      { cat: 'refrigerant', sort: 150, label: 'ตรวจสอบ และทำความสะอาดคอยล์เย็นด้วยสารเคมี (Cooling Coil)', type: 'check' },
+      { cat: 'refrigerant', sort: 160, label: 'ตรวจสอบ และทำความสะอาดพัดลมคอยล์เย็น', type: 'check' },
+      { cat: 'refrigerant', sort: 170, label: 'ตรวจสอบ และทำความสะอาดชุดระบายความร้อนด้วยสารเคมี', type: 'check' },
+      // หมวด 3: FCU (fcu) — major
+      { cat: 'fcu', sort: 210, label: 'ตรวจสอบการทำงานของ Room Thermostart', type: 'check' },
+      { cat: 'fcu', sort: 220, label: 'ตรวจสอบ และทำความสะอาดถาด Drain และการอุดตันของท่อ Drain', type: 'check' },
+      { cat: 'fcu', sort: 230, label: 'ตรวจสอบ และทำความสะอาด Blower แล้วทดลองใช้มือหมุนเพื่อฟังเสียงผิดปกติ', type: 'check' },
+      { cat: 'fcu', sort: 240, label: 'ตรวจสอบการสึกหรอของโครงสร้าง, Mounting, Support, Bracket และทาสี ถ้าจำเป็น', type: 'check' },
+      { cat: 'fcu', sort: 250, label: 'ตรวจสอบฉนวนหุ้มท่อให้อยู่ในสภาพพร้อมใช้งาน', type: 'check' },
+      { cat: 'fcu', sort: 260, label: 'ตรวจสอบ และทำความสะอาด เก็บขยะ บริเวณบนฝ้า', type: 'check' },
+      { cat: 'fcu', sort: 270, label: 'ตรวจสอบและทำความสะอาด Stainer และตรวจสอบวาล์วน้ำเย็นปิดสนิทหรือไม่', type: 'check' },
+      { cat: 'fcu', sort: 280, label: 'ตรวจสอบ Pilot lamp, Selector Switch และอุปกรณ์ภายในตู้ Starter', type: 'check' },
+      // หมวด 4: AHU (ahu) — major
+      { cat: 'ahu', sort: 310, label: 'ตรวจสอบปรับตั้ง Pulley และสายพาน', type: 'check' },
+      { cat: 'ahu', sort: 320, label: 'เติมจาระบีลูกปืนมอเตอร์ และลูกปืน Blower', type: 'check' },
+      { cat: 'ahu', sort: 330, label: 'ตรวจสอบน้ำรั่วซึมตาม Fan Coil', type: 'check' },
+      { cat: 'ahu', sort: 340, label: 'ตรวจสอบ และทำความสะอาดห้องเครื่อง AHU', type: 'check' },
+      // หมวด 5: อื่น ๆ (other) — major, free text
+      { cat: 'other', sort: 410, label: '(ช่องว่างบันทึกเพิ่มเติม 1)', type: 'text' },
+      { cat: 'other', sort: 420, label: '(ช่องว่างบันทึกเพิ่มเติม 2)', type: 'text' },
+    ];
+    for (const it of LMT) {
       await client.query(`
         INSERT INTO inspection_template_items
-          (equipment_type, category, item_label, value_type, unit_label,
-           applies_major, applies_minor, sort_order)
-        VALUES ('ac', $1, $2, $3, $4, true, false, $5)
-        ON CONFLICT (equipment_type, category, item_label) DO NOTHING
-      `, [
-        f.acTypes ? 'แอร์น้ำยา' : 'ใช้งานทั้ง3',
-        f.label,
-        f.afterOnly ? 'number' : 'before_after',
-        f.unit || null,
-        sort++,
-      ]);
+          (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
+        VALUES ('ac', $1, $2, $3, $4, true, $5, $6)
+      `, [it.cat, it.label, it.type, it.unit || null, it.minor === true, it.sort]);
     }
 
-    // Checklist items per type → value_type 'check'
-    for (const [type, items] of Object.entries(CHECKLIST_ITEMS)) {
-      const equip = type === 'fan' ? 'fan' : 'ac';
-      for (const it of items) {
-        await client.query(`
-          INSERT INTO inspection_template_items
-            (equipment_type, category, item_label, value_type, unit_label,
-             applies_major, applies_minor, sort_order)
-          VALUES ($1, $2, $3, 'check', NULL, $4, $5, $6)
-          ON CONFLICT (equipment_type, category, item_label) DO UPDATE SET
-            applies_major = inspection_template_items.applies_major OR EXCLUDED.applies_major,
-            applies_minor = inspection_template_items.applies_minor OR EXCLUDED.applies_minor
-        `, [
-          equip,
-          type === 'fan' ? 'fan' : 'ใช้งานทั้ง3',
-          it.label,
-          type === 'major',
-          type === 'minor',
-          sort++,
-        ]);
-      }
+    // Fan checklist (kept from config — LMT form is AC-only)
+    for (const item of CHECKLIST_ITEMS.fan || []) {
+      await client.query(`
+        INSERT INTO inspection_template_items
+          (equipment_type, category, item_label, value_type, applies_major, applies_minor, sort_order)
+        VALUES ('fan', 'fan', $1, 'check', false, false, $2)
+        ON CONFLICT (equipment_type, category, item_label) DO NOTHING
+      `, [item.label, 10]);
+    }
+
+    // ── Photo point templates ──────────────────────────────
+    const PHOTO_POINTS = [
+      // AC ล้างใหญ่ — 7 จุด (ถ่ายคู่ ก่อน+หลัง = 14 รูป)
+      ['ac', 'major', 1, 'ป้ายเครื่อง + ภาพรวมจุดติดตั้ง'],
+      ['ac', 'major', 2, 'หน้ากาก/ตะแกรงลม'],
+      ['ac', 'major', 3, 'แผ่นกรอง Filter'],
+      ['ac', 'major', 4, 'คอยล์เย็น (Cooling Coil)'],
+      ['ac', 'major', 5, 'ใบพัด/โพรงลม Blower'],
+      ['ac', 'major', 6, 'ถาดรองน้ำทิ้ง + ท่อ Drain'],
+      ['ac', 'major', 7, 'จุดวัดค่า (มิเตอร์/เกจ)'],
+      // AC ล้างย่อย — 4 จุด
+      ['ac', 'minor', 1, 'ภาพรวมเครื่อง'],
+      ['ac', 'minor', 2, 'หน้ากาก/ตะแกรงลม'],
+      ['ac', 'minor', 3, 'แผ่นกรอง Filter'],
+      ['ac', 'minor', 4, 'หัวจ่าย/ช่องรีเทิร์น'],
+      // พัดลม — 3 จุด
+      ['fan', 'fan', 1, 'หน้ากาก/ตะแกรง'],
+      ['fan', 'fan', 2, 'ใบพัด/มอเตอร์'],
+      ['fan', 'fan', 3, 'ภาพรวมหลังประกอบ'],
+    ];
+    for (const [eq, wt, no, label] of PHOTO_POINTS) {
+      await client.query(`
+        INSERT INTO photo_point_templates (equipment_type, work_type, point_no, label, required)
+        VALUES ($1, $2, $3, $4, true)
+        ON CONFLICT (equipment_type, work_type, point_no) DO UPDATE SET label = EXCLUDED.label
+      `, [eq, wt, no, label]);
     }
 
     await client.query('COMMIT');
+    const tpl = await client.query(`SELECT category, COUNT(*)::int n FROM inspection_template_items WHERE equipment_type='ac' GROUP BY category ORDER BY MIN(sort_order)`);
+    const pp = await client.query(`SELECT equipment_type, work_type, COUNT(*)::int n FROM photo_point_templates GROUP BY 1,2 ORDER BY 1,2`);
     console.log('Seed success');
     console.log('Users: admin / cadmin / approver / tech1 / tech2  (password: admin1234)');
     console.log('Clients: PTS1, PTS2 (+ main site each)');
+    console.log('AC template by category:', tpl.rows.map(r => `${r.category}=${r.n}`).join(', '));
+    console.log('Photo points:', pp.rows.map(r => `${r.equipment_type}/${r.work_type}=${r.n}`).join(', '));
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Seed error:', err.message);
