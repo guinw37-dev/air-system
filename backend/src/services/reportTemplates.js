@@ -277,6 +277,37 @@ function styleBlock(brand) {
     }
     .result-line { margin-top: 8px; }
     .result-line .opt { display: inline-flex; align-items: center; gap: 5px; margin-right: 18px; }
+
+    /* ── แบบ C compact — fit unit header + full checklist + 3 signatures on ONE A4 page ── */
+    .page:has(.major-c) { padding: 8mm 10mm 10mm; }
+    .major-c { font-size: 9px; line-height: 1.2; }
+    .major-c .doc-header { margin-bottom: 6px; padding-bottom: 5px; }
+    .major-c .card { padding: 5px 9px; margin-bottom: 5px; }
+    .major-c .card > h3 { font-size: 10.5px; margin-bottom: 3px; }
+    .major-c .meta-grid { gap: 0 14px; font-size: 8.5px; }
+    .major-c .meta-grid .k { min-width: 56px; }
+    .major-c .section-title { font-size: 10px; margin-bottom: 3px; padding-bottom: 2px; }
+    .major-c .checks { gap: 10px; margin: 3px 0 5px; }
+    /* two-column checklist */
+    .cl2col { display: flex; gap: 8px; align-items: flex-start; }
+    .cl2col .col-l { width: 55%; }
+    .cl2col .col-r { width: 45%; }
+    .cl2col table { font-size: 7.5pt; }
+    .cl2col table + table { margin-top: 4px; }
+    .cl2col thead th { padding: 0.8mm 1mm; }
+    .cl2col td { padding: 0.5mm 1mm; }
+    .cl2col tbody tr { height: 5.4mm; }
+    .cl2col td.tick, .cl2col th.tick { width: 9mm; }
+    .cl2col td.center, .cl2col th.center { width: 11mm; }
+    .cl2col .cat-row td { padding: 0.6mm 1mm; }
+    /* compact signatures (3 across, ~22mm tall, image ~14mm) */
+    .major-c .sign-row { gap: 12px; margin-top: 8px; }
+    .major-c .sign-box .pad { height: 14mm; }
+    .major-c .sign-box .pad img { max-height: 13mm; }
+    .major-c .sign-box .role, .major-c .sign-box .nm { font-size: 8.5px; margin-top: 2px; }
+    .major-c .sign-box .dt { font-size: 8px; }
+    .major-c .result-line { margin-top: 5px; font-size: 8.5px; }
+    .major-c .result-line .opt { margin-right: 14px; }
   </style>`;
 }
 
@@ -547,45 +578,70 @@ function majorCoverSheet(data) {
 
 const PHOTOS_PER_PAGE = 6;
 
+// Render the <tr> rows (category header + items) for one category group.
+function groupRowsHtml(g) {
+  const head = `<tr class="cat-row"><td colspan="4">${dash(g.category)}</td></tr>`;
+  const items = g.items.map((it) => {
+    const checked = it.checked ? `<span style="color:var(--teal);font-weight:700;">${TICK}</span>` : BOX;
+    let beforeCell;
+    let afterCell;
+    const vt = it.value_type;
+    if (vt === 'number' || vt === 'before_after') {
+      const cmp = compareValues(it, it.unit_label);
+      beforeCell = cmp.beforeHtml;
+      afterCell = `${cmp.afterHtml}${cmp.arrow}`;
+    } else if (vt === 'text') {
+      beforeCell = dash(it.value_before);
+      afterCell = dash(it.value_after);
+    } else {
+      beforeCell = '<span class="muted">—</span>';
+      afterCell = '<span class="muted">—</span>';
+    }
+    const note = it.note ? `<div class="muted" style="font-size:9px;">${escapeHtml(it.note)}</div>` : '';
+    return `<tr>
+      <td>${dash(it.item_label)}${note}</td>
+      <td class="tick">${checked}</td>
+      <td class="center">${beforeCell}</td>
+      <td class="center">${afterCell}</td>
+    </tr>`;
+  }).join('');
+  return head + items;
+}
+
+// A full checklist table for a set of category groups.
+function groupsTable(groups) {
+  if (!groups.length) return '';
+  return `<table>
+    <thead><tr><th>รายการตรวจเช็ค</th><th class="tick">ตรวจ</th><th class="center">ก่อน</th><th class="center">หลัง</th></tr></thead>
+    <tbody>${groups.map(groupRowsHtml).join('')}</tbody>
+  </table>`;
+}
+
+// Single full-width checklist (kept for fallback).
 function checklistTable(unit) {
   const groups = groupByCategory(unit.inspections);
   if (!groups.length) {
     return '<table><thead><tr><th>รายการ</th><th class="tick">ตรวจเช็ค</th><th class="center">ก่อน</th><th class="center">หลัง</th></tr></thead><tbody><tr><td colspan="4" class="center muted">ไม่มีรายการตรวจเช็ค</td></tr></tbody></table>';
   }
-  const body = groups.map((g) => {
-    const head = `<tr class="cat-row"><td colspan="4">${dash(g.category)}</td></tr>`;
-    const items = g.items.map((it) => {
-      const checked = it.checked ? `<span style="color:var(--teal);font-weight:700;">${TICK}</span>` : BOX;
-      let beforeCell;
-      let afterCell;
-      const vt = it.value_type;
-      if (vt === 'number' || vt === 'before_after') {
-        const cmp = compareValues(it, it.unit_label);
-        beforeCell = cmp.beforeHtml;
-        afterCell = `${cmp.afterHtml}${cmp.arrow}`;
-      } else if (vt === 'text') {
-        beforeCell = dash(it.value_before);
-        afterCell = dash(it.value_after);
-      } else {
-        // 'check' or unknown → no comparison values
-        beforeCell = '<span class="muted">—</span>';
-        afterCell = '<span class="muted">—</span>';
-      }
-      const note = it.note ? `<div class="muted" style="font-size:9.5px;">${escapeHtml(it.note)}</div>` : '';
-      return `<tr>
-        <td>${dash(it.item_label)}${note}</td>
-        <td class="tick">${checked}</td>
-        <td class="center">${beforeCell}</td>
-        <td class="center">${afterCell}</td>
-      </tr>`;
-    }).join('');
-    return head + items;
-  }).join('');
+  return groupsTable(groups);
+}
 
-  return `<table>
-    <thead><tr><th>รายการตรวจเช็ค</th><th class="tick">ตรวจเช็ค</th><th class="center">ก่อน</th><th class="center">หลัง</th></tr></thead>
-    <tbody>${body}</tbody>
-  </table>`;
+// แบบ C: split checklist into two columns so the page fits one A4.
+// Left (55%): "ใช้งานทั้ง3" + "แอร์น้ำยา".  Right (45%): FCU / AHU / others.
+function checklistTwoCol(unit) {
+  const groups = groupByCategory(unit.inspections);
+  if (!groups.length) return checklistTable(unit);
+  const norm = (s) => (s || '').replace(/\s/g, '');
+  const isLeft = (cat) => {
+    const c = norm(cat);
+    return c.includes('ใช้งานทั้ง') || c.includes('แอร์น้ำยา') || c.includes('น้ำยา');
+  };
+  const left = groups.filter((g) => isLeft(g.category));
+  const right = groups.filter((g) => !isLeft(g.category));
+  return `<div class="cl2col">
+    <div class="col-l">${groupsTable(left)}</div>
+    <div class="col-r">${groupsTable(right) || '<div class="muted" style="font-size:7.5pt;padding:4px;">—</div>'}</div>
+  </div>`;
 }
 
 // Render a list of photos as 2-col gallery cells.
@@ -640,10 +696,11 @@ function majorUnitPages(data) {
 
   for (const u of units) {
     const inner = `
+    <div class="major-c">
     ${docHeader(data, 'แบบ C<small>Service Report — รายเครื่อง</small>')}
     <div class="card">
       <h3>${unitTitle(u)}</h3>
-      <div class="meta-grid" style="margin-bottom:0;">
+      <div class="meta-grid" style="margin-bottom:0;grid-template-columns:repeat(3,1fr);">
         <div class="row"><span class="k">เลขเครื่อง</span><span class="v">${dash(u.asset_code)}</span></div>
         <div class="row"><span class="k">ห้อง</span><span class="v">${dash(u.room_name)}</span></div>
         <div class="row"><span class="k">รุ่น/ตระกูล</span><span class="v">${dash(u.family)}</span></div>
@@ -657,7 +714,7 @@ function majorUnitPages(data) {
     ${serviceTypeChecks(u)}
 
     <div class="section-title">รายการตรวจเช็ค</div>
-    ${checklistTable(u)}
+    ${checklistTwoCol(u)}
 
     ${resultLine(u)}
 
@@ -665,6 +722,7 @@ function majorUnitPages(data) {
       ${signatureBox('ผู้ดูแลพื้นที่', sigs.area_owner)}
       ${signatureBox('ส่วนกลาง (Central Admin)', sigs.central_admin)}
       ${signatureBox('ผู้อนุมัติ (Approver)', sigs.approver)}
+    </div>
     </div>`;
     pages.push(page(data, inner));
 
