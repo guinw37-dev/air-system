@@ -62,8 +62,8 @@ function PlanModal({ ac, month, year, onClose, onSaved }) {
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
         <div className="bg-gray-50 rounded-xl p-3 mb-4">
-          <p className="text-sm font-medium text-gray-800">{ac.ac_code} — {ac.ac_name}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{ac.dept_name} · {MONTHS[month - 1]} {year}</p>
+          <p className="text-sm font-medium text-gray-800">{ac.asset_code || ac.ac_code} — {ac.name || ac.ac_name}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{ac.room_name || ac.dept_name} · {MONTHS[month - 1]} {year}</p>
         </div>
         <div className="mb-4">
           <label className="label">ประเภทการล้าง</label>
@@ -111,7 +111,7 @@ export default function PMPlan() {
   const currentYear  = dayjs().year()
 
   useEffect(() => {
-    api.get('/master/hospitals').then((r) => setHospitals(r.data))
+    api.get('/master/clients').then((r) => setHospitals(r.data))
   }, [])
 
   // When hospital changes → load buildings list, reset building + data
@@ -120,6 +120,7 @@ export default function PMPlan() {
     setData([])
     setHospitalBuildings([])
     if (!selHospital) return
+    // buildings now requires site_id; fall back to hospital_id (compat) or try client-level
     api.get(`/master/buildings?hospital_id=${selHospital}`)
       .then((r) => setHospitalBuildings(r.data))
       .catch(() => {})
@@ -128,7 +129,7 @@ export default function PMPlan() {
   const load = () => {
     if (!selHospital || !selBuilding) return
     setLoading(true)
-    api.get(`/pm/yearly-plan?hospital_id=${selHospital}&year=${year}&building_id=${selBuilding}`)
+    api.get(`/pm/yearly-plan?hospital_id=${selHospital}&client_id=${selHospital}&year=${year}&building_id=${selBuilding}`)
       .then((r) => setData(r.data))
       .finally(() => setLoading(false))
   }
@@ -272,13 +273,13 @@ export default function PMPlan() {
                         <tr key={ac.id} className={`border-b border-gray-100 hover:bg-blue-50/50 ${rowBg}`}>
                           {/* Code */}
                           <td className={`py-2 px-3 sticky left-0 z-10 ${overdue ? 'bg-red-50' : 'bg-white'} ${codeColor}`}>
-                            {ac.ac_code}
+                            {ac.asset_code || ac.ac_code}
                             {overdue && <span className="ml-1 text-red-500">!</span>}
                           </td>
                           {/* Name + dept */}
                           <td className="py-2 px-3 text-gray-700">
-                            <p className="truncate max-w-[130px]">{ac.ac_name || '-'}</p>
-                            <p className="text-gray-400 truncate max-w-[130px]">{ac.dept_name}</p>
+                            <p className="truncate max-w-[130px]">{ac.name || ac.ac_name || '-'}</p>
+                            <p className="text-gray-400 truncate max-w-[130px]">{ac.room_name || ac.dept_name}</p>
                           </td>
                           {/* Interval */}
                           <td className="py-2 px-3 text-gray-500 text-center">

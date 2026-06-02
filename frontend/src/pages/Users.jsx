@@ -3,13 +3,19 @@ import { Plus, Pencil, Shield } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 
-const ROLES = ['admin', 'owner', 'technician']
+const ROLES = ['admin', 'central_admin', 'approver', 'technician']
 const ROLE_COLOR = {
-  admin:      'bg-purple-100 text-purple-700',
-  owner:      'bg-blue-100 text-blue-700',
-  technician: 'bg-gray-100 text-gray-700',
+  admin:         'bg-purple-100 text-purple-700',
+  central_admin: 'bg-blue-100 text-blue-700',
+  approver:      'bg-orange-100 text-orange-700',
+  technician:    'bg-gray-100 text-gray-700',
 }
-const ROLE_TH = { admin: 'แอดมิน', owner: 'เจ้าของ', technician: 'ช่าง' }
+const ROLE_TH = {
+  admin:         'ผู้ดูแลระบบ',
+  central_admin: 'แอดมินกลาง',
+  approver:      'ผู้อนุมัติ',
+  technician:    'ช่าง',
+}
 
 function Modal({ title, onClose, children }) {
   return (

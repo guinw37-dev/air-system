@@ -1,75 +1,16 @@
 import { useState, useRef } from 'react'
-import { Upload, Download, CheckCircle, AlertCircle, FileSpreadsheet, X } from 'lucide-react'
+import { Upload, Download, CheckCircle, AlertCircle, FileSpreadsheet, X, Server } from 'lucide-react'
 import Layout from '../components/Layout'
 import api, { uploadsBase } from '../api/client'
 import { useAuthStore } from '../store/auth'
 
-const TABS = [
-  { key: 'ac-units',     label: 'ข้อมูลเครื่องแอร์',   role: ['admin', 'owner'] },
-  { key: 'work-history', label: 'ประวัติงานเก่า',        role: ['admin'] },
-  { key: 'pts-excel',    label: 'ไฟล์ Excel แบบเดิม',   role: ['admin', 'owner'] },
-]
-
-const PTS_INFO = (
-  <div className="bg-blue-50 rounded-xl px-4 py-3 text-xs text-blue-700 space-y-1">
-    <p className="font-semibold mb-1">ไฟล์ Excel แบบเดิม (สถานที่ล้างแอร์ + พัดลม.xlsx)</p>
-    <p>• รองรับ format เดิมโดยตรง — ไม่ต้องแก้ไข format</p>
-    <p>• Sheet 1 = แอร์, Sheet 2 = พัดลม (ระบบจะ import ทั้งคู่)</p>
-    <p>• วันที่ปีพ.ศ. (เช่น 2569-01-27) จะแปลงเป็น ค.ศ. อัตโนมัติ</p>
-    <p>• "แอร์เสีย" จะตั้งสถานะ broken, "ไม่มีฟิลเตอร์" จะข้ามแถวนั้น</p>
-    <p>• สร้าง Hospital / Building / Floor / Dept อัตโนมัติ</p>
-    <p>• ใบงานแต่ละวัน + ประเภทเดียวกัน จะรวมเป็นใบงานเดียว</p>
-  </div>
-)
-
-const COLUMNS = {
-  'ac-units': [
-    { col: 'hospital',            req: true,  desc: 'ชื่อโรงพยาบาล (จะสร้างใหม่ถ้าไม่มี)' },
-    { col: 'building',            req: true,  desc: 'ชื่ออาคาร' },
-    { col: 'floor',               req: true,  desc: 'ชั้น เช่น ชั้น 1, B2' },
-    { col: 'department',          req: true,  desc: 'แผนก / ห้อง' },
-    { col: 'ac_code',             req: true,  desc: 'รหัสเครื่องแอร์ (unique key)' },
-    { col: 'ac_name',             req: false, desc: 'ชื่อ/รายละเอียด' },
-    { col: 'ac_type',             req: false, desc: 'ประเภท เช่น FCU, AHU, แอร์น้ำยา' },
-    { col: 'brand',               req: false, desc: 'ยี่ห้อ/Model' },
-    { col: 'capacity_btu',        req: false, desc: 'ขนาด BTU (ตัวเลข)' },
-    { col: 'pm_interval_months',  req: false, desc: 'รอบ PM (เดือน) default = 3' },
-  ],
-  'work-history': [
-    { col: 'ac_code',    req: true,  desc: 'รหัสเครื่องแอร์ (ต้องมีในระบบแล้ว)' },
-    { col: 'work_type',  req: true,  desc: 'major / minor / fan' },
-    { col: 'work_date',  req: true,  desc: 'วันที่ทำงาน YYYY-MM-DD หรือ DD/MM/YYYY' },
-    { col: 'tech1_name', req: false, desc: 'ชื่อช่าง (ต้องตรงกับชื่อในระบบ)' },
-    { col: 'tech2_name', req: false, desc: 'ชื่อช่าง 2 (ถ้ามี)' },
-  ],
-}
-
-const NOTES = {
-  'ac-units': [
-    'รหัสเครื่องแอร์ (ac_code) คือ unique key — ถ้ามีอยู่แล้วจะ update, ถ้าไม่มีจะ insert ใหม่',
-    'Hospital / Building / Floor / Department จะถูกสร้างอัตโนมัติถ้าไม่มีในระบบ',
-    'ชื่อต้องเขียนเหมือนกันทุกตัวอักษร (case-insensitive) เพื่อให้รวมเข้าในกลุ่มเดียวกัน',
-    'แถวที่ไม่มี ac_code จะถูกข้ามโดยอัตโนมัติ',
-  ],
-  'work-history': [
-    'แต่ละแถวคือ 1 เครื่องแอร์ที่ถูกล้าง — ถ้า ac_code + work_date + work_type + tech1 เหมือนกัน จะรวมเป็นใบงานเดียว',
-    'ac_code ต้องมีอยู่ในระบบแล้ว (import เครื่องแอร์ก่อน)',
-    'work_date รองรับ: YYYY-MM-DD หรือ DD/MM/YYYY',
-    'งานที่ import จะมีสถานะ "อนุมัติ" ทันที และจะ update next_pm_date ของเครื่องแอร์อัตโนมัติ',
-    'ใบงานจะใช้รหัส IMP-YYYYMMDD-XXXX',
-  ],
-}
-
 export default function ImportPage() {
-  const user = useAuthStore((s) => s.user)
-  const [tab, setTab] = useState('ac-units')
   const [file, setFile] = useState(null)
   const [importing, setImporting] = useState(false)
+  const [serverImporting, setServerImporting] = useState(false)
   const [result, setResult] = useState(null)
   const fileInputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
-
-  const visibleTabs = TABS.filter((t) => t.role.includes(user?.role))
 
   const pickFile = (f) => {
     if (!f) return
@@ -84,7 +25,7 @@ export default function ImportPage() {
   const downloadTemplate = () => {
     const token = useAuthStore.getState().token
     const base = uploadsBase || ''
-    window.open(`${base}/api/import/template/${tab}?token=${token}`, '_blank')
+    window.open(`${base}/api/import/template/ac-data?token=${token}`, '_blank')
   }
 
   const doImport = async () => {
@@ -94,7 +35,7 @@ export default function ImportPage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const r = await api.post(`/import/${tab}`, fd, {
+      const r = await api.post('/import/ac-data', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setResult(r.data)
@@ -105,80 +46,47 @@ export default function ImportPage() {
     }
   }
 
+  const doServerImport = async () => {
+    if (!confirm('ใช้ไฟล์ EXCEL_PATH บน server?')) return
+    setServerImporting(true)
+    setResult(null)
+    try {
+      const r = await api.post('/import/ac-data/server')
+      setResult(r.data)
+    } catch (err) {
+      setResult({ error: err.response?.data?.error || 'เกิดข้อผิดพลาด' })
+    } finally {
+      setServerImporting(false)
+    }
+  }
+
   return (
     <Layout title="Import ข้อมูล">
       <div className="p-6 flex flex-col gap-5 max-w-3xl mx-auto">
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200">
-          {visibleTabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => { setTab(t.key); setFile(null); setResult(null) }}
-              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === t.key
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Column guide / info */}
+        {/* Info card */}
         <div className="card">
-          {tab === 'pts-excel' ? (
-            PTS_INFO
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800 text-sm">คอลัมน์ที่ต้องการ (Row 1 = header)</h3>
-                <button
-                  onClick={downloadTemplate}
-                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-                >
-                  <Download className="h-4 w-4" /> ดาวน์โหลด Template
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left py-2 px-3 font-medium text-gray-500">Column name</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-500">จำเป็น</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-500">คำอธิบาย</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {COLUMNS[tab].map((c) => (
-                      <tr key={c.col}>
-                        <td className="py-2 px-3 font-mono text-blue-700">{c.col}</td>
-                        <td className="py-2 px-3">
-                          {c.req
-                            ? <span className="text-red-500 font-medium">ต้องมี</span>
-                            : <span className="text-gray-400">ไม่บังคับ</span>
-                          }
-                        </td>
-                        <td className="py-2 px-3 text-gray-600">{c.desc}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 bg-blue-50 rounded-xl px-4 py-3">
-                <p className="text-xs font-semibold text-blue-700 mb-1.5">หมายเหตุ</p>
-                {NOTES[tab].map((n, i) => (
-                  <p key={i} className="text-xs text-blue-700 leading-relaxed">• {n}</p>
-                ))}
-              </div>
-            </>
-          )}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800 text-sm">Import ข้อมูลอุปกรณ์ (แอร์ + พัดลม)</h3>
+            <button
+              onClick={downloadTemplate}
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+            >
+              <Download className="h-4 w-4" /> ดาวน์โหลด Template
+            </button>
+          </div>
+          <div className="bg-blue-50 rounded-xl px-4 py-3 text-xs text-blue-700 space-y-1">
+            <p className="font-semibold mb-1">รายละเอียด</p>
+            <p>• ระบบสร้าง Client / Site / Building / Floor / Room / Unit อัตโนมัติ</p>
+            <p>• รองรับทั้งแอร์และพัดลมในไฟล์เดียวกัน</p>
+            <p>• asset_code คือ unique key — ถ้ามีอยู่แล้วจะ update, ถ้าไม่มีจะ insert</p>
+            <p>• แถวที่ไม่ผ่านจะถูกข้ามและรายงานใน errors[]</p>
+          </div>
         </div>
 
         {/* File upload */}
         <div
-          className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${
+          className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors cursor-pointer ${
             dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-300'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -216,24 +124,40 @@ export default function ImportPage() {
           )}
         </div>
 
-        {/* Import button */}
-        <button
-          onClick={doImport}
-          disabled={!file || importing}
-          className="btn-primary text-center flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {importing ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-              กำลัง Import...
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4" />
-              {tab === 'ac-units' ? 'Import เครื่องแอร์' : tab === 'pts-excel' ? 'Import ไฟล์ Excel แบบเดิม' : 'Import ประวัติงาน'}
-            </>
-          )}
-        </button>
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={doImport}
+            disabled={!file || importing}
+            className="btn-primary flex-1 text-center flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {importing ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                กำลัง Import...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                Import ไฟล์
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={doServerImport}
+            disabled={serverImporting}
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 text-sm"
+            title="ใช้ไฟล์ EXCEL_PATH บน server"
+          >
+            {serverImporting ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-gray-600" />
+            ) : (
+              <Server className="h-4 w-4" />
+            )}
+            Server Import
+          </button>
+        </div>
 
         {/* Result */}
         {result && (
@@ -248,30 +172,54 @@ export default function ImportPage() {
               </div>
             ) : (
               <div>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-4">
                   <CheckCircle className="h-5 w-5 text-green-600" />
                   <p className="font-semibold text-green-800 text-sm">Import สำเร็จ</p>
                 </div>
-                <div className="flex gap-5 flex-wrap text-sm mb-3">
-                  {result.created !== undefined && (
-                    <span className="text-green-700">✅ สร้างใหม่ <strong>{result.created}</strong> รายการ</span>
-                  )}
-                  {result.updated !== undefined && (
-                    <span className="text-blue-700">🔄 อัปเดต <strong>{result.updated}</strong> รายการ</span>
-                  )}
-                  {result.skipped !== undefined && result.skipped > 0 && (
-                    <span className="text-gray-500">⏭ ข้าม <strong>{result.skipped}</strong> แถว</span>
-                  )}
-                  {result.ac_created !== undefined && (
-                    <span className="text-green-700">✅ แอร์ใหม่ <strong>{result.ac_created}</strong> ตัว</span>
-                  )}
-                  {result.ac_updated !== undefined && (
-                    <span className="text-blue-700">🔄 แอร์อัปเดต <strong>{result.ac_updated}</strong> ตัว</span>
-                  )}
-                  {result.wos_created !== undefined && (
-                    <span className="text-purple-700">📋 ใบงาน <strong>{result.wos_created}</strong> ใบ</span>
-                  )}
+
+                {/* Counts */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                  {[
+                    { key: 'clients',   label: 'Clients' },
+                    { key: 'sites',     label: 'Sites' },
+                    { key: 'buildings', label: 'อาคาร' },
+                    { key: 'floors',    label: 'ชั้น' },
+                    { key: 'rooms',     label: 'ห้อง' },
+                    { key: 'units_ac',  label: 'แอร์' },
+                    { key: 'units_fan', label: 'พัดลม' },
+                    { key: 'skipped',   label: 'ข้าม' },
+                  ].filter((item) => result[item.key] !== undefined).map(({ key, label }) => (
+                    <div key={key} className="bg-white/60 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-gray-900">{result[key]}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                    </div>
+                  ))}
                 </div>
+
+                {/* needs_recode */}
+                {result.needs_recode?.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-3">
+                    <p className="text-xs font-semibold text-yellow-700 mb-1.5">
+                      ⚠ Asset codes ที่ต้องแก้รหัส ({result.needs_recode.length} รายการ)
+                    </p>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                      {result.needs_recode.map((code) => (
+                        <span key={code} className="text-xs font-mono bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">{code}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* fans_unassigned */}
+                {result.fans_unassigned > 0 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3">
+                    <p className="text-xs text-orange-700">
+                      ⚠ พัดลม {result.fans_unassigned} ตัว ไม่ได้ assign ห้อง
+                    </p>
+                  </div>
+                )}
+
+                {/* errors */}
                 {result.errors?.length > 0 && (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
                     <p className="text-xs font-semibold text-orange-700 mb-1.5">
@@ -279,7 +227,7 @@ export default function ImportPage() {
                     </p>
                     <div className="max-h-40 overflow-y-auto">
                       {result.errors.map((e, i) => (
-                        <p key={i} className="text-xs text-orange-700 leading-relaxed">• {e}</p>
+                        <p key={i} className="text-xs text-orange-700 leading-relaxed">• {typeof e === 'string' ? e : JSON.stringify(e)}</p>
                       ))}
                     </div>
                   </div>

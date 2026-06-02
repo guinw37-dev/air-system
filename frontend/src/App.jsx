@@ -42,10 +42,10 @@ export default function App() {
         <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
         <Route path="/cleaning-dashboard" element={<RequireAuth><CleaningDashboard /></RequireAuth>} />
         <Route path="/import" element={
-          <RequireAuth><RequireRole roles={['admin', 'owner']}><ImportPage /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><ImportPage /></RequireRole></RequireAuth>
         } />
         <Route path="/master" element={
-          <RequireAuth><RequireRole roles={['admin', 'owner']}><MasterData /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><MasterData /></RequireRole></RequireAuth>
         } />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin']}><Users /></RequireRole></RequireAuth>

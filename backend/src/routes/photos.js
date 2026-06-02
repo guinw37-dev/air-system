@@ -40,21 +40,24 @@ router.get('/points/:woType', authMiddleware, (req, res) => {
 
 // ── POST /api/photos/items/:itemId ─────────────────────────────────────────
 // upload รูป (before/during/after) พร้อม label
+// :itemId is now a work_order_unit_id (table renamed work_order_items → work_order_units)
 router.post('/items/:itemId', authMiddleware, upload.single('photo'), async (req, res) => {
-  const { phase, point_no, label } = req.body;
+  let { phase, point_no, label } = req.body;
   if (!phase || !point_no || !req.file) {
     return res.status(400).json({ error: 'phase, point_no, and photo required' });
   }
-  if (!['before', 'during', 'after'].includes(phase)) {
-    return res.status(400).json({ error: 'phase must be before, during, or after' });
+  // NEW schema phases: before/after/measurement (old 'during' maps to 'measurement')
+  if (phase === 'during') phase = 'measurement';
+  if (!['before', 'after', 'measurement'].includes(phase)) {
+    return res.status(400).json({ error: 'phase must be before, after, or measurement' });
   }
   try {
     const url = `/uploads/photos/${req.params.itemId}/${req.file.filename}`;
     const { rows } = await pool.query(`
-      INSERT INTO ac_photos (work_order_item_id, phase, point_no, label, url, filename)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO work_order_photos (work_order_unit_id, uploaded_by, phase, point_no, label, url, filename)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [req.params.itemId, phase, parseInt(point_no), label || null, url, req.file.filename]);
+    `, [req.params.itemId, req.user.id, phase, parseInt(point_no), label || null, url, req.file.filename]);
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -64,7 +67,7 @@ router.post('/items/:itemId', authMiddleware, upload.single('photo'), async (req
 // ── GET /api/photos/items/:itemId ──────────────────────────────────────────
 router.get('/items/:itemId', authMiddleware, async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT * FROM ac_photos WHERE work_order_item_id = $1 ORDER BY phase, point_no',
+    'SELECT * FROM work_order_photos WHERE work_order_unit_id = $1 ORDER BY phase, point_no',
     [req.params.itemId]
   );
   res.json(rows);
@@ -73,7 +76,7 @@ router.get('/items/:itemId', authMiddleware, async (req, res) => {
 // ── DELETE /api/photos/:photoId ────────────────────────────────────────────
 router.delete('/:photoId', authMiddleware, async (req, res) => {
   const { rows } = await pool.query(
-    'DELETE FROM ac_photos WHERE id = $1 RETURNING *',
+    'DELETE FROM work_order_photos WHERE id = $1 RETURNING *',
     [req.params.photoId]
   );
   if (!rows.length) return res.status(404).json({ error: 'Not found' });

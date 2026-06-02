@@ -42,10 +42,11 @@ export default function WorkOrderDetail() {
 
   useEffect(() => { load() }, [load])
 
-  // Load AC units for this hospital when add modal opens
+  // Load units for this client when add modal opens
   useEffect(() => {
     if (!showAddAc || !wo) return
-    api.get(`/master/ac-units?hospital_id=${wo.hospital_id}`).then((r) => setAcList(r.data))
+    const clientId = wo.client_id || wo.hospital_id
+    if (clientId) api.get(`/master/units?client_id=${clientId}`).then((r) => setAcList(r.data))
   }, [showAddAc, wo])
 
   if (loading) return <PageSpinner />
@@ -54,8 +55,8 @@ export default function WorkOrderDetail() {
   const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
   const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
 
-  const isOwnerAdmin = ['owner', 'admin'].includes(user?.role)
-  const isTechAdmin = ['admin', 'technician'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
+  const isTechAdmin = ['admin', 'central_admin', 'technician'].includes(user?.role)
   const canEdit = wo.status === 'in_progress'
 
   const existingItemAcIds = new Set((wo.items || []).map((i) => i.ac_unit_id))
@@ -152,9 +153,9 @@ export default function WorkOrderDetail() {
 
   const filteredAc = acList.filter((a) =>
     !acSearch ||
-    a.ac_code?.toLowerCase().includes(acSearch.toLowerCase()) ||
-    a.ac_name?.toLowerCase().includes(acSearch.toLowerCase()) ||
-    a.dept_name?.toLowerCase().includes(acSearch.toLowerCase()) ||
+    (a.asset_code || a.ac_code)?.toLowerCase().includes(acSearch.toLowerCase()) ||
+    a.name?.toLowerCase().includes(acSearch.toLowerCase()) ||
+    (a.room_name || a.dept_name)?.toLowerCase().includes(acSearch.toLowerCase()) ||
     a.floor_name?.toLowerCase().includes(acSearch.toLowerCase())
   )
 
@@ -236,9 +237,9 @@ export default function WorkOrderDetail() {
                         onClick={() => navigate(`/work-orders/${id}/items/${item.id}`)}
                         className="text-left w-full"
                       >
-                        <p className="font-medium text-gray-900 text-sm">{item.ac_code}</p>
-                        <p className="text-xs text-gray-500 truncate">{item.ac_name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{item.dept_name} · {item.floor_name} · {item.building_name}</p>
+                        <p className="font-medium text-gray-900 text-sm">{item.asset_code || item.ac_code}</p>
+                        <p className="text-xs text-gray-500 truncate">{item.name || item.ac_name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{item.room_name || item.dept_name} · {item.floor_name} · {item.building_name}</p>
                         <div className="flex items-center gap-3 mt-2">
                           <span className={`flex items-center gap-1 text-xs ${photos.length > 0 ? 'text-green-600' : 'text-gray-400'}`}>
                             <Camera className="h-3.5 w-3.5" /> {photos.length} รูป
@@ -390,9 +391,9 @@ export default function WorkOrderDetail() {
               return (
                 <div key={ac.id} className="flex items-center gap-3 border border-gray-100 rounded-xl px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{ac.ac_code}</p>
-                    <p className="text-xs text-gray-500 truncate">{ac.ac_name}</p>
-                    <p className="text-xs text-gray-400">{ac.dept_name} · {ac.floor_name}</p>
+                    <p className="text-sm font-medium text-gray-900">{ac.asset_code || ac.ac_code}</p>
+                    <p className="text-xs text-gray-500 truncate">{ac.name || ac.ac_name}</p>
+                    <p className="text-xs text-gray-400">{ac.room_name || ac.dept_name} · {ac.floor_name}</p>
                   </div>
                   <button
                     disabled={added || addingAc === ac.id}

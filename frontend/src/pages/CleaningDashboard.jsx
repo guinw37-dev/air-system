@@ -37,7 +37,7 @@ function workingDaysLeft(year, month) {
 
 export default function CleaningDashboard() {
   const user = useAuthStore((s) => s.user)
-  const isOwnerAdmin = ['owner', 'admin'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
 
   const [tab, setTab] = useState('pts1')
   const [hospitals, setHospitals] = useState([])
@@ -54,7 +54,7 @@ export default function CleaningDashboard() {
   const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => {
-    api.get('/master/hospitals').then((r) => setHospitals(r.data))
+    api.get('/master/clients').then((r) => setHospitals(r.data))
   }, [])
 
   const currentHospital = useMemo(() => {

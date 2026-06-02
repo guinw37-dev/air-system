@@ -17,10 +17,11 @@ async function genOrderNo() {
 
 // ── POST /api/work-orders ──────────────────────────────────────────────────
 // เปิดใบงานใหม่
+// OLD: hospital_id, tech1_id/tech2_id → NEW: client_id, created_by; assignees via work_order_assignees
 router.post('/', authMiddleware, async (req, res) => {
-  const { hospital_id, type, tech1_id, tech2_id } = req.body;
-  if (!hospital_id || !type) {
-    return res.status(400).json({ error: 'hospital_id and type required' });
+  const { client_id, type } = req.body;
+  if (!client_id || !type) {
+    return res.status(400).json({ error: 'client_id and type required' });
   }
   if (!['major', 'minor', 'fan'].includes(type)) {
     return res.status(400).json({ error: 'type must be major, minor, or fan' });
@@ -28,10 +29,17 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const order_no = await genOrderNo();
     const { rows } = await pool.query(`
-      INSERT INTO work_orders (order_no, hospital_id, type, tech1_id, tech2_id, status, started_at)
-      VALUES ($1, $2, $3, $4, $5, 'in_progress', NOW())
+      INSERT INTO work_orders (order_no, client_id, type, created_by, status, started_at)
+      VALUES ($1, $2, $3, $4, 'in_progress', NOW())
       RETURNING *
-    `, [order_no, hospital_id, type, tech1_id || req.user.id, tech2_id || null]);
+    `, [order_no, client_id, type, req.user.id]);
+
+    // Add creator as first assignee
+    await pool.query(
+      `INSERT INTO work_order_assignees (work_order_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [rows[0].id, req.user.id]
+    );
+
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -39,103 +47,109 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // ── GET /api/work-orders ───────────────────────────────────────────────────
-// รายการใบงาน (filter by hospital_id, status, type)
+// รายการใบงาน (filter by client_id, status, type)
 router.get('/', authMiddleware, async (req, res) => {
-  const { hospital_id, status, type, limit = 50, offset = 0 } = req.query;
+  // Accept client_id; also accept old hospital_id param for compatibility
+  const { client_id, hospital_id, status, type, limit = 50, offset = 0 } = req.query;
+  const effectiveClientId = client_id || hospital_id;
+
   let where = ['1=1'];
   let params = [];
   let i = 1;
 
-  if (hospital_id) { where.push(`w.hospital_id = $${i++}`); params.push(hospital_id); }
-  if (status)      { where.push(`w.status = $${i++}`);      params.push(status); }
-  if (type)        { where.push(`w.type = $${i++}`);         params.push(type); }
+  if (effectiveClientId) { where.push(`w.client_id = $${i++}`); params.push(effectiveClientId); }
+  if (status)            { where.push(`w.status = $${i++}`);    params.push(status); }
+  if (type)              { where.push(`w.type = $${i++}`);       params.push(type); }
 
   params.push(limit, offset);
 
-  const { rows } = await pool.query(`
-    SELECT w.*,
-      h.name hospital_name,
-      t1.name tech1_name,
-      t2.name tech2_name,
-      o.name  owner_name,
-      COUNT(DISTINCT wi.id) item_count,
-      COUNT(DISTINCT p.id)  photo_count
-    FROM work_orders w
-    LEFT JOIN hospitals h  ON w.hospital_id = h.id
-    LEFT JOIN users t1     ON w.tech1_id = t1.id
-    LEFT JOIN users t2     ON w.tech2_id = t2.id
-    LEFT JOIN users o      ON w.owner_id  = o.id
-    LEFT JOIN work_order_items wi ON wi.work_order_id = w.id
-    LEFT JOIN ac_photos p  ON p.work_order_item_id = wi.id
-    WHERE ${where.join(' AND ')}
-    GROUP BY w.id, h.name, t1.name, t2.name, o.name
-    ORDER BY w.created_at DESC
-    LIMIT $${i++} OFFSET $${i++}
-  `, params);
-  res.json(rows);
+  try {
+    const { rows } = await pool.query(`
+      SELECT w.*,
+        c.name client_name,
+        COUNT(DISTINCT wou.id) item_count,
+        COUNT(DISTINCT p.id)   photo_count
+      FROM work_orders w
+      LEFT JOIN clients c         ON w.client_id = c.id
+      LEFT JOIN work_order_units wou ON wou.work_order_id = w.id
+      LEFT JOIN work_order_photos p  ON p.work_order_unit_id = wou.id
+      WHERE ${where.join(' AND ')}
+      GROUP BY w.id, c.name
+      ORDER BY w.created_at DESC
+      LIMIT $${i++} OFFSET $${i++}
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── GET /api/work-orders/:id ───────────────────────────────────────────────
 router.get('/:id', authMiddleware, async (req, res) => {
-  const { rows } = await pool.query(`
-    SELECT w.*,
-      h.name hospital_name,
-      t1.name tech1_name, t1.phone tech1_phone,
-      t2.name tech2_name, t2.phone tech2_phone,
-      o.name  owner_name
-    FROM work_orders w
-    LEFT JOIN hospitals h ON w.hospital_id = h.id
-    LEFT JOIN users t1    ON w.tech1_id = t1.id
-    LEFT JOIN users t2    ON w.tech2_id = t2.id
-    LEFT JOIN users o     ON w.owner_id  = o.id
-    WHERE w.id = $1
-  `, [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT w.*,
+        c.name client_name
+      FROM work_orders w
+      LEFT JOIN clients c ON w.client_id = c.id
+      WHERE w.id = $1
+    `, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
 
-  // items
-  const { rows: items } = await pool.query(`
-    SELECT wi.*,
-      a.ac_code, a.name ac_name, a.type ac_type, a.capacity_btu,
-      d.name dept_name, f.name floor_name, b.name building_name
-    FROM work_order_items wi
-    JOIN ac_units a     ON wi.ac_unit_id = a.id
-    JOIN departments d  ON a.department_id = d.id
-    JOIN floors f       ON d.floor_id = f.id
-    JOIN buildings b    ON f.building_id = b.id
-    WHERE wi.work_order_id = $1
-    ORDER BY wi.id
-  `, [req.params.id]);
+    // assignees
+    const { rows: assignees } = await pool.query(`
+      SELECT u.id, u.name, u.phone FROM work_order_assignees wa
+      JOIN users u ON wa.user_id = u.id
+      WHERE wa.work_order_id = $1
+    `, [req.params.id]);
 
-  // photos per item
-  const { rows: photos } = await pool.query(`
-    SELECT p.* FROM ac_photos p
-    JOIN work_order_items wi ON p.work_order_item_id = wi.id
-    WHERE wi.work_order_id = $1
-    ORDER BY p.work_order_item_id, p.phase, p.point_no
-  `, [req.params.id]);
+    // units in this work order
+    const { rows: items } = await pool.query(`
+      SELECT wou.*,
+        u.asset_code, u.name unit_name, u.family, u.capacity_btu,
+        r.name room_name, f.name floor_name, b.name building_name
+      FROM work_order_units wou
+      JOIN units u       ON wou.unit_id = u.id
+      LEFT JOIN rooms r  ON u.room_id = r.id
+      LEFT JOIN floors f ON r.floor_id = f.id
+      LEFT JOIN buildings b ON f.building_id = b.id
+      WHERE wou.work_order_id = $1
+      ORDER BY wou.id
+    `, [req.params.id]);
 
-  // signatures
-  const { rows: sigs } = await pool.query(`
-    SELECT s.*, u.name user_name FROM signatures s
-    LEFT JOIN users u ON s.user_id = u.id
-    WHERE s.work_order_id = $1
-  `, [req.params.id]);
+    // photos per work_order_unit
+    const { rows: photos } = await pool.query(`
+      SELECT p.* FROM work_order_photos p
+      JOIN work_order_units wou ON p.work_order_unit_id = wou.id
+      WHERE wou.work_order_id = $1
+      ORDER BY p.work_order_unit_id, p.phase, p.point_no
+    `, [req.params.id]);
 
-  res.json({ ...rows[0], items, photos, signatures: sigs });
+    // signatures
+    const { rows: sigs } = await pool.query(`
+      SELECT s.*, u.name user_name FROM signatures s
+      LEFT JOIN users u ON s.user_id = u.id
+      WHERE s.work_order_id = $1
+    `, [req.params.id]);
+
+    res.json({ ...rows[0], assignees, items, photos, signatures: sigs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/work-orders/:id/items ───────────────────────────────────────
-// เพิ่มแอร์ในใบงาน
+// เพิ่มเครื่องในใบงาน  (OLD: ac_unit_id → NEW: unit_id)
 router.post('/:id/items', authMiddleware, async (req, res) => {
-  const { ac_unit_id } = req.body;
-  if (!ac_unit_id) return res.status(400).json({ error: 'ac_unit_id required' });
+  const unit_id = req.body.unit_id || req.body.ac_unit_id; // accept both during transition
+  if (!unit_id) return res.status(400).json({ error: 'unit_id required' });
   try {
     const { rows } = await pool.query(`
-      INSERT INTO work_order_items (work_order_id, ac_unit_id)
+      INSERT INTO work_order_units (work_order_id, unit_id)
       VALUES ($1, $2)
       ON CONFLICT DO NOTHING
       RETURNING *
-    `, [req.params.id, ac_unit_id]);
+    `, [req.params.id, unit_id]);
     res.status(201).json(rows[0] || { message: 'already exists' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -143,22 +157,20 @@ router.post('/:id/items', authMiddleware, async (req, res) => {
 });
 
 // ── PUT /api/work-orders/:id/items/:itemId ─────────────────────────────────
-// บันทึกค่าวัด + checklist + แจ้งซ่อม
+// บันทึก has_repair / repair_notes
+// NOTE: measurements/checklist JSONB columns are GONE in v2 schema.
+//       Per-item readings now live in inspection_values (later phase).
+//       We keep has_repair and repair_notes which ARE on work_order_units.
 router.put('/:id/items/:itemId', authMiddleware, async (req, res) => {
-  const { measurements, checklist, has_repair, repair_notes } = req.body;
+  const { has_repair, repair_notes } = req.body;
   try {
     const { rows } = await pool.query(`
-      UPDATE work_order_items
-      SET measurements = $1,
-          checklist    = $2,
-          has_repair   = $3,
-          repair_notes = $4,
-          updated_at   = NOW()
-      WHERE id = $5 AND work_order_id = $6
+      UPDATE work_order_units
+      SET has_repair   = $1,
+          repair_notes = $2
+      WHERE id = $3 AND work_order_id = $4
       RETURNING *
     `, [
-      JSON.stringify(measurements || {}),
-      JSON.stringify(checklist || {}),
       has_repair || false,
       repair_notes || null,
       req.params.itemId,
@@ -174,119 +186,64 @@ router.put('/:id/items/:itemId', authMiddleware, async (req, res) => {
 // ── DELETE /api/work-orders/:id/items/:itemId ──────────────────────────────
 router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
   await pool.query(
-    'DELETE FROM work_order_items WHERE id=$1 AND work_order_id=$2',
+    'DELETE FROM work_order_units WHERE id=$1 AND work_order_id=$2',
     [req.params.itemId, req.params.id]
   );
   res.json({ message: 'deleted' });
 });
 
 // ── POST /api/work-orders/:id/signatures ──────────────────────────────────
-// บันทึกลายเซ็น (tech / area_owner / engineering)
+// บันทึกลายเซ็น
+// NEW roles: area_owner | central_admin | approver  (OLD: tech/engineering removed)
 router.post('/:id/signatures', authMiddleware, async (req, res) => {
-  const { role, signature_data } = req.body;
+  const { role, signature_data, signer_name } = req.body;
   if (!role || !signature_data) {
     return res.status(400).json({ error: 'role and signature_data required' });
   }
-  if (!['tech', 'area_owner', 'engineering'].includes(role)) {
-    return res.status(400).json({ error: 'role must be tech, area_owner, or engineering' });
+  const validRoles = ['area_owner', 'central_admin', 'approver'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
   }
   try {
-    // upsert signature by role
     const { rows } = await pool.query(`
-      INSERT INTO signatures (work_order_id, user_id, role, signature_data)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO signatures (work_order_id, user_id, role, signer_name, signature_data)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (work_order_id, role)
-      DO UPDATE SET signature_data = EXCLUDED.signature_data, signed_at = NOW()
+      DO UPDATE SET signature_data = EXCLUDED.signature_data,
+                    signer_name    = EXCLUDED.signer_name,
+                    signed_at      = NOW()
       RETURNING *
-    `, [req.params.id, req.user.id, role, signature_data]);
+    `, [req.params.id, req.user.id, role, signer_name || null, signature_data]);
 
-    // Check if all 3 roles signed → auto-approve immediately
-    const { rows: sigs } = await pool.query(
-      `SELECT role FROM signatures WHERE work_order_id = $1`,
-      [req.params.id]
-    );
-    const signedRoles = new Set(sigs.map((s) => s.role));
-    const allSigned = ['tech', 'area_owner', 'engineering'].every((r) => signedRoles.has(r));
-
-    let autoApproved = false;
-    if (allSigned) {
-      // Fetch work order type for PM cycle
-      const { rows: woRows } = await pool.query(
-        'SELECT type FROM work_orders WHERE id = $1',
-        [req.params.id]
-      );
-      const woType = woRows[0]?.type;
-
-      const { rowCount } = await pool.query(`
-        UPDATE work_orders
-        SET status = 'approved', completed_at = NOW(), approved_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'in_progress'
-      `, [req.params.id]);
-
-      if (rowCount > 0) {
-        autoApproved = true;
-
-        // auto-create repair_logs for items with has_repair = true
-        await pool.query(`
-          INSERT INTO repair_logs (ac_unit_id, work_order_id, work_order_item_id, problem, status, reported_by)
-          SELECT wi.ac_unit_id, wi.work_order_id, wi.id, wi.repair_notes, 'open', $1
-          FROM work_order_items wi
-          WHERE wi.work_order_id = $2 AND wi.has_repair = true
-          ON CONFLICT DO NOTHING
-        `, [req.user.id, req.params.id]);
-
-        // PM cycle update for each AC in this work order
-        const { rows: items } = await pool.query(
-          'SELECT ac_unit_id FROM work_order_items WHERE work_order_id = $1',
-          [req.params.id]
-        );
-        for (const item of items) {
-          const { rows: ac } = await pool.query(
-            'SELECT pm_cycle_pos FROM ac_units WHERE id = $1',
-            [item.ac_unit_id]
-          );
-          if (ac.length) {
-            const newPos = ((ac[0].pm_cycle_pos ?? 0) + 1) % 3;
-            const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
-            await pool.query(
-              'UPDATE ac_units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
-              [nextDate, newPos, item.ac_unit_id]
-            );
-            await pool.query(`
-              INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
-              VALUES ($1, $2, $3, NOW(), $4, 'done') ON CONFLICT DO NOTHING
-            `, [item.ac_unit_id, woType, nextDate, req.params.id]);
-          }
-        }
-      }
-    }
-
-    res.status(201).json({ ...rows[0], auto_approved: autoApproved });
+    res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ── PATCH /api/work-orders/:id/submit ─────────────────────────────────────
-// ช่างส่งงาน → pending_approval
+// ช่างส่งงาน → pending_admin (ด่าน 1)
 router.patch('/:id/submit', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       UPDATE work_orders
-      SET status = 'pending_approval', completed_at = NOW(), updated_at = NOW()
+      SET status = 'pending_admin', completed_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND status = 'in_progress'
       RETURNING *
     `, [req.params.id]);
     if (!rows.length) return res.status(400).json({ error: 'Cannot submit — check status' });
 
-    // auto-create repair_logs for items with has_repair = true
-    await pool.query(`
-      INSERT INTO repair_logs (ac_unit_id, work_order_id, work_order_item_id, problem, status, reported_by)
-      SELECT wi.ac_unit_id, wi.work_order_id, wi.id, wi.repair_notes, 'open', $1
-      FROM work_order_items wi
-      WHERE wi.work_order_id = $2 AND wi.has_repair = true
-      ON CONFLICT DO NOTHING
-    `, [req.user.id, req.params.id]);
+    // auto-create repair_logs for units with has_repair = true
+    const { rows: woRow } = await pool.query('SELECT client_id FROM work_orders WHERE id=$1', [req.params.id]);
+    if (woRow.length) {
+      await pool.query(`
+        INSERT INTO repair_logs (client_id, unit_id, work_order_id, work_order_unit_id, problem, status, reported_by)
+        SELECT $1, wou.unit_id, wou.work_order_id, wou.id, wou.repair_notes, 'open', $2
+        FROM work_order_units wou
+        WHERE wou.work_order_id = $3 AND wou.has_repair = true AND wou.repair_notes IS NOT NULL
+        ON CONFLICT DO NOTHING
+      `, [woRow[0].client_id, req.user.id, req.params.id]);
+    }
 
     res.json(rows[0]);
   } catch (err) {
@@ -294,44 +251,60 @@ router.patch('/:id/submit', authMiddleware, async (req, res) => {
   }
 });
 
-// ── PATCH /api/work-orders/:id/approve ────────────────────────────────────
-// Owner อนุมัติ
-router.patch('/:id/approve', authMiddleware, requireRole('owner', 'admin'), async (req, res) => {
-  const { notes } = req.body;
+// ── PATCH /api/work-orders/:id/admin-check ────────────────────────────────
+// central_admin ตรวจแล้ว → pending_approval (ด่าน 2)
+router.patch('/:id/admin-check', authMiddleware, requireRole('central_admin', 'admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(`
       UPDATE work_orders
-      SET status = 'approved', owner_id = $1, owner_notes = $2,
-          approved_at = NOW(), updated_at = NOW()
-      WHERE id = $3 AND status = 'pending_approval'
+      SET status = 'pending_approval', admin_checked_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'pending_admin'
       RETURNING *
-    `, [req.user.id, notes || null, req.params.id]);
+    `, [req.params.id]);
+    if (!rows.length) return res.status(400).json({ error: 'Cannot admin-check — check status' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /api/work-orders/:id/approve ────────────────────────────────────
+// approver อนุมัติ  (OLD role: owner → NEW: approver)
+router.patch('/:id/approve', authMiddleware, requireRole('approver', 'admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      UPDATE work_orders
+      SET status = 'approved', approver_id = $1,
+          approved_at = NOW(), updated_at = NOW()
+      WHERE id = $2 AND status = 'pending_approval'
+      RETURNING *
+    `, [req.user.id, req.params.id]);
     if (!rows.length) return res.status(400).json({ error: 'Cannot approve — check status' });
 
-    // auto reschedule PM for each AC unit in this order
+    // advance PM cycle for each unit in this work order
     const wo = rows[0];
-    const { rows: items } = await pool.query(
-      'SELECT ac_unit_id FROM work_order_items WHERE work_order_id = $1',
+    const { rows: unitRows } = await pool.query(
+      'SELECT unit_id FROM work_order_units WHERE work_order_id = $1',
       [req.params.id]
     );
-    for (const item of items) {
-      const { rows: ac } = await pool.query(
-        'SELECT pm_cycle_pos FROM ac_units WHERE id = $1',
-        [item.ac_unit_id]
+    for (const item of unitRows) {
+      const { rows: u } = await pool.query(
+        'SELECT pm_cycle_pos FROM units WHERE id = $1',
+        [item.unit_id]
       );
-      if (ac.length) {
-        const oldPos = ac[0].pm_cycle_pos ?? 0;
-        const newPos = (oldPos + 1) % 3;
+      if (u.length) {
+        const newPos = ((u[0].pm_cycle_pos ?? 0) + 1) % 3;
         const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
         await pool.query(
-          'UPDATE ac_units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
-          [nextDate, newPos, item.ac_unit_id]
+          'UPDATE units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
+          [nextDate, newPos, item.unit_id]
         );
         await pool.query(`
-          INSERT INTO pm_plan (ac_unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
-          VALUES ($1, $2, $3, NOW(), $4, 'done')
+          INSERT INTO pm_plan (client_id, unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
+          SELECT w.client_id, $1, $2, $3, NOW(), $4, 'done'
+          FROM work_orders w WHERE w.id = $4
           ON CONFLICT DO NOTHING
-        `, [item.ac_unit_id, wo.type, nextDate, req.params.id]);
+        `, [item.unit_id, wo.type, nextDate, req.params.id]);
       }
     }
 
@@ -342,31 +315,34 @@ router.patch('/:id/approve', authMiddleware, requireRole('owner', 'admin'), asyn
 });
 
 // ── PATCH /api/work-orders/:id/reject ─────────────────────────────────────
-router.patch('/:id/reject', authMiddleware, requireRole('owner', 'admin'), async (req, res) => {
+router.patch('/:id/reject', authMiddleware, requireRole('approver', 'admin', 'central_admin'), async (req, res) => {
   const { notes } = req.body;
   if (!notes?.trim()) return res.status(400).json({ error: 'กรุณาระบุเหตุผลในการไม่อนุมัติ' });
-  const { rows } = await pool.query(`
-    UPDATE work_orders
-    SET status = 'rejected', owner_id = $1, owner_notes = $2, updated_at = NOW()
-    WHERE id = $3 AND status IN ('in_progress', 'pending_approval')
-    RETURNING *
-  `, [req.user.id, notes.trim(), req.params.id]);
-  if (!rows.length) return res.status(400).json({ error: 'Cannot reject — check status' });
-  res.json(rows[0]);
+  try {
+    const { rows } = await pool.query(`
+      UPDATE work_orders
+      SET status = 'rejected', reject_reason = $1, updated_at = NOW()
+      WHERE id = $2 AND status IN ('in_progress', 'pending_admin', 'pending_approval')
+      RETURNING *
+    `, [notes.trim(), req.params.id]);
+    if (!rows.length) return res.status(400).json({ error: 'Cannot reject — check status' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PATCH /api/work-orders/:id/resubmit ───────────────────────────────────
 // Admin/Technician ส่งงานใหม่หลังแก้ไข (rejected → in_progress)
 router.patch('/:id/resubmit', authMiddleware, async (req, res) => {
-  if (!['admin', 'technician'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'เฉพาะ Admin / Technician เท่านั้น' });
+  if (!['admin', 'technician', 'central_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'เฉพาะ Admin / Technician / Central Admin เท่านั้น' });
   }
   try {
-    // ลบ signatures เก่าออกเพื่อให้เซ็นใหม่
     await pool.query(`DELETE FROM signatures WHERE work_order_id = $1`, [req.params.id]);
     const { rows } = await pool.query(`
       UPDATE work_orders
-      SET status = 'in_progress', completed_at = NULL, updated_at = NOW()
+      SET status = 'in_progress', completed_at = NULL, reject_reason = NULL, updated_at = NOW()
       WHERE id = $1 AND status = 'rejected'
       RETURNING *
     `, [req.params.id]);

@@ -56,7 +56,7 @@ export default function CleaningStatus() {
   const [historyLoading, setHistoryLoading] = useState(false)
 
   useEffect(() => {
-    api.get('/master/hospitals').then((r) => setHospitals(r.data))
+    api.get('/master/clients').then((r) => setHospitals(r.data))
   }, [])
 
   useEffect(() => {
@@ -137,7 +137,7 @@ export default function CleaningStatus() {
     setHistoryLoading(true)
     setHistory([])
     try {
-      const r = await api.get(`/master/ac-units/${ac.id}/history`)
+      const r = await api.get(`/master/units/${ac.id}/history`)
       setHistory(r.data)
     } catch (err) {
       console.error('history error:', err)
@@ -363,14 +363,14 @@ export default function CleaningStatus() {
                           className="hover:bg-blue-50 cursor-pointer transition-colors"
                           onClick={() => openHistory(ac)}
                         >
-                          <td className="py-2.5 px-4 font-semibold text-blue-700">{ac.ac_code}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{ac.ac_type || '-'}</td>
+                          <td className="py-2.5 px-4 font-semibold text-blue-700">{ac.asset_code || ac.ac_code}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{ac.family || ac.ac_type || '-'}</td>
                           <td className="py-2.5 px-3 text-gray-500 hidden md:table-cell">
                             {ac.capacity_btu && !isNaN(Number(ac.capacity_btu)) && Number(ac.capacity_btu) > 0
                               ? Number(ac.capacity_btu).toLocaleString()
                               : '-'}
                           </td>
-                          <td className="py-2.5 px-3 text-gray-700 max-w-[140px] truncate">{ac.dept_name}</td>
+                          <td className="py-2.5 px-3 text-gray-700 max-w-[140px] truncate">{ac.room_name || ac.dept_name}</td>
                           <td className="py-2.5 px-3 text-gray-500 hidden sm:table-cell">{ac.floor_name}</td>
                           <td className="py-2.5 px-3 text-gray-500 hidden lg:table-cell">{ac.building_name}</td>
                           <td className="py-2.5 px-3 text-gray-500">
@@ -404,9 +404,9 @@ export default function CleaningStatus() {
           <div className="relative bg-white rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="bg-blue-900 text-white px-5 py-4 flex items-start justify-between shrink-0">
               <div>
-                <p className="font-bold text-base">{historyAc.ac_code}</p>
+                <p className="font-bold text-base">{historyAc.asset_code || historyAc.ac_code}</p>
                 <p className="text-xs text-blue-300 mt-0.5">
-                  {historyAc.ac_type} · {historyAc.dept_name} · {historyAc.floor_name} · {historyAc.building_name}
+                  {historyAc.family || historyAc.ac_type} · {historyAc.room_name || historyAc.dept_name} · {historyAc.floor_name} · {historyAc.building_name}
                 </p>
                 {historyAc.capacity_btu && !isNaN(Number(historyAc.capacity_btu)) && Number(historyAc.capacity_btu) > 0 && (
                   <p className="text-xs text-blue-400">{Number(historyAc.capacity_btu).toLocaleString()} BTU</p>

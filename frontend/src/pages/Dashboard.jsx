@@ -44,7 +44,7 @@ export default function Dashboard() {
 
   if (loading) return <PageSpinner />
 
-  const isOwnerAdmin = ['owner', 'admin'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
 
   const statCards = [
     { icon: ClipboardList, label: 'กำลังดำเนินการ', value: stats?.in_progress ?? 0,  color: 'text-yellow-600', bg: 'bg-yellow-50' },
