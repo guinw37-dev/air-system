@@ -67,15 +67,15 @@ export default function ImportPage() {
         {/* Info card */}
         <div className="card">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800 text-sm">Import ข้อมูลอุปกรณ์ (แอร์ + พัดลม)</h3>
+            <h3 className="font-semibold text-ink text-sm">Import ข้อมูลอุปกรณ์ (แอร์ + พัดลม)</h3>
             <button
               onClick={downloadTemplate}
-              className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              className="flex items-center gap-1.5 text-sm text-primary hover:underline"
             >
               <Download className="h-4 w-4" /> ดาวน์โหลด Template
             </button>
           </div>
-          <div className="bg-blue-50 rounded-xl px-4 py-3 text-xs text-blue-700 space-y-1">
+          <div className="bg-primary-soft rounded-xl px-4 py-3 text-xs text-primary space-y-1">
             <p className="font-semibold mb-1">รายละเอียด</p>
             <p>• ระบบสร้าง Client / Site / Building / Floor / Room / Unit อัตโนมัติ</p>
             <p>• รองรับทั้งแอร์และพัดลมในไฟล์เดียวกัน</p>
@@ -87,7 +87,7 @@ export default function ImportPage() {
         {/* File upload */}
         <div
           className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors cursor-pointer ${
-            dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-300'
+            dragging ? 'border-primary bg-primary-soft' : 'border-line hover:border-primary'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -103,23 +103,23 @@ export default function ImportPage() {
           />
           {file ? (
             <div className="flex items-center justify-center gap-3">
-              <FileSpreadsheet className="h-8 w-8 text-green-600 shrink-0" />
+              <FileSpreadsheet className="h-8 w-8 text-success shrink-0" />
               <div className="text-left">
-                <p className="font-medium text-gray-800 text-sm">{file.name}</p>
-                <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB</p>
+                <p className="font-medium text-ink text-sm">{file.name}</p>
+                <p className="text-xs text-ink-muted">{(file.size / 1024).toFixed(0)} KB</p>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); setFile(null); setResult(null) }}
-                className="text-gray-400 hover:text-red-500"
+                className="text-ink-muted hover:text-danger"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
           ) : (
             <div>
-              <Upload className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">ลาก file มาวาง หรือ คลิกเพื่อเลือก</p>
-              <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+              <Upload className="h-10 w-10 text-line mx-auto mb-2" />
+              <p className="text-sm text-ink-muted">ลาก file มาวาง หรือ คลิกเพื่อเลือก</p>
+              <p className="text-xs text-ink-muted/60 mt-1">.xlsx, .xls, .csv</p>
             </div>
           )}
         </div>
@@ -161,20 +161,20 @@ export default function ImportPage() {
 
         {/* Result */}
         {result && (
-          <div className={`card ${result.error ? 'border border-red-200 bg-red-50' : 'border border-green-200 bg-green-50'}`}>
+          <div className={`card ${result.error ? 'border border-danger/30 bg-danger-soft' : 'border border-success/30 bg-success-soft'}`}>
             {result.error ? (
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-red-700 text-sm">เกิดข้อผิดพลาด</p>
-                  <p className="text-xs text-red-600 mt-1">{result.error}</p>
+                  <p className="font-semibold text-danger text-sm">เกิดข้อผิดพลาด</p>
+                  <p className="text-xs text-danger/80 mt-1">{result.error}</p>
                 </div>
               </div>
             ) : (
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <p className="font-semibold text-green-800 text-sm">Import สำเร็จ</p>
+                  <CheckCircle className="h-5 w-5 text-success" />
+                  <p className="font-semibold text-success text-sm">Import สำเร็จ</p>
                 </div>
 
                 {/* Counts */}
@@ -189,22 +189,22 @@ export default function ImportPage() {
                     { key: 'units_fan', label: 'พัดลม' },
                     { key: 'skipped',   label: 'ข้าม' },
                   ].filter((item) => result[item.key] !== undefined).map(({ key, label }) => (
-                    <div key={key} className="bg-white/60 rounded-xl p-3 text-center">
-                      <p className="text-xl font-bold text-gray-900">{result[key]}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                    <div key={key} className="bg-surface/60 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-ink">{result[key]}</p>
+                      <p className="text-xs text-ink-muted mt-0.5">{label}</p>
                     </div>
                   ))}
                 </div>
 
                 {/* needs_recode */}
                 {result.needs_recode?.length > 0 && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-3">
-                    <p className="text-xs font-semibold text-yellow-700 mb-1.5">
+                  <div className="bg-warn-soft border border-warn/30 rounded-xl p-3 mb-3">
+                    <p className="text-xs font-semibold text-warn mb-1.5">
                       ⚠ Asset codes ที่ต้องแก้รหัส ({result.needs_recode.length} รายการ)
                     </p>
                     <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
                       {result.needs_recode.map((code) => (
-                        <span key={code} className="text-xs font-mono bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">{code}</span>
+                        <span key={code} className="text-xs font-mono bg-warn/10 text-warn px-2 py-0.5 rounded">{code}</span>
                       ))}
                     </div>
                   </div>
@@ -212,8 +212,8 @@ export default function ImportPage() {
 
                 {/* fans_unassigned */}
                 {result.fans_unassigned > 0 && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3">
-                    <p className="text-xs text-orange-700">
+                  <div className="bg-warn-soft border border-warn/30 rounded-xl p-3 mb-3">
+                    <p className="text-xs text-warn">
                       ⚠ พัดลม {result.fans_unassigned} ตัว ไม่ได้ assign ห้อง
                     </p>
                   </div>
@@ -221,13 +221,13 @@ export default function ImportPage() {
 
                 {/* errors */}
                 {result.errors?.length > 0 && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-orange-700 mb-1.5">
+                  <div className="bg-warn-soft border border-warn/30 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-warn mb-1.5">
                       ⚠ มีข้อผิดพลาด {result.errors.length} รายการ (แถวที่ไม่ผ่านถูกข้ามไป)
                     </p>
                     <div className="max-h-40 overflow-y-auto">
                       {result.errors.map((e, i) => (
-                        <p key={i} className="text-xs text-orange-700 leading-relaxed">• {typeof e === 'string' ? e : JSON.stringify(e)}</p>
+                        <p key={i} className="text-xs text-warn leading-relaxed">• {typeof e === 'string' ? e : JSON.stringify(e)}</p>
                       ))}
                     </div>
                   </div>

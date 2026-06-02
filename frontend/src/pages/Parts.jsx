@@ -10,10 +10,10 @@ function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-surface rounded-2xl w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-semibold text-gray-900 text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none hover:text-gray-600">&times;</button>
+          <h3 className="font-semibold text-ink text-lg">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none hover:text-ink">&times;</button>
         </div>
         {children}
       </div>
@@ -81,19 +81,19 @@ function RequisitionModal({ clientId, onClose, onSaved }) {
         <div>
           <label className="label">เครื่อง *</label>
           {selectedUnit ? (
-            <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="flex items-center gap-2 p-2.5 bg-primary-soft border border-primary/20 rounded-xl">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-blue-800 text-sm">{selectedUnit.asset_code}</p>
-                <p className="text-xs text-blue-600 truncate">{selectedUnit.name} · {selectedUnit.room_name || '-'}</p>
+                <p className="font-medium text-primary text-sm">{selectedUnit.asset_code}</p>
+                <p className="text-xs text-primary/70 truncate">{selectedUnit.name} · {selectedUnit.room_name || '-'}</p>
               </div>
-              <button onClick={() => setSelectedUnit(null)} className="text-blue-400 hover:text-blue-600">
+              <button onClick={() => setSelectedUnit(null)} className="text-primary/50 hover:text-primary">
                 <X className="h-4 w-4" />
               </button>
             </div>
           ) : (
             <div>
               <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted" />
                 <input
                   className="input pl-9"
                   placeholder="ค้นหา asset code, ชื่อ, ห้อง..."
@@ -101,20 +101,20 @@ function RequisitionModal({ clientId, onClose, onSaved }) {
                   onChange={(e) => setUnitSearch(e.target.value)}
                 />
               </div>
-              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+              <div className="border border-line rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                 {searchLoading ? (
-                  <p className="py-3 text-center text-sm text-gray-400">กำลังโหลด...</p>
+                  <p className="py-3 text-center text-sm text-ink-muted">กำลังโหลด...</p>
                 ) : filteredUnits.length === 0 ? (
-                  <p className="py-3 text-center text-sm text-gray-400">ไม่พบเครื่อง</p>
+                  <p className="py-3 text-center text-sm text-ink-muted">ไม่พบเครื่อง</p>
                 ) : filteredUnits.slice(0, 30).map((u) => (
                   <button
                     key={u.id}
                     type="button"
                     onClick={() => setSelectedUnit(u)}
-                    className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-0 transition-colors"
+                    className="w-full text-left px-3 py-2 hover:bg-primary-soft border-b border-line last:border-0 transition-colors"
                   >
-                    <p className="text-sm font-medium text-gray-900">{u.asset_code}</p>
-                    <p className="text-xs text-gray-500">{u.name} · {u.room_name || '-'}</p>
+                    <p className="text-sm font-medium text-ink">{u.asset_code}</p>
+                    <p className="text-xs text-ink-muted">{u.name} · {u.room_name || '-'}</p>
                   </button>
                 ))}
               </div>
@@ -212,7 +212,7 @@ export default function Parts() {
 
   return (
     <Layout title="อะไหล่">
-      <div className="p-6 flex flex-col gap-5">
+      <div className="p-4 lg:p-6 flex flex-col gap-5">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -240,7 +240,7 @@ export default function Parts() {
         <div className="card py-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <label className="label text-xs">Asset Code / เครื่อง</label>
+              <label className="label">Asset Code / เครื่อง</label>
               <input
                 className="input text-sm"
                 placeholder="unit id..."
@@ -249,7 +249,7 @@ export default function Parts() {
               />
             </div>
             <div>
-              <label className="label text-xs">เลขที่ใบงาน</label>
+              <label className="label">เลขที่ใบงาน</label>
               <input
                 className="input text-sm"
                 placeholder="WO..."
@@ -258,7 +258,7 @@ export default function Parts() {
               />
             </div>
             <div>
-              <label className="label text-xs">จากวันที่</label>
+              <label className="label">จากวันที่</label>
               <input
                 type="date"
                 className="input text-sm"
@@ -267,7 +267,7 @@ export default function Parts() {
               />
             </div>
             <div>
-              <label className="label text-xs">ถึงวันที่</label>
+              <label className="label">ถึงวันที่</label>
               <input
                 type="date"
                 className="input text-sm"
@@ -282,43 +282,43 @@ export default function Parts() {
         <div className="card p-0 overflow-hidden">
           {loading ? (
             <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-page border-b border-line">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">วันที่</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">เลขเครื่อง</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ชื่อเครื่อง / ห้อง</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">อะไหล่</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">จำนวน</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ผู้เบิก</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ใบงาน</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">หมายเหตุ</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">วันที่</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">เลขเครื่อง</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ชื่อเครื่อง / ห้อง</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">อะไหล่</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-ink-muted uppercase">จำนวน</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ผู้เบิก</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ใบงาน</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">หมายเหตุ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-line">
                   {rows.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">
+                    <tr key={r.id} className="hover:bg-primary-soft/40">
+                      <td className="py-3 px-4 text-ink-muted text-xs whitespace-nowrap">
                         {r.requisitioned_at ? dayjs(r.requisitioned_at).format('DD/MM/YY HH:mm') : '-'}
                       </td>
-                      <td className="py-3 px-4 font-mono font-medium text-blue-700 text-xs">{r.asset_code || '-'}</td>
-                      <td className="py-3 px-4 text-gray-700 text-xs">{r.unit_name || '-'}</td>
-                      <td className="py-3 px-4 font-medium text-gray-900">{r.part_name}</td>
-                      <td className="py-3 px-4 text-right font-semibold text-gray-900">{r.qty}</td>
-                      <td className="py-3 px-4 text-gray-600 text-xs">{r.requisitioned_by_name || '-'}</td>
-                      <td className="py-3 px-4 text-gray-500 text-xs">{r.order_no || '-'}</td>
-                      <td className="py-3 px-4 text-gray-400 text-xs">{r.note || '-'}</td>
+                      <td className="py-3 px-4 font-mono font-medium text-primary text-xs">{r.asset_code || '-'}</td>
+                      <td className="py-3 px-4 text-ink text-xs">{r.unit_name || '-'}</td>
+                      <td className="py-3 px-4 font-medium text-ink">{r.part_name}</td>
+                      <td className="py-3 px-4 text-right font-semibold text-ink">{r.qty}</td>
+                      <td className="py-3 px-4 text-ink-muted text-xs">{r.requisitioned_by_name || '-'}</td>
+                      <td className="py-3 px-4 text-ink-muted text-xs">{r.order_no || '-'}</td>
+                      <td className="py-3 px-4 text-ink-muted text-xs">{r.note || '-'}</td>
                     </tr>
                   ))}
                   {rows.length === 0 && (
                     <tr>
                       <td colSpan={8} className="py-12 text-center">
-                        <Package className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                        <p className="text-gray-400 text-sm">ยังไม่มีรายการเบิกอะไหล่</p>
+                        <Package className="h-8 w-8 text-ink-muted/30 mx-auto mb-2" />
+                        <p className="text-ink-muted text-sm">ยังไม่มีรายการเบิกอะไหล่</p>
                       </td>
                     </tr>
                   )}
@@ -330,7 +330,7 @@ export default function Parts() {
 
         {/* Total count */}
         {rows.length > 0 && (
-          <p className="text-xs text-gray-500 text-right">{rows.length} รายการ</p>
+          <p className="text-xs text-ink-muted text-right">{rows.length} รายการ</p>
         )}
       </div>
 

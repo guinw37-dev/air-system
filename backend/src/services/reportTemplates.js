@@ -700,11 +700,16 @@ function categoryApplies(catKey, unit) {
 function measurementSubBox(it) {
   const vt = it.value_type;
   if (vt === 'rst_amp') {
-    const line1 = `<span class="lbl">ก่อน</span> R=${rawOrUnderscore(it.val_r_before)} S=${rawOrUnderscore(it.val_s_before)} T=${rawOrUnderscore(it.val_t_before)} A · `
-      + `<span class="lbl">หลัง</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A`;
     const line2 = `<span class="lbl">ก่อน</span> LN=${rawOrUnderscore(it.val_ln_before)} V L=${rawOrUnderscore(it.val_l_before)} A · `
       + `<span class="lbl">หลัง</span> LN=${rawOrUnderscore(it.val_ln_after)} V L=${rawOrUnderscore(it.val_l_after)} A`;
-    return `<div class="subbox">${line1}<br>${line2}</div>`;
+    // 220V (1-phase) → show only LN/L, skip the empty R/S/T row
+    if (String(it.power_system) === '220') {
+      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">220V 1φ</span> ${line2}</div>`;
+    }
+    const line1 = `<span class="lbl">ก่อน</span> R=${rawOrUnderscore(it.val_r_before)} S=${rawOrUnderscore(it.val_s_before)} T=${rawOrUnderscore(it.val_t_before)} A · `
+      + `<span class="lbl">หลัง</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A`;
+    const tag = String(it.power_system) === '380' ? `<span class="lbl" style="color:var(--teal)">380V 3φ</span> ` : '';
+    return `<div class="subbox">${tag}${line1}<br>${line2}</div>`;
   }
   if (vt === 'ln_vi') {
     return `<div class="subbox">LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;

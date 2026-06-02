@@ -16,17 +16,17 @@ const MONTHS_TH = [
 ]
 
 const TYPE_BADGE = {
-  major: 'bg-orange-100 text-orange-800',
-  minor: 'bg-blue-100 text-blue-800',
-  fan:   'bg-teal-100  text-teal-800',
+  major: 'badge badge-warn',
+  minor: 'badge badge-primary',
+  fan:   'badge badge-success',
 }
 const TYPE_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'ล้างพัดลม' }
 
 const STATUS_BADGE = {
-  pending:  'bg-yellow-100 text-yellow-800',
-  done:     'bg-green-100  text-green-800',
-  overdue:  'bg-red-100    text-red-800',
-  skipped:  'bg-gray-100   text-gray-600',
+  pending:  'badge badge-warn',
+  done:     'badge badge-success',
+  overdue:  'badge badge-danger',
+  skipped:  'badge badge-gray',
 }
 const STATUS_LABEL = { pending: 'รอดำเนินการ', done: 'เสร็จแล้ว', overdue: 'เลยกำหนด', skipped: 'ข้าม' }
 
@@ -71,37 +71,37 @@ function PlanRowModal({ row, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
+      <div className="relative bg-surface rounded-2xl w-full max-w-sm p-5 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">จัดการแผน PM</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <h3 className="font-semibold text-ink">จัดการแผน PM</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none">&times;</button>
         </div>
 
         {/* Info */}
-        <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-          <p className="font-medium text-gray-800">{row.asset_code} — {row.unit_name || '-'}</p>
-          <p className="text-xs text-gray-500 mt-0.5">
+        <div className="bg-page rounded-xl p-3 mb-4 text-sm">
+          <p className="font-medium text-ink">{row.asset_code} — {row.unit_name || '-'}</p>
+          <p className="text-xs text-ink-muted mt-0.5">
             {row.room_name} · {row.building_name}
           </p>
           <div className="flex gap-2 mt-2">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_BADGE[row.planned_type] || 'bg-gray-100 text-gray-700'}`}>
+            <span className={TYPE_BADGE[row.planned_type] || 'badge badge-gray'}>
               {TYPE_LABEL[row.planned_type] || row.planned_type}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[eff] || 'bg-gray-100 text-gray-700'}`}>
+            <span className={STATUS_BADGE[eff] || 'badge badge-gray'}>
               {STATUS_LABEL[eff] || eff}
             </span>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden mb-4">
+        <div className="flex rounded-input border border-line overflow-hidden mb-4">
           {[['reschedule', 'เลื่อนวันนัด'], ['skip', 'ข้ามรายการ']].map(([v, l]) => (
             <button
               key={v}
               onClick={() => setTab(v)}
               className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                tab === v ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                tab === v ? 'bg-primary text-white' : 'text-ink-muted hover:bg-page'
               }`}
             >
               {l}
@@ -112,7 +112,7 @@ function PlanRowModal({ row, onClose, onSaved }) {
         {tab === 'reschedule' ? (
           <div className="flex flex-col gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">วันนัดใหม่ *</label>
+              <label className="label">วันนัดใหม่ *</label>
               <input
                 type="date"
                 className="input w-full"
@@ -121,7 +121,7 @@ function PlanRowModal({ row, onClose, onSaved }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">หมายเหตุ</label>
+              <label className="label">หมายเหตุ</label>
               <input
                 type="text"
                 className="input w-full"
@@ -134,7 +134,7 @@ function PlanRowModal({ row, onClose, onSaved }) {
         ) : (
           <div className="flex flex-col gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">เหตุผลที่ข้าม *</label>
+              <label className="label">เหตุผลที่ข้าม *</label>
               <textarea
                 className="input w-full resize-none"
                 rows={3}
@@ -146,15 +146,15 @@ function PlanRowModal({ row, onClose, onSaved }) {
           </div>
         )}
 
-        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        {error && <p className="text-xs text-danger mt-2">{error}</p>}
 
         <div className="flex gap-2 mt-4">
           <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
           <button
             onClick={submit}
             disabled={saving}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium text-white transition-colors ${
-              tab === 'skip' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'
+            className={`flex-1 py-2 rounded-input text-sm font-medium text-white transition-colors ${
+              tab === 'skip' ? 'bg-danger hover:brightness-95' : 'bg-primary hover:brightness-95'
             } disabled:opacity-50`}
           >
             {saving ? 'กำลังบันทึก...' : tab === 'skip' ? 'ยืนยันข้าม' : 'บันทึก'}
@@ -175,7 +175,7 @@ function Toast({ msg, type = 'success', onDismiss }) {
 
   return (
     <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white max-w-sm ${
-      type === 'success' ? 'bg-green-600' : 'bg-red-600'
+      type === 'success' ? 'bg-success' : 'bg-danger'
     }`}>
       {msg}
     </div>
@@ -321,7 +321,7 @@ export default function PMSchedule() {
         {/* ── Selectors ── */}
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Client <span className="text-red-500">*</span></label>
+            <label className="label">Client <span className="text-danger">*</span></label>
             <select
               className="input min-w-[180px]"
               value={clientId}
@@ -334,7 +334,7 @@ export default function PMSchedule() {
 
           {clientId && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Site</label>
+              <label className="label">Site</label>
               <select
                 className="input min-w-[160px]"
                 value={siteId}
@@ -347,7 +347,7 @@ export default function PMSchedule() {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
+            <label className="label">ปี</label>
             <select
               className="input w-28"
               value={year}
@@ -372,7 +372,7 @@ export default function PMSchedule() {
         </div>
 
         {!clientId && (
-          <div className="text-center text-gray-400 py-20 text-sm">เลือก Client เพื่อดูแผน PM</div>
+          <div className="text-center text-ink-muted py-20 text-sm">เลือก Client เพื่อดูแผน PM</div>
         )}
 
         {clientId && (
@@ -380,19 +380,19 @@ export default function PMSchedule() {
             {/* ── Summary strip ── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { key: 'pending', label: 'รอดำเนินการ', icon: CalendarDays, bg: 'bg-yellow-50', ic: 'text-yellow-600' },
-                { key: 'overdue', label: 'เลยกำหนด',    icon: AlertTriangle, bg: 'bg-red-50',    ic: 'text-red-600'    },
-                { key: 'done',    label: 'เสร็จแล้ว',   icon: CheckCircle,   bg: 'bg-green-50',  ic: 'text-green-600'  },
-                { key: 'skipped', label: 'ข้าม',         icon: Clock,         bg: 'bg-gray-50',   ic: 'text-gray-500'   },
+                { key: 'pending', label: 'รอดำเนินการ', icon: CalendarDays, bg: 'bg-warn-soft', ic: 'text-warn' },
+                { key: 'overdue', label: 'เลยกำหนด',    icon: AlertTriangle, bg: 'bg-danger-soft', ic: 'text-danger' },
+                { key: 'done',    label: 'เสร็จแล้ว',   icon: CheckCircle,   bg: 'bg-success-soft', ic: 'text-success' },
+                { key: 'skipped', label: 'ข้าม',         icon: Clock,         bg: 'bg-page',   ic: 'text-ink-muted' },
               ].map(({ key, label, icon: Icon, bg, ic }) => (
                 <button
                   key={key}
                   onClick={() => setFilterStatus(filterStatus === key ? '' : key)}
-                  className={`${bg} rounded-2xl p-4 text-left transition-all ${filterStatus === key ? 'ring-2 ring-blue-500' : ''}`}
+                  className={`${bg} rounded-2xl p-4 text-left transition-all ${filterStatus === key ? 'ring-2 ring-primary' : ''}`}
                 >
                   <Icon className={`h-5 w-5 ${ic} mb-2`} />
-                  <p className="text-2xl font-bold text-gray-900">{totalSummary[key]}</p>
-                  <p className="text-xs text-gray-600 mt-0.5">{label}</p>
+                  <p className="text-2xl font-bold text-ink">{totalSummary[key]}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">{label}</p>
                 </button>
               ))}
             </div>
@@ -447,7 +447,7 @@ export default function PMSchedule() {
               {(filterMonth || filterBuilding || filterType || filterStatus) && (
                 <button
                   onClick={() => { setFilterMonth(''); setFilterBuilding(''); setFilterType(''); setFilterStatus('') }}
-                  className="text-sm text-blue-600 hover:underline"
+                  className="text-sm text-primary hover:underline"
                 >
                   ล้าง filter
                 </button>
@@ -457,26 +457,26 @@ export default function PMSchedule() {
             {/* ── Table ── */}
             {loading ? (
               <div className="flex justify-center py-16">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" />
               </div>
             ) : (
               <div className="card p-0 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100">
+                    <thead className="bg-page border-b border-line">
                       <tr>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">เลขเครื่อง</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ห้อง / อาคาร</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">ประเภท</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">วันนัด</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">หมายเหตุ</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">เลขเครื่อง</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ห้อง / อาคาร</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ประเภท</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">วันนัด</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">สถานะ</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">หมายเหตุ</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-line">
                       {filtered.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="py-16 text-center text-gray-400">
+                          <td colSpan={6} className="py-16 text-center text-ink-muted">
                             {plan.length === 0 ? 'ยังไม่มีแผน PM — กด "สร้างแผน PM" เพื่อสร้าง' : 'ไม่พบรายการที่ตรงเงื่อนไข'}
                           </td>
                         </tr>
@@ -487,27 +487,27 @@ export default function PMSchedule() {
                           <tr
                             key={r.id}
                             onClick={() => setModalRow(r)}
-                            className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            className="hover:bg-primary-soft/40 cursor-pointer transition-colors"
                           >
-                            <td className="py-3 px-4 font-semibold text-blue-700">{r.asset_code}</td>
-                            <td className="py-3 px-4 text-xs text-gray-600">
+                            <td className="py-3 px-4 font-semibold text-primary">{r.asset_code}</td>
+                            <td className="py-3 px-4 text-xs text-ink-muted">
                               <p>{r.room_name || '-'}</p>
-                              <p className="text-gray-400">{r.floor_name ? `${r.floor_name} · ` : ''}{r.building_name || '-'}</p>
+                              <p className="text-ink-muted/70">{r.floor_name ? `${r.floor_name} · ` : ''}{r.building_name || '-'}</p>
                             </td>
                             <td className="py-3 px-4">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_BADGE[r.planned_type] || 'bg-gray-100 text-gray-700'}`}>
+                              <span className={TYPE_BADGE[r.planned_type] || 'badge badge-gray'}>
                                 {TYPE_LABEL[r.planned_type] || r.planned_type}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-gray-700 text-xs">
+                            <td className="py-3 px-4 text-ink text-xs">
                               {r.scheduled_date ? dayjs(r.scheduled_date).format('DD/MM/YYYY') : '-'}
                             </td>
                             <td className="py-3 px-4">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[eff] || 'bg-gray-100 text-gray-700'}`}>
+                              <span className={STATUS_BADGE[eff] || 'badge badge-gray'}>
                                 {STATUS_LABEL[eff] || eff}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-xs text-gray-400 max-w-[180px] truncate">{r.note || '-'}</td>
+                            <td className="py-3 px-4 text-xs text-ink-muted max-w-[180px] truncate">{r.note || '-'}</td>
                           </tr>
                         )
                       })}
@@ -517,7 +517,7 @@ export default function PMSchedule() {
               </div>
             )}
 
-            <p className="text-xs text-gray-400">{filtered.length} รายการ · คลิกแถวเพื่อเลื่อนวันหรือข้ามรายการ</p>
+            <p className="text-xs text-ink-muted">{filtered.length} รายการ · คลิกแถวเพื่อเลื่อนวันหรือข้ามรายการ</p>
           </>
         )}
       </div>

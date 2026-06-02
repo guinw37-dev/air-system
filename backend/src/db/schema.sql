@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS inspection_values (
   val_ln_after  DECIMAL(8,2), val_l_after  DECIMAL(8,2),
   val_suction   DECIMAL(8,2), val_discharge DECIMAL(8,2),
   refrigerant_type VARCHAR(10), val_text TEXT,
+  power_system     VARCHAR(5),   -- '380' (3φ R/S/T) | '220' (1φ L/LN) for rst_amp
   UNIQUE (work_order_unit_id, template_item_id)
 );
 
