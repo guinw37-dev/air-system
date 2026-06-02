@@ -289,7 +289,7 @@ router.put('/:id/inspection', authMiddleware,
   }
 });
 
-// ── PUT /api/work-orders/:id/condition — team condition assessment (LMT) ─────
+// ── PUT /api/work-orders/:id/condition — team condition assessment (TW) ─────
 router.put('/:id/condition', authMiddleware, async (req, res) => {
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });

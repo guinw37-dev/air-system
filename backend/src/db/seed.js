@@ -48,15 +48,15 @@ async function seed() {
       `, [clientId, `${c.code}-MAIN`, c.name]);
     }
 
-    // ── Inspection template (LMT Engineering form — EXACT order/categories) ──
+    // ── Inspection template (TW Engineering form — EXACT order/categories) ──
     // Clean reseed of the AC template: drop old AC items (and any inspection
-    // values referencing them) then insert the 27 LMT items. Safe on a fresh DB;
+    // values referencing them) then insert the 27 TW items. Safe on a fresh DB;
     // re-runnable. (categories changed from Thai names → all3/refrigerant/fcu/ahu/other)
     await client.query(`DELETE FROM inspection_values WHERE template_item_id IN
       (SELECT id FROM inspection_template_items WHERE equipment_type='ac')`);
     await client.query(`DELETE FROM inspection_template_items WHERE equipment_type='ac'`);
 
-    const LMT = [
+    const TW = [
       // หมวด 1: ใช้งานทั้ง 3 ประเภท (all3) — major + minor
       { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์ Blower (380V/220V)', type: 'rst_amp', minor: true },
       { cat: 'all3', sort: 20, label: 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', type: 'number', unit: 'Ft/m', minor: true },
@@ -90,7 +90,7 @@ async function seed() {
       { cat: 'other', sort: 410, label: '(ช่องว่างบันทึกเพิ่มเติม 1)', type: 'text' },
       { cat: 'other', sort: 420, label: '(ช่องว่างบันทึกเพิ่มเติม 2)', type: 'text' },
     ];
-    for (const it of LMT) {
+    for (const it of TW) {
       await client.query(`
         INSERT INTO inspection_template_items
           (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
@@ -98,7 +98,7 @@ async function seed() {
       `, [it.cat, it.label, it.type, it.unit || null, it.minor === true, it.sort]);
     }
 
-    // Fan checklist (kept from config — LMT form is AC-only)
+    // Fan checklist (kept from config — TW form is AC-only)
     for (const item of CHECKLIST_ITEMS.fan || []) {
       await client.query(`
         INSERT INTO inspection_template_items

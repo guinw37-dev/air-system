@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS work_orders (
   completed_at     TIMESTAMPTZ,
   admin_checked_at TIMESTAMPTZ,    -- ด่าน 1: central_admin ตรวจแล้ว
   approved_at      TIMESTAMPTZ,    -- ด่าน 2: approver เซ็นปิดแล้ว
-  -- ความเห็นทีมช่าง (LMT form condition assessment)
+  -- ความเห็นทีมช่าง (TW form condition assessment)
   cond_ac_degraded       BOOLEAN DEFAULT FALSE,
   cond_ac_old_5_7yr      BOOLEAN DEFAULT FALSE,
   cond_external_degraded BOOLEAN DEFAULT FALSE, cond_external_detail TEXT,
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS inspection_values (
   value_after        TEXT,
   checked            BOOLEAN,
   note               TEXT,
-  -- LMT structured values (rst_amp / ln_vi / pressure_pair)
+  -- TW structured values (rst_amp / ln_vi / pressure_pair)
   val_r_before  DECIMAL(8,2), val_s_before DECIMAL(8,2), val_t_before DECIMAL(8,2),
   val_r_after   DECIMAL(8,2), val_s_after  DECIMAL(8,2), val_t_after  DECIMAL(8,2),
   val_ln_before DECIMAL(8,2), val_l_before DECIMAL(8,2),
