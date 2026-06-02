@@ -16,10 +16,21 @@ const FAN_DEFAULT_SITE_NAME   = process.env.FAN_DEFAULT_SITE_NAME   || 'โร�
 // Pull the first non-empty value from a row by trying several candidate header
 // strings — real workbook headers vary slightly (spacing / wording).
 function strVal(row, ...keys) {
+  // 1. exact match
   for (const k of keys) {
     if (row[k] == null) continue;
     const v = row[k].toString().trim();
     if (v) return v;
+  }
+  // 2. partial match — header contains one of the candidate strings
+  // (handles headers like "เลขเครื่อง (asset_code)" when candidate is "เลขเครื่อง")
+  for (const header of Object.keys(row)) {
+    for (const k of keys) {
+      if (header.includes(k) || k.includes(header)) {
+        const v = (row[header] ?? '').toString().trim();
+        if (v) return v;
+      }
+    }
   }
   return '';
 }
