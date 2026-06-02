@@ -44,10 +44,12 @@ export const CHECKLIST_ITEMS = {
 }
 
 export const STATUS_LABEL = {
-  in_progress:      { label: 'กำลังดำเนินการ', color: 'bg-yellow-100 text-yellow-800' },
-  pending_approval: { label: 'รออนุมัติ',        color: 'bg-orange-100 text-orange-800' },
-  approved:         { label: 'อนุมัติแล้ว',       color: 'bg-green-100 text-green-800' },
-  rejected:         { label: 'ไม่อนุมัติ',        color: 'bg-red-100 text-red-800' },
+  draft:            { label: 'ร่าง',              color: 'bg-gray-100 text-gray-700' },
+  in_progress:      { label: 'กำลังดำเนินการ',    color: 'bg-yellow-100 text-yellow-800' },
+  pending_admin:    { label: 'รอ Admin ตรวจสอบ',   color: 'bg-orange-100 text-orange-800' },
+  pending_approval: { label: 'รออนุมัติ',          color: 'bg-purple-100 text-purple-800' },
+  approved:         { label: 'อนุมัติแล้ว',         color: 'bg-green-100 text-green-800' },
+  rejected:         { label: 'ไม่อนุมัติ',          color: 'bg-red-100 text-red-800' },
 }
 
 export const TYPE_LABEL = {
