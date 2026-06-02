@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS work_order_photos (
   label              VARCHAR(150),
   url                TEXT NOT NULL,
   filename           TEXT,
+  client_token       VARCHAR(64) UNIQUE,   -- idempotency key for offline sync (กัน upload ซ้ำ)
   taken_at           TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -189,6 +190,17 @@ CREATE TABLE IF NOT EXISTS signatures (
   signature_data TEXT NOT NULL,
   signed_at      TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (work_order_id, role)
+);
+
+-- บันทึกการเปลี่ยนสถานะใบงาน (audit trail ของ state machine)
+CREATE TABLE IF NOT EXISTS work_order_status_history (
+  id            SERIAL PRIMARY KEY,
+  work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+  from_status   VARCHAR(20),
+  to_status     VARCHAR(20) NOT NULL,
+  changed_by    INT REFERENCES users(id),     -- NULL = ระบบ/area_owner ไม่ล็อกอิน
+  reason        TEXT,                          -- ใช้ตอน reject
+  changed_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ── เบิกอะไหล่ ──────────────────────────────────────────────
@@ -285,3 +297,4 @@ CREATE INDEX IF NOT EXISTS idx_pmplan_unit             ON pm_plan(unit_id);
 CREATE INDEX IF NOT EXISTS idx_pmplan_scheduled        ON pm_plan(scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_deduction_client        ON deduction_notes(client_id);
 CREATE INDEX IF NOT EXISTS idx_deduction_month         ON deduction_notes(month);
+CREATE INDEX IF NOT EXISTS idx_wo_history_wo            ON work_order_status_history(work_order_id);

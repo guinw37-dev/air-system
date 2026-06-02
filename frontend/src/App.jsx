@@ -1,10 +1,13 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
+import { initOfflineSync } from './lib/offline/sync'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import WorkOrderList from './pages/WorkOrderList'
 import WorkOrderCreate from './pages/WorkOrderCreate'
 import WorkOrderDetail from './pages/WorkOrderDetail'
+import WorkOrderUnitDetail from './pages/WorkOrderUnitDetail'
 import AcItemDetail from './pages/AcItemDetail'
 import RepairLogs from './pages/RepairLogs'
 import MasterData from './pages/MasterData'
@@ -27,15 +30,22 @@ function RequireRole({ children, roles }) {
 }
 
 export default function App() {
+  useEffect(() => { initOfflineSync() }, [])
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+
+        {/* Work Orders — phase-2 routes */}
         <Route path="/work-orders" element={<RequireAuth><WorkOrderList /></RequireAuth>} />
         <Route path="/work-orders/new" element={<RequireAuth><WorkOrderCreate /></RequireAuth>} />
         <Route path="/work-orders/:id" element={<RequireAuth><WorkOrderDetail /></RequireAuth>} />
+        {/* New unit-level detail page */}
+        <Route path="/work-orders/:id/units/:unitId" element={<RequireAuth><WorkOrderUnitDetail /></RequireAuth>} />
+        {/* Keep old items route alive for any existing links */}
         <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
+
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
         <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
         <Route path="/pm-plan" element={<RequireAuth><PMPlan /></RequireAuth>} />

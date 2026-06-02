@@ -7,8 +7,9 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "migrate": "node src/db/migrate.js",
+    "migrate:phase2": "node src/db/migrate_phase2.js",
     "seed": "node src/db/seed.js",
-    "test": "node test/tenant.test.js"
+    "test": "node test/tenant.test.js && node test/woStateMachine.test.js"
   },
   "keywords": [],
   "author": "",
