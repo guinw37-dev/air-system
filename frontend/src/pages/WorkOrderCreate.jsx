@@ -275,7 +275,7 @@ export default function WorkOrderCreate() {
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto border border-gray-200 rounded-xl p-2">
+            <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto border border-gray-200 rounded-xl p-2">
               {loadingUnits && (
                 <p className="text-sm text-gray-400 text-center py-4">กำลังโหลด...</p>
               )}
