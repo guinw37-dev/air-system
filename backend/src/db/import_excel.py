@@ -11,16 +11,28 @@ import sys
 import os
 from datetime import datetime
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# ── Config (read from environment — never hardcode secrets) ─────────────────────
+# Optionally load a local .env file if python-dotenv is installed.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 DB = {
-    'host':     '45.136.253.119',
-    'port':     5433,
-    'dbname':   'airclean_db',
-    'user':     'airclean_user',
-    'password': 'aA029544897@@@@@',
+    'host':     os.environ.get('DB_HOST', 'localhost'),
+    'port':     int(os.environ.get('DB_PORT', '5432')),
+    'dbname':   os.environ.get('DB_NAME', 'airclean_db'),
+    'user':     os.environ.get('DB_USER', 'postgres'),
+    'password': os.environ.get('DB_PASS'),
 }
-EXCEL_PATH = r'C:\Users\Macha\Desktop\Project Air\สถานที่ล้างแอร์ + พัดลม.xlsx'
-HOSPITAL_SLUG = 'pts1'   # โรงพยาบาลพญาไท ศรีราชา 1
+EXCEL_PATH = os.environ.get('EXCEL_PATH', '')
+HOSPITAL_SLUG = os.environ.get('HOSPITAL_SLUG', 'pts1')   # โรงพยาบาลพญาไท ศรีราชา 1
+
+if not DB['password']:
+    sys.exit("ERROR: DB_PASS not set. Configure env vars (see .env.example).")
+if not EXCEL_PATH:
+    sys.exit("ERROR: EXCEL_PATH not set. Configure env vars (see .env.example).")
 
 # ── AC type mapping ───────────────────────────────────────────────────────────
 def map_type(raw: str) -> str:
