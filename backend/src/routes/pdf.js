@@ -1,16 +1,73 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { getReportData } = require('../services/reportBuilder');
+const { buildReportHtml } = require('../services/reportTemplates');
+const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
 
-// ── GET /api/pdf/work-orders/:id ───────────────────────────────────────────
-// The work-order PDF report depended on the old work_order_items.measurements/
-// checklist JSONB columns, which the new schema replaces with inspection_values
-// (1 row per template item). Rebuilding the 4 report layouts on top of
-// inspection_values is its own later phase (see REPORT_phase0.md §3 / phase-1
-// scope item 6 — reports deferred). Until then this returns a clear 501 instead
-// of crashing on dropped tables.
-router.get('/work-orders/:id', authMiddleware, (req, res) => {
-  res.status(501).json({ error: 'รายงาน PDF จะ rebuild ในเฟสถัดไป (ใช้ inspection_values แทน JSONB เดิม)' });
+const PUBLIC_BASE = process.env.FRONTEND_URL || '';
+
+// Resolve report type: explicit query wins, else fall back to the WO's own type.
+function resolveType(queryType, wo) {
+  const t = (queryType || wo.type || 'minor').toLowerCase();
+  return ['minor', 'major', 'fan'].includes(t) ? t : 'minor';
+}
+
+// Shared loader: fetch data + enforce tenant + status. Returns { data, type } or
+// sends an error response and returns null.
+async function loadReport(req, res) {
+  const data = await getReportData(req.params.id, { publicBaseUrl: PUBLIC_BASE });
+  if (!data) { res.status(404).json({ error: 'ไม่พบใบงาน' }); return null; }
+
+  // tenant isolation — if a client_id is supplied it must match the WO's
+  if (req.query.client_id && String(data.wo.client_id) !== String(req.query.client_id)) {
+    res.status(403).json({ error: 'ใบงานไม่ได้อยู่ใน client นี้' }); return null;
+  }
+  // approved WOs are open to all staff; earlier states only for admin/central_admin
+  const previewRoles = ['admin', 'central_admin', 'approver'];
+  if (data.wo.status !== 'approved' && !previewRoles.includes(req.user.role)) {
+    res.status(403).json({ error: 'ออกรายงานได้เมื่อใบงานอนุมัติแล้วเท่านั้น' }); return null;
+  }
+  return { data, type: resolveType(req.query.type, data.wo) };
+}
+
+// ── GET /api/pdf/work-orders/:id?type=minor|major|fan ───────────────────────
+router.get('/work-orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const loaded = await loadReport(req, res);
+    if (!loaded) return;
+    const html = buildReportHtml(loaded.data, loaded.type);
+    try {
+      const pdf = await htmlToPdf(html, { landscape: loaded.type === 'major' });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${loaded.data.wo.order_no}.pdf"`);
+      return res.end(pdf);
+    } catch (err) {
+      if (err instanceof PdfUnavailableError) {
+        // graceful fallback — return the HTML so the report is still viewable
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-PDF-Fallback', 'html');
+        return res.send(html);
+      }
+      throw err;
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/pdf/work-orders/:id/preview?type= ──────────────────────────────
+// HTML preview (no puppeteer) — for dev + the fallback path
+router.get('/work-orders/:id/preview', authMiddleware, async (req, res) => {
+  try {
+    const loaded = await loadReport(req, res);
+    if (!loaded) return;
+    const html = buildReportHtml(loaded.data, loaded.type);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
