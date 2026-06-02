@@ -338,4 +338,73 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// ── PHASE 6: dashboard aggregates (all tenant-scoped by client_id) ──────────
+
+// GET /api/stats/overview?client_id=
+router.get('/overview', authMiddleware, async (req, res) => {
+  const { client_id } = req.query;
+  if (!client_id) return res.status(400).json({ error: 'client_id required' });
+  try {
+    const wo = await pool.query(`
+      SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE date_trunc('month',created_at)=date_trunc('month',CURRENT_DATE))::int AS this_month,
+             COUNT(*) FILTER (WHERE status IN ('in_progress','pending_admin','pending_approval'))::int AS open
+      FROM work_orders WHERE client_id = $1`, [client_id]);
+    const units = await pool.query(`
+      SELECT COUNT(*) FILTER (WHERE status='active')::int AS active,
+             COUNT(*) FILTER (WHERE status='broken')::int AS broken,
+             COUNT(*) FILTER (WHERE status='inactive')::int AS inactive
+      FROM units WHERE client_id = $1 AND active = true`, [client_id]);
+    const pm = await pool.query(`
+      SELECT COUNT(*)::int AS overdue FROM pm_plan
+      WHERE client_id = $1 AND status='pending' AND scheduled_date < CURRENT_DATE`, [client_id]);
+    const repairs = await pool.query(`
+      SELECT COUNT(*)::int AS open FROM repair_logs WHERE client_id = $1 AND status='open'`, [client_id]);
+    res.json({ wo: wo.rows[0], units: units.rows[0], pm_overdue: pm.rows[0].overdue, repairs_open: repairs.rows[0].open });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/stats/wo-trend?client_id=&months=6
+router.get('/wo-trend', authMiddleware, async (req, res) => {
+  const { client_id, months = 6 } = req.query;
+  if (!client_id) return res.status(400).json({ error: 'client_id required' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT to_char(date_trunc('month', created_at),'YYYY-MM') AS month,
+             COUNT(*) FILTER (WHERE type='major')::int AS major,
+             COUNT(*) FILTER (WHERE type='minor')::int AS minor,
+             COUNT(*) FILTER (WHERE type='fan')::int   AS fan
+      FROM work_orders
+      WHERE client_id = $1 AND created_at >= date_trunc('month', CURRENT_DATE) - ($2 || ' months')::interval
+      GROUP BY 1 ORDER BY 1`, [client_id, months]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/stats/unit-health?client_id=
+router.get('/unit-health', authMiddleware, async (req, res) => {
+  const { client_id } = req.query;
+  if (!client_id) return res.status(400).json({ error: 'client_id required' });
+  const { rows } = await pool.query(`
+    SELECT status, COUNT(*)::int AS n FROM units
+    WHERE client_id = $1 AND active = true GROUP BY status`, [client_id]);
+  res.json(rows);
+});
+
+// GET /api/stats/top-repair?client_id=&limit=10
+router.get('/top-repair', authMiddleware, async (req, res) => {
+  const { client_id, limit = 10 } = req.query;
+  if (!client_id) return res.status(400).json({ error: 'client_id required' });
+  const { rows } = await pool.query(`
+    SELECT u.id AS unit_id, u.asset_code, u.name unit_name, r.name room_name,
+           COUNT(rl.id)::int AS repair_count
+    FROM repair_logs rl
+    JOIN units u      ON rl.unit_id = u.id
+    LEFT JOIN rooms r ON u.room_id = r.id
+    WHERE rl.client_id = $1
+    GROUP BY u.id, u.asset_code, u.name, r.name
+    ORDER BY repair_count DESC LIMIT $2`, [client_id, limit]);
+  res.json(rows);
+});
+
 module.exports = router;
