@@ -19,6 +19,9 @@ import CleaningDashboard from './pages/CleaningDashboard'
 import ImportPage from './pages/ImportPage'
 import SignPage from './pages/SignPage'
 import Notifications from './pages/Notifications'
+import Parts from './pages/Parts'
+import UnitDetail from './pages/UnitDetail'
+import Deductions from './pages/Deductions'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -65,6 +68,11 @@ export default function App() {
         } />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin']}><Users /></RequireRole></RequireAuth>
+        } />
+        <Route path="/parts" element={<RequireAuth><Parts /></RequireAuth>} />
+        <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
+        <Route path="/deductions" element={
+          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><Deductions /></RequireRole></RequireAuth>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Pencil, Trash2, ChevronRight, ExternalLink } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -498,7 +499,16 @@ function UnitsTab() {
                   <tr><td colSpan={8} className="py-10 text-center text-gray-400">กำลังโหลด...</td></tr>
                 ) : unitList.map((u) => (
                   <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-blue-700">{u.asset_code}</td>
+                    <td className="py-3 px-4 font-medium text-blue-700">
+                      <Link
+                        to={`/units/${u.id}`}
+                        className="hover:underline flex items-center gap-1 group"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {u.asset_code}
+                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                      </Link>
+                    </td>
                     <td className="py-3 px-4 text-gray-700">{u.name || '-'}</td>
                     <td className="py-3 px-4 text-gray-500">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.equipment_type === 'fan' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
