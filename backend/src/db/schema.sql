@@ -270,6 +270,7 @@ CREATE TABLE IF NOT EXISTS pm_plan (
   work_order_id  INT REFERENCES work_orders(id),
   status         VARCHAR(20) NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending','done','overdue','skipped')),
+  note           TEXT,                         -- เหตุผล reschedule/skip
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );

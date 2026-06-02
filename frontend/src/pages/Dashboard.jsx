@@ -4,7 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts'
 import {
-  ClipboardList, Clock, CheckCircle, Wrench, Building2, Wind, Plus
+  ClipboardList, Clock, CheckCircle, Wrench, Building2, Wind, Plus,
+  CalendarCheck, AlertTriangle, CalendarDays,
 } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
@@ -13,12 +14,80 @@ import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/config'
 
+// ── PM widget helpers ─────────────────────────────────────────────────────────
+
+function effectivePmStatus(row) {
+  if (row.status === 'done' || row.status === 'skipped') return row.status
+  if (row.status === 'pending' && row.scheduled_date &&
+      dayjs(row.scheduled_date).isBefore(dayjs(), 'day')) return 'overdue'
+  return row.status
+}
+
+function PMWidget({ clientId }) {
+  const navigate = useNavigate()
+  const year = dayjs().year()
+  const thisMonth = dayjs().month() + 1
+
+  const [summary, setSummary] = useState(null)
+  const [overdueCount, setOverdueCount] = useState(0)
+
+  useEffect(() => {
+    if (!clientId) return
+    const p = new URLSearchParams({ client_id: clientId, year })
+    Promise.all([
+      api.get(`/pm/plan-summary?${p}`),
+      api.get(`/pm/overdue?${p}`),
+    ]).then(([sumRes, ovRes]) => {
+      setSummary(sumRes.data || [])
+      setOverdueCount((ovRes.data || []).length)
+    }).catch(() => {})
+  }, [clientId, year])
+
+  // This-month row from summary
+  const monthRow = (summary || []).find((r) => Number(r.month) === thisMonth) || {}
+  const pendingThisMonth = (monthRow.pending || 0)
+  const doneThisMonth    = (monthRow.done    || 0)
+
+  return (
+    <button
+      onClick={() => navigate('/pm')}
+      className="card text-left hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-200"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <CalendarCheck className="h-5 w-5 text-blue-600" />
+          <h3 className="font-semibold text-gray-800">PM เดือนนี้</h3>
+        </div>
+        <span className="text-xs text-blue-600 font-medium">ดูทั้งหมด →</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-yellow-50 rounded-xl p-3 text-center">
+          <CalendarDays className="h-4 w-4 text-yellow-600 mx-auto mb-1" />
+          <p className="text-xl font-bold text-gray-900">{pendingThisMonth}</p>
+          <p className="text-xs text-gray-600 mt-0.5 leading-snug">ครบกำหนด<br/>เดือนนี้</p>
+        </div>
+        <div className="bg-red-50 rounded-xl p-3 text-center">
+          <AlertTriangle className="h-4 w-4 text-red-500 mx-auto mb-1" />
+          <p className="text-xl font-bold text-gray-900">{overdueCount}</p>
+          <p className="text-xs text-gray-600 mt-0.5 leading-snug">เลยกำหนด</p>
+        </div>
+        <div className="bg-green-50 rounded-xl p-3 text-center">
+          <CheckCircle className="h-4 w-4 text-green-600 mx-auto mb-1" />
+          <p className="text-xl font-bold text-gray-900">{doneThisMonth}</p>
+          <p className="text-xs text-gray-600 mt-0.5 leading-snug">ทำแล้ว</p>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const [stats, setStats] = useState(null)
   const [recentWos, setRecentWos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [firstClientId, setFirstClientId] = useState(null)
 
   // Daily view
   const [dailyDate, setDailyDate] = useState(dayjs().format('YYYY-MM-DD'))
@@ -29,9 +98,12 @@ export default function Dashboard() {
     Promise.all([
       api.get('/stats'),
       api.get('/work-orders?limit=8'),
-    ]).then(([s, w]) => {
+      api.get('/master/clients'),
+    ]).then(([s, w, c]) => {
       setStats(s.data)
       setRecentWos(w.data)
+      const clients = c.data || []
+      if (clients.length > 0) setFirstClientId(clients[0].id)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -95,6 +167,9 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        {/* PM widget */}
+        {firstClientId && <PMWidget clientId={firstClientId} />}
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
