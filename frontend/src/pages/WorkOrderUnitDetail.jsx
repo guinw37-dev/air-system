@@ -132,6 +132,7 @@ export default function WorkOrderUnitDetail() {
           val_suction:    i.val_suction    ?? '',
           val_discharge:  i.val_discharge  ?? '',
           refrigerant_type: i.refrigerant_type ?? '',
+          power_system:   i.power_system   ?? '',
         }
       })
       setValues(seedVals)
@@ -197,6 +198,7 @@ export default function WorkOrderUnitDetail() {
             val_suction:      v.val_suction    || null,
             val_discharge:    v.val_discharge  || null,
             refrigerant_type: v.refrigerant_type || null,
+            power_system:     v.power_system   || null,
           })),
         }
         await enqueueInspection(woId, payload)
@@ -461,8 +463,36 @@ export default function WorkOrderUnitDetail() {
                         )}
 
                         {/* ── rst_amp — มอเตอร์ Blower แรงดัน/กระแส ── */}
-                        {ti.value_type === 'rst_amp' && (
+                        {ti.value_type === 'rst_amp' && (() => {
+                          const power = v.power_system || '380'
+                          return (
                           <div className="flex flex-col gap-3">
+                            {/* ระบบไฟ 380/220 segmented */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">ระบบไฟ</p>
+                              <div className="inline-flex rounded-lg border border-line overflow-hidden">
+                                {[
+                                  { v: '380', label: '380V (3 เฟส · R/S/T)' },
+                                  { v: '220', label: '220V (1 เฟส · L/LN)' },
+                                ].map((opt) => (
+                                  <button
+                                    key={opt.v}
+                                    type="button"
+                                    disabled={!canEdit}
+                                    onClick={() => updateValue(ti.id, 'power_system', opt.v)}
+                                    className={`px-3 py-1.5 text-xs font-medium ${power === opt.v ? 'bg-primary text-white' : 'bg-white text-ink-muted'}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {power === '220' && (
+                              <p className="text-xs text-success bg-success-soft rounded-lg px-3 py-2">
+                                แอร์ 1 เฟส วัดเฉพาะ L (A) และ LN (V) ไม่ต้องกรอก R/S/T
+                              </p>
+                            )}
+                            {power !== '220' && (<>
                             {/* R/S/T ก่อน */}
                             <div>
                               <p className="text-xs font-semibold text-gray-600 mb-1">R / S / T (A) — ก่อน</p>
@@ -511,6 +541,7 @@ export default function WorkOrderUnitDetail() {
                                 ))}
                               </div>
                             </div>
+                            </>)}
                             {/* LN/L ก่อน */}
                             <div>
                               <p className="text-xs font-semibold text-gray-600 mb-1">LN (V) / L (A) — ก่อน</p>
@@ -572,7 +603,8 @@ export default function WorkOrderUnitDetail() {
                               </div>
                             </div>
                           </div>
-                        )}
+                          )
+                        })()}
 
                         {/* ── ln_vi — ขณะ Compressor ทำงาน ── */}
                         {ti.value_type === 'ln_vi' && (

@@ -69,8 +69,8 @@ export default function Layout({ children, title, back, actions }) {
       onClick={onClick}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
         isActive(path)
-          ? 'bg-blue-700 text-white'
-          : 'text-blue-200 hover:bg-blue-800 hover:text-white'
+          ? 'bg-primary text-white'
+          : 'text-blue-200 hover:bg-white/10 hover:text-white'
       }`}
     >
       <Icon className="shrink-0" style={{ width: 18, height: 18 }} />
@@ -84,11 +84,11 @@ export default function Layout({ children, title, back, actions }) {
   )
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-page overflow-hidden">
 
       {/* Sidebar — desktop */}
-      <aside className="hidden lg:flex flex-col w-56 bg-blue-900 text-white shrink-0">
-        <div className="flex items-center gap-2 px-5 py-5 border-b border-blue-800">
+      <aside className="hidden lg:flex flex-col w-56 bg-primary-dark text-white shrink-0">
+        <div className="flex items-center gap-2 px-5 py-5 border-b border-white/10">
           <Snowflake className="h-6 w-6 text-blue-300" />
           <div>
             <p className="font-bold text-sm leading-none">Air System</p>
@@ -112,14 +112,14 @@ export default function Layout({ children, title, back, actions }) {
           )}
         </nav>
 
-        <div className="px-2 py-3 border-t border-blue-800">
+        <div className="px-2 py-3 border-t border-white/10">
           <div className="px-3 py-2 mb-1">
             <p className="text-xs text-blue-300 truncate">{user?.name}</p>
             <p className="text-xs text-blue-500 capitalize">{user?.role}</p>
           </div>
           <button
             onClick={doLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-blue-300 hover:bg-blue-800 hover:text-white transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-blue-300 hover:bg-white/10 hover:text-white transition-colors"
           >
             <LogOut className="h-4 w-4" /> ออกจากระบบ
           </button>
@@ -130,8 +130,8 @@ export default function Layout({ children, title, back, actions }) {
       {sidebarOpen && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-blue-900 text-white z-50 flex flex-col lg:hidden">
-            <div className="flex items-center justify-between px-5 py-5 border-b border-blue-800">
+          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-primary-dark text-white z-50 flex flex-col lg:hidden">
+            <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <Snowflake className="h-5 w-5 text-blue-300" />
                 <p className="font-bold text-sm">Air System</p>
@@ -154,7 +154,7 @@ export default function Layout({ children, title, back, actions }) {
                 />
               )}
             </nav>
-            <div className="px-5 py-4 border-t border-blue-800">
+            <div className="px-5 py-4 border-t border-white/10">
               <p className="text-xs text-blue-300">{user?.name}</p>
               <button onClick={doLogout} className="mt-2 text-sm text-blue-400 flex items-center gap-2">
                 <LogOut className="h-4 w-4" /> ออกจากระบบ

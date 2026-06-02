@@ -43,17 +43,18 @@ export const CHECKLIST_ITEMS = {
   ],
 }
 
+// Status colors use the design tokens (see index.css / tailwind.config.js)
 export const STATUS_LABEL = {
-  draft:            { label: 'ร่าง',              color: 'bg-gray-100 text-gray-700' },
-  in_progress:      { label: 'กำลังดำเนินการ',    color: 'bg-yellow-100 text-yellow-800' },
-  pending_admin:    { label: 'รอ Admin ตรวจสอบ',   color: 'bg-orange-100 text-orange-800' },
-  pending_approval: { label: 'รออนุมัติ',          color: 'bg-purple-100 text-purple-800' },
-  approved:         { label: 'อนุมัติแล้ว',         color: 'bg-green-100 text-green-800' },
-  rejected:         { label: 'ไม่อนุมัติ',          color: 'bg-red-100 text-red-800' },
+  draft:            { label: 'ร่าง',              color: 'bg-gray-100 text-gray-600' },
+  in_progress:      { label: 'กำลังดำเนินการ',    color: 'bg-primary-soft text-primary' },
+  pending_admin:    { label: 'รอ Admin ตรวจสอบ',   color: 'bg-warn-soft text-warn' },
+  pending_approval: { label: 'รออนุมัติ',          color: 'bg-warn-soft text-warn' },
+  approved:         { label: 'อนุมัติแล้ว',         color: 'bg-success-soft text-success' },
+  rejected:         { label: 'ไม่อนุมัติ',          color: 'bg-danger-soft text-danger' },
 }
 
 export const TYPE_LABEL = {
-  major: { label: 'ล้างใหญ่',   color: 'bg-blue-100 text-blue-800' },
-  minor: { label: 'ล้างย่อย',   color: 'bg-purple-100 text-purple-800' },
-  fan:   { label: 'ล้างพัดลม', color: 'bg-teal-100 text-teal-800' },
+  major: { label: 'ล้างใหญ่',   color: 'bg-primary-soft text-primary' },
+  minor: { label: 'ล้างย่อย',   color: 'bg-indigo-50 text-indigo-600' },
+  fan:   { label: 'ล้างพัดลม', color: 'bg-success-soft text-success' },
 }

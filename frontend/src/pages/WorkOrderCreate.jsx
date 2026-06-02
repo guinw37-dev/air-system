@@ -275,7 +275,7 @@ export default function WorkOrderCreate() {
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto border border-gray-200 rounded-xl p-2">
+            <div className="flex flex-col gap-1.5 border border-line rounded-xl p-2">
               {loadingUnits && (
                 <p className="text-sm text-gray-400 text-center py-4">กำลังโหลด...</p>
               )}
@@ -320,9 +320,11 @@ export default function WorkOrderCreate() {
           <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>
         )}
 
-        <button type="submit" disabled={loading || !form.client_id} className="btn-primary text-center">
-          {loading ? 'กำลังสร้าง...' : 'สร้างใบงาน'}
-        </button>
+        <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-page/90 backdrop-blur border-t border-line">
+          <button type="submit" disabled={loading || !form.client_id} className="btn-primary text-center w-full">
+            {loading ? 'กำลังสร้าง...' : 'สร้างใบงาน'}
+          </button>
+        </div>
       </form>
     </Layout>
   )

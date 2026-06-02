@@ -248,8 +248,8 @@ router.put('/:id/inspection', authMiddleware,
           (work_order_unit_id, template_item_id, value_before, value_after, checked, note,
            val_r_before, val_s_before, val_t_before, val_r_after, val_s_after, val_t_after,
            val_ln_before, val_l_before, val_ln_after, val_l_after,
-           val_suction, val_discharge, refrigerant_type, val_text)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+           val_suction, val_discharge, refrigerant_type, val_text, power_system)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         ON CONFLICT (work_order_unit_id, template_item_id) DO UPDATE SET
           value_before=EXCLUDED.value_before, value_after=EXCLUDED.value_after,
           checked=EXCLUDED.checked, note=EXCLUDED.note,
@@ -258,13 +258,15 @@ router.put('/:id/inspection', authMiddleware,
           val_ln_before=EXCLUDED.val_ln_before, val_l_before=EXCLUDED.val_l_before,
           val_ln_after=EXCLUDED.val_ln_after, val_l_after=EXCLUDED.val_l_after,
           val_suction=EXCLUDED.val_suction, val_discharge=EXCLUDED.val_discharge,
-          refrigerant_type=EXCLUDED.refrigerant_type, val_text=EXCLUDED.val_text
+          refrigerant_type=EXCLUDED.refrigerant_type, val_text=EXCLUDED.val_text,
+          power_system=EXCLUDED.power_system
       `, [work_order_unit_id, v.template_item_id, v.value_before ?? null, v.value_after ?? null,
           v.checked ?? null, v.note ?? null,
           v.val_r_before ?? null, v.val_s_before ?? null, v.val_t_before ?? null,
           v.val_r_after ?? null, v.val_s_after ?? null, v.val_t_after ?? null,
           v.val_ln_before ?? null, v.val_l_before ?? null, v.val_ln_after ?? null, v.val_l_after ?? null,
-          v.val_suction ?? null, v.val_discharge ?? null, v.refrigerant_type ?? null, v.val_text ?? null]);
+          v.val_suction ?? null, v.val_discharge ?? null, v.refrigerant_type ?? null, v.val_text ?? null,
+          v.power_system ?? null]);
     }
     if (has_repair !== undefined || repair_notes !== undefined) {
       await client.query(
