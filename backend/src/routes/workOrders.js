@@ -70,15 +70,18 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // ── GET /api/work-orders ────────────────────────────────────────────────────
-// list — tenant scoped (client_id required), optional status/type filters
+// list — filter by client_id (recommended for tenant scoping) + status/type.
+// client_id is OPTIONAL: TW staff serve every client, so dashboards/recent-lists
+// legitimately query across clients. When omitted, returns all (provider's own
+// data — no cross-tenant leak since users aren't bound to one client).
 router.get('/', authMiddleware, async (req, res) => {
   const { client_id, status, type, limit = 50, offset = 0 } = req.query;
-  if (!client_id) return res.status(400).json({ error: 'client_id required' });
-  const where = ['w.client_id = $1'];
-  const params = [client_id];
-  let i = 2;
-  if (status) { where.push(`w.status = $${i++}`); params.push(status); }
-  if (type)   { where.push(`w.type = $${i++}`);   params.push(type); }
+  const where = ['1=1'];
+  const params = [];
+  let i = 1;
+  if (client_id) { where.push(`w.client_id = $${i++}`); params.push(client_id); }
+  if (status)    { where.push(`w.status = $${i++}`);     params.push(status); }
+  if (type)      { where.push(`w.type = $${i++}`);       params.push(type); }
   params.push(limit, offset);
   try {
     const { rows } = await pool.query(`
