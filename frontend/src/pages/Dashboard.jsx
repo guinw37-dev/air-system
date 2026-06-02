@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import {
   ClipboardList, Clock, CheckCircle, Wrench, Building2, Wind, Plus,
-  CalendarCheck, AlertTriangle, CalendarDays,
+  CalendarCheck, AlertTriangle, CalendarDays, Cpu, BarChart2, Activity,
+  ChevronRight,
 } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
@@ -14,7 +16,7 @@ import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/config'
 
-// ── PM widget helpers ─────────────────────────────────────────────────────────
+// ── PM Widget (preserved from previous version) ───────────────────────────────
 
 function effectivePmStatus(row) {
   if (row.status === 'done' || row.status === 'skipped') return row.status
@@ -43,7 +45,6 @@ function PMWidget({ clientId }) {
     }).catch(() => {})
   }, [clientId, year])
 
-  // This-month row from summary
   const monthRow = (summary || []).find((r) => Number(r.month) === thisMonth) || {}
   const pendingThisMonth = (monthRow.pending || 0)
   const doneThisMonth    = (monthRow.done    || 0)
@@ -81,85 +82,183 @@ function PMWidget({ clientId }) {
   )
 }
 
+// ── Unit health pie colors ────────────────────────────────────────────────────
+const HEALTH_COLORS = {
+  active:   '#22c55e',
+  broken:   '#ef4444',
+  inactive: '#9ca3af',
+}
+const HEALTH_LABEL = {
+  active:   'ปกติ',
+  broken:   'เสีย / ชำรุด',
+  inactive: 'ปิดใช้',
+}
+
+// ── WO trend bar colors ───────────────────────────────────────────────────────
+const WO_COLORS = {
+  major: '#2563eb',
+  minor: '#7c3aed',
+  fan:   '#0d9488',
+}
+
+// ── Custom tooltip for pie ────────────────────────────────────────────────────
+function PieTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0]
+  return (
+    <div className="bg-white shadow rounded-xl px-3 py-2 text-sm border border-gray-100">
+      <p className="font-medium text-gray-800">{HEALTH_LABEL[d.name] || d.name}</p>
+      <p className="text-gray-500">{d.value} เครื่อง</p>
+    </div>
+  )
+}
+
+// ── WO status badge ───────────────────────────────────────────────────────────
+function StatusBadge({ status }) {
+  const s = STATUS_LABEL[status] || { label: status, color: 'bg-gray-100 text-gray-700' }
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+}
+
+function TypeBadge({ type }) {
+  const t = TYPE_LABEL[type] || { label: type, color: 'bg-gray-100 text-gray-700' }
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
-  const [stats, setStats] = useState(null)
+
+  const [clients, setClients] = useState([])
+  const [clientId, setClientId] = useState('')
+  const [overview, setOverview] = useState(null)
+  const [woTrend, setWoTrend] = useState([])
+  const [unitHealth, setUnitHealth] = useState([])
+  const [topRepair, setTopRepair] = useState([])
   const [recentWos, setRecentWos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [firstClientId, setFirstClientId] = useState(null)
 
-  // Daily view
-  const [dailyDate, setDailyDate] = useState(dayjs().format('YYYY-MM-DD'))
-  const [dailyWos, setDailyWos] = useState([])
-  const [dailyLoading, setDailyLoading] = useState(false)
-
+  // Load clients once
   useEffect(() => {
-    Promise.all([
-      api.get('/stats'),
-      api.get('/work-orders?limit=8'),
-      api.get('/master/clients'),
-    ]).then(([s, w, c]) => {
-      setStats(s.data)
-      setRecentWos(w.data)
-      const clients = c.data || []
-      if (clients.length > 0) setFirstClientId(clients[0].id)
-    }).finally(() => setLoading(false))
+    api.get('/master/clients')
+      .then((r) => {
+        const list = r.data || []
+        setClients(list)
+        if (list.length > 0) setClientId(String(list[0].id))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    setDailyLoading(true)
-    api.get(`/stats/daily?date=${dailyDate}`)
-      .then((r) => setDailyWos(r.data))
-      .finally(() => setDailyLoading(false))
-  }, [dailyDate])
+  // Fetch all stats when clientId changes
+  const fetchStats = useCallback(() => {
+    if (!clientId) return
+    const p = clientId ? `?client_id=${clientId}` : ''
+    Promise.all([
+      api.get(`/stats/overview${p}`).catch(() => ({ data: {} })),
+      api.get(`/stats/wo-trend${p}&months=6`).catch(() => ({ data: [] })),
+      api.get(`/stats/unit-health${p}`).catch(() => ({ data: [] })),
+      api.get(`/stats/top-repair${p}&limit=10`).catch(() => ({ data: [] })),
+      api.get(`/work-orders${p}&limit=5`).catch(() => ({ data: [] })),
+    ]).then(([ov, trend, health, top, wos]) => {
+      setOverview(ov.data || {})
+      setWoTrend(trend.data || [])
+      setUnitHealth(health.data || [])
+      setTopRepair(top.data || [])
+      setRecentWos(wos.data || [])
+    })
+  }, [clientId])
+
+  useEffect(() => { fetchStats() }, [fetchStats])
 
   if (loading) return <PageSpinner />
 
   const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
 
-  const statCards = [
-    { icon: ClipboardList, label: 'กำลังดำเนินการ', value: stats?.in_progress ?? 0,  color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    { icon: Clock,         label: 'รออนุมัติ',        value: stats?.pending ?? 0,       color: 'text-orange-600', bg: 'bg-orange-50' },
-    { icon: CheckCircle,   label: 'อนุมัติแล้ว',      value: stats?.approved ?? 0,      color: 'text-green-600',  bg: 'bg-green-50'  },
-    { icon: Wrench,        label: 'แจ้งซ่อมค้าง',     value: stats?.open_repairs ?? 0,  color: 'text-red-500',    bg: 'bg-red-50'    },
-    { icon: Building2,     label: 'โรงพยาบาล',         value: stats?.hospitals ?? 0,     color: 'text-blue-600',   bg: 'bg-blue-50'   },
-    { icon: Wind,          label: 'เครื่องแอร์',        value: stats?.ac_units ?? 0,      color: 'text-teal-600',   bg: 'bg-teal-50'   },
+  // Summary cards
+  const wo = overview?.wo || {}
+  const units = overview?.units || {}
+  const summaryCards = [
+    {
+      icon: ClipboardList,
+      label: 'ใบงานเดือนนี้',
+      value: wo.this_month ?? 0,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+    },
+    {
+      icon: AlertTriangle,
+      label: 'PM เลยกำหนด',
+      value: overview?.pm_overdue ?? 0,
+      color: 'text-orange-600',
+      bg: 'bg-orange-50',
+    },
+    {
+      icon: Wrench,
+      label: 'เครื่องเสีย / ชำรุด',
+      value: (units.broken ?? 0) + (units.inactive ?? 0),
+      color: 'text-red-600',
+      bg: 'bg-red-50',
+    },
+    {
+      icon: Clock,
+      label: 'แจ้งซ่อมรอดำเนินการ',
+      value: overview?.repairs_open ?? 0,
+      color: 'text-yellow-600',
+      bg: 'bg-yellow-50',
+    },
   ]
 
-  const monthData = (stats?.by_month || []).map((r) => ({
+  // WO trend chart data
+  const trendData = woTrend.map((r) => ({
     month: r.month,
-    ใบงาน: r.count,
+    'ล้างใหญ่': r.major || 0,
+    'ล้างย่อย': r.minor || 0,
+    'พัดลม':   r.fan   || 0,
   }))
 
-  const typeData = (stats?.by_type || []).map((r) => ({
-    name: TYPE_LABEL[r.type]?.label || r.type,
-    count: r.count,
-  }))
+  // Pie data
+  const pieData = unitHealth
+    .filter((d) => d.n > 0)
+    .map((d) => ({ name: d.status, value: d.n }))
+
+  const totalUnits = pieData.reduce((s, d) => s + d.value, 0)
 
   return (
     <Layout title="Dashboard">
       <div className="p-6 flex flex-col gap-6">
 
-        {/* Greeting + action */}
-        <div className="flex items-center justify-between">
+        {/* Greeting + client selector */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">สวัสดี, {user?.name}</h2>
             <p className="text-sm text-gray-500">{dayjs().format('dddd DD MMMM YYYY')}</p>
           </div>
-          {!isOwnerAdmin && (
-            <button
-              onClick={() => navigate('/work-orders/new')}
-              className="btn-primary flex items-center gap-2"
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              className="input max-w-xs"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
             >
-              <Plus className="h-4 w-4" /> เปิดใบงาน
-            </button>
-          )}
+              <option value="">-- ทุก Client --</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {!isOwnerAdmin && (
+              <button
+                onClick={() => navigate('/work-orders/new')}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" /> เปิดใบงาน
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          {statCards.map(({ icon: Icon, label, value, color, bg }) => (
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          {summaryCards.map(({ icon: Icon, label, value, color, bg }) => (
             <div key={label} className={`${bg} rounded-2xl p-4 flex flex-col gap-2`}>
               <Icon className={`h-5 w-5 ${color}`} />
               <p className="text-2xl font-bold text-gray-900">{value}</p>
@@ -169,21 +268,24 @@ export default function Dashboard() {
         </div>
 
         {/* PM widget */}
-        {firstClientId && <PMWidget clientId={firstClientId} />}
+        {clientId && <PMWidget clientId={clientId} />}
 
-        {/* Charts */}
+        {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* WO by month */}
+          {/* WO Trend — stacked bar */}
           <div className="card lg:col-span-2">
             <h3 className="font-semibold text-gray-800 mb-4">ใบงานรายเดือน (6 เดือนล่าสุด)</h3>
-            {monthData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={monthData} barSize={28}>
+            {trendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={trendData} barSize={18}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip cursor={{ fill: '#eff6ff' }} />
-                  <Bar dataKey="ใบงาน" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Bar dataKey="ล้างใหญ่" stackId="a" fill={WO_COLORS.major} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="ล้างย่อย" stackId="a" fill={WO_COLORS.minor} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="พัดลม"   stackId="a" fill={WO_COLORS.fan}   radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -191,152 +293,131 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* WO by type */}
-          <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-4">แบ่งตามประเภท</h3>
-            <div className="flex flex-col gap-3">
-              {typeData.map((t) => (
-                <div key={t.name}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600">{t.name}</span>
-                    <span className="font-semibold text-gray-900">{t.count}</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${Math.min(100, (t.count / (stats?.approved + stats?.in_progress + stats?.pending || 1)) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-              {typeData.length === 0 && <p className="text-sm text-gray-400">ยังไม่มีข้อมูล</p>}
-            </div>
-          </div>
-        </div>
-
-        {/* Daily view */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <h3 className="font-semibold text-gray-800">ใบงานรายวัน</h3>
-            <input
-              type="date"
-              className="input w-auto text-sm"
-              value={dailyDate}
-              onChange={(e) => setDailyDate(e.target.value)}
-            />
-          </div>
-          {dailyLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-blue-600" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เลขที่</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">โรงพยาบาล</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ประเภท</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">สถานะ</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ช่าง</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เครื่อง</th>
-                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เวลา</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyWos.map((wo) => {
-                    const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
-                    const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
-                    return (
-                      <tr
-                        key={wo.id}
-                        onClick={() => navigate(`/work-orders/${wo.id}`)}
-                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
-                      >
-                        <td className="py-2.5 px-3 font-medium text-blue-600">{wo.order_no}</td>
-                        <td className="py-2.5 px-3 text-gray-700">{wo.hospital_name}</td>
-                        <td className="py-2.5 px-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
-                        </td>
-                        <td className="py-2.5 px-3 text-gray-600">{wo.tech1_name}</td>
-                        <td className="py-2.5 px-3 text-gray-500">{wo.item_count}</td>
-                        <td className="py-2.5 px-3 text-gray-400 text-xs">{dayjs(wo.created_at).format('HH:mm')}</td>
-                      </tr>
-                    )
-                  })}
-                  {dailyWos.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-gray-400 text-sm">
-                        ไม่มีใบงานในวันที่ {dayjs(dailyDate).format('DD/MM/YYYY')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Recent WOs — table */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">ใบงานล่าสุด</h3>
-            <button onClick={() => navigate('/work-orders')} className="text-sm text-blue-600 hover:underline">
-              ดูทั้งหมด →
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">เลขที่</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">โรงพยาบาล</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ประเภท</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">สถานะ</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">ช่าง</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">วันที่</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentWos.map((wo) => {
-                  const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
-                  const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
-                  return (
-                    <tr
-                      key={wo.id}
-                      onClick={() => navigate(`/work-orders/${wo.id}`)}
-                      className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+          {/* Unit health pie */}
+          <div className="card flex flex-col">
+            <h3 className="font-semibold text-gray-800 mb-3">สถานะเครื่อง</h3>
+            {pieData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={72}
+                      paddingAngle={2}
+                      dataKey="value"
                     >
-                      <td className="py-2.5 px-3 font-medium text-blue-600">{wo.order_no}</td>
-                      <td className="py-2.5 px-3 text-gray-700">{wo.hospital_name}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.color}`}>{t.label}</span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
-                      </td>
-                      <td className="py-2.5 px-3 text-gray-600">{wo.tech1_name}</td>
-                      <td className="py-2.5 px-3 text-gray-400 text-xs">{dayjs(wo.created_at).format('DD/MM/YY HH:mm')}</td>
-                    </tr>
-                  )
-                })}
-                {recentWos.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-gray-400 text-sm">ยังไม่มีใบงาน</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={HEALTH_COLORS[entry.name] || '#9ca3af'} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {pieData.map((d) => (
+                    <div key={d.name} className="flex items-center gap-2 text-xs text-gray-600">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ background: HEALTH_COLORS[d.name] || '#9ca3af' }}
+                      />
+                      <span className="flex-1">{HEALTH_LABEL[d.name] || d.name}</span>
+                      <span className="font-semibold text-gray-800">{d.value}</span>
+                      <span className="text-gray-400">({totalUnits > 0 ? Math.round(d.value / totalUnits * 100) : 0}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">ยังไม่มีข้อมูล</div>
+            )}
           </div>
         </div>
+
+        {/* Bottom row — top repair + recent WOs */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* Top repair units */}
+          <div className="card">
+            <h3 className="font-semibold text-gray-800 mb-4">เครื่องที่แจ้งซ่อมมากที่สุด</h3>
+            {topRepair.length === 0 ? (
+              <p className="text-sm text-gray-400 py-6 text-center">ยังไม่มีข้อมูล</p>
+            ) : (
+              <div className="flex flex-col divide-y divide-gray-50">
+                {topRepair.map((u, idx) => (
+                  <button
+                    key={u.unit_id}
+                    onClick={() => navigate(`/units/${u.unit_id}`)}
+                    className="flex items-center gap-3 py-2.5 hover:bg-gray-50 rounded-lg px-1 transition-colors text-left"
+                  >
+                    <span className="text-xs font-bold text-gray-400 w-5 text-center shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-blue-700 font-mono">{u.asset_code}</p>
+                      <p className="text-xs text-gray-500 truncate">{u.unit_name} · {u.room_name || '-'}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-sm font-bold text-gray-700">{u.repair_count}</span>
+                      <span className="text-xs text-gray-400">ครั้ง</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent WOs */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-800">ใบงานล่าสุด</h3>
+              <button
+                onClick={() => navigate('/work-orders')}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                ดูทั้งหมด →
+              </button>
+            </div>
+            {recentWos.length === 0 ? (
+              <p className="text-sm text-gray-400 py-6 text-center">ยังไม่มีใบงาน</p>
+            ) : (
+              <div className="flex flex-col divide-y divide-gray-50">
+                {recentWos.map((wo) => (
+                  <button
+                    key={wo.id}
+                    onClick={() => navigate(`/work-orders/${wo.id}`)}
+                    className="flex items-center gap-3 py-2.5 hover:bg-gray-50 rounded-lg px-1 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-blue-600">{wo.order_no}</span>
+                        <TypeBadge type={wo.type} />
+                        <StatusBadge status={wo.status} />
+                      </div>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{wo.client_name || wo.site_name || '-'}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs text-gray-400">
+                        {wo.created_at ? dayjs(wo.created_at).format('DD/MM/YY') : '-'}
+                      </p>
+                      <ChevronRight className="h-3.5 w-3.5 text-gray-300 ml-auto mt-1" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </Layout>
   )
 }
 
+// ── WoCard export (kept for backward compat) ──────────────────────────────────
 export function WoCard({ wo, onClick }) {
   const s = STATUS_LABEL[wo.status] || { label: wo.status, color: 'bg-gray-100 text-gray-700' }
   const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'bg-gray-100 text-gray-700' }
