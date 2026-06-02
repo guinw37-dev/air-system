@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
+import SyncIndicator from './SyncIndicator'
 
 const NAV = [
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
@@ -161,6 +162,7 @@ export default function Layout({ children, title, back, actions }) {
           )}
 
           <h1 className="flex-1 font-semibold text-gray-800 text-base truncate">{title || 'Air System'}</h1>
+          <SyncIndicator />
           {actions}
         </header>
 

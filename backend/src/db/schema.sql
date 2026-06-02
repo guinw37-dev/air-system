@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS work_order_photos (
   label              VARCHAR(150),
   url                TEXT NOT NULL,
   filename           TEXT,
+  client_token       VARCHAR(64) UNIQUE,   -- idempotency key for offline sync (กัน upload ซ้ำ)
   taken_at           TIMESTAMPTZ DEFAULT NOW()
 );
 

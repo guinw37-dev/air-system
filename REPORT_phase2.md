@@ -55,9 +55,17 @@ draft → in_progress → pending_admin → pending_approval → approved
 - รวม `npm test` = tenant 7 + state machine 12 = **24/24** ผ่าน (ไม่ต้อง DB)
 - `node --check` ทุกไฟล์ backend · `npm run build` frontend ผ่าน
 
+## 4b. Offline-first (§5) — ✅ ทำแล้ว
+- `lib/offline/db.js` — IndexedDB outbox (1 store, index by createdAt/woId)
+- `lib/offline/sync.js` — sync engine: enqueue inspection/photo, flush เมื่อ online, retry queue, online/offline listeners + periodic flush 15s
+- `store/offline.js` + `components/SyncIndicator.jsx` — state + pill ใน header: "บันทึกแล้ว / รอ sync N / กำลัง sync / ออฟไลน์"
+- `WorkOrderUnitDetail` — inspection auto-save + photo capture เข้า outbox; รูป offline แสดงทันที + badge "รอ sync"
+- **Idempotent:** inspection upsert (server) + photo `client_token` (server ON CONFLICT กัน upload ซ้ำ) → re-sync ปลอดภัย ไม่ซ้ำ
+- backend: `work_order_photos.client_token` + unique index (เพิ่มใน schema + migrate_phase2)
+
 ## 4. ยังไม่ทำ / เลื่อนเฟสถัดไป
-- **Offline-first (§5)** — IndexedDB queue + auto-sync + indicator ยังไม่ทำ (ส่วนซับซ้อนสุด ทำเป็น chunk แยก) ตอนนี้เป็น online-only
 - **area_owner no-login token** — ตอนนี้เซ็นผ่านหน้า detail (ต้อง login) flow QR/token สั้นยังไม่ทำ
+- **ลบรูป pending** — รูปที่ยัง queue อยู่ ลบไม่ได้ (รอ sync ก่อน) — v1 keep simple
 - **camera capture จริงบนมือถือ** — ใช้ `<input capture>` พื้นฐาน ยังไม่ทำ live camera preview
 - **รายงาน PDF 4 แบบ** — ยัง 501 (เฟส report)
 

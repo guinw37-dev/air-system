@@ -17,6 +17,7 @@ import { Camera, AlertTriangle, Trash2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
+import { enqueueInspection, enqueuePhoto, getPendingPhotos } from '../lib/offline/sync'
 
 const PHASES = [
   { key: 'before',      label: 'ก่อนล้าง' },
@@ -65,9 +66,12 @@ export default function WorkOrderUnitDetail() {
       setWo(woData)
       setItem(itemData || null)
 
-      // Flatten photos for this unit
+      // Flatten photos for this unit — server photos + locally-queued (offline) ones
       const photosMap = photosRes.data || {}
-      setPhotos(photosMap[unitId] || [])
+      const serverPhotos = photosMap[unitId] || []
+      const pending = (await getPendingPhotos(woId).catch(() => []))
+        .filter((p) => String(p.work_order_unit_id) === String(unitId))
+      setPhotos([...serverPhotos, ...pending])
 
       // Seed values from existing inspections
       const existing = (woData.inspections || []).filter(
@@ -122,7 +126,10 @@ export default function WorkOrderUnitDetail() {
           has_repair:   nextHasRepair,
           repair_notes: nextRepairNotes || null,
         }
-        await api.put(`/work-orders/${woId}/inspection`, payload)
+        // Persist to the offline outbox (IndexedDB) and let the sync engine push
+        // it to the server. Works the same online or offline; the global
+        // SyncIndicator shows whether it has reached the server yet.
+        await enqueueInspection(woId, payload)
         setSaveStatus('saved')
       } catch {
         setSaveStatus('error')
@@ -157,29 +164,42 @@ export default function WorkOrderUnitDetail() {
     if (!file) return
     e.target.value = ''
     try {
-      const fd = new FormData()
-      fd.append('photo', file)
-      fd.append('work_order_unit_id', String(unitId))
-      fd.append('phase', uploadingPhase)
-      fd.append('point_no', String(uploadingPointNo))
-      fd.append('label', `${uploadingPhase} ${uploadingPointNo}`)
-      await api.post(`/work-orders/${woId}/photos`, fd)
-      // Reload photos
-      const r = await api.get(`/work-orders/${woId}/photos`)
-      setPhotos((r.data || {})[unitId] || [])
+      // Queue the photo (with its blob) in the outbox. Optimistically show it
+      // right away with a "รอ sync" badge; the engine uploads it when online.
+      const fields = {
+        work_order_unit_id: String(unitId),
+        phase: uploadingPhase,
+        point_no: String(uploadingPointNo),
+        label: `${uploadingPhase} ${uploadingPointNo}`,
+      }
+      const token = await enqueuePhoto(woId, fields, file)
+      setPhotos((prev) => [
+        ...prev,
+        {
+          id: `photo:${token}`,
+          token,
+          work_order_unit_id: Number(unitId),
+          phase: uploadingPhase,
+          point_no: uploadingPointNo,
+          label: fields.label,
+          objectUrl: URL.createObjectURL(file),
+          pending: true,
+        },
+      ])
     } catch (err) {
-      alert(err.response?.data?.error || 'อัปโหลดรูปไม่สำเร็จ')
+      alert(err.response?.data?.error || 'บันทึกรูปไม่สำเร็จ')
     } finally {
       setUploadingPhase(null)
       setUploadingPointNo(null)
     }
   }
 
-  const deletePhoto = async (photoId) => {
+  const deletePhoto = async (photo) => {
+    if (photo.pending) return // queued photos: leave to sync (kept simple for v1)
     if (!confirm('ลบรูปนี้?')) return
     try {
-      await api.delete(`/work-orders/${woId}/photos/${photoId}`)
-      setPhotos((p) => p.filter((x) => x.id !== photoId))
+      await api.delete(`/work-orders/${woId}/photos/${photo.id}`)
+      setPhotos((p) => p.filter((x) => x.id !== photo.id))
     } catch (err) {
       alert(err.response?.data?.error || 'ลบไม่สำเร็จ')
     }
@@ -385,18 +405,25 @@ export default function WorkOrderUnitDetail() {
                     <span className="ml-2 text-gray-400 font-normal text-xs">({phasePhotos.length} รูป)</span>
                   </h3>
                   <div className="grid grid-cols-2 gap-2">
-                    {phasePhotos.map((p) => (
+                    {phasePhotos.map((p) => {
+                      const src = p.pending ? p.objectUrl : photoUrl(p.url)
+                      return (
                       <div key={p.id} className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
                         <div className="relative">
                           <img
-                            src={photoUrl(p.url)}
+                            src={src}
                             alt={p.label}
                             className="w-full aspect-square object-cover cursor-zoom-in"
-                            onClick={() => setLightbox({ url: photoUrl(p.url), label: p.label })}
+                            onClick={() => setLightbox({ url: src, label: p.label })}
                           />
-                          {canEdit && (
+                          {p.pending && (
+                            <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                              รอ sync
+                            </span>
+                          )}
+                          {canEdit && !p.pending && (
                             <button
-                              onClick={() => deletePhoto(p.id)}
+                              onClick={() => deletePhoto(p)}
                               className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -407,7 +434,8 @@ export default function WorkOrderUnitDetail() {
                           <p className="text-xs text-gray-500 truncate">{p.label || `${phase}`}</p>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
 
                     {/* Add photo button */}
                     {canEdit && (

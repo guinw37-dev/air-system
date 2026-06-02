@@ -23,7 +23,14 @@ async function migrate() {
     await client.query(
       'CREATE INDEX IF NOT EXISTS idx_wo_history_wo ON work_order_status_history(work_order_id)'
     );
-    console.log('Phase-2 migration complete — work_order_status_history ready (no data dropped)');
+    // idempotency key for offline photo sync (กัน upload ซ้ำเวลา re-sync)
+    await client.query(
+      'ALTER TABLE work_order_photos ADD COLUMN IF NOT EXISTS client_token VARCHAR(64)'
+    );
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_wo_photos_client_token ON work_order_photos(client_token) WHERE client_token IS NOT NULL'
+    );
+    console.log('Phase-2 migration complete — status_history + photos.client_token ready (no data dropped)');
   } catch (err) {
     console.error('Phase-2 migration error:', err.message);
     process.exit(1);

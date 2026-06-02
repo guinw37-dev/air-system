@@ -512,7 +512,7 @@ const upload = multer({
 
 // POST /api/work-orders/:id/photos — concurrent-safe (always append)
 router.post('/:id/photos', authMiddleware, upload.single('photo'), async (req, res) => {
-  let { work_order_unit_id, phase, point_no, label } = req.body;
+  let { work_order_unit_id, phase, point_no, label, client_token } = req.body;
   if (!work_order_unit_id || !phase || !req.file) {
     return res.status(400).json({ error: 'work_order_unit_id, phase, and photo required' });
   }
@@ -524,6 +524,17 @@ router.post('/:id/photos', authMiddleware, upload.single('photo'), async (req, r
   if (!wo) return res.status(404).json({ error: 'Not found' });
   if (!isEditable(wo.status)) return res.status(409).json({ error: 'ใบงานปิด/อยู่ระหว่างอนุมัติ เพิ่มรูปไม่ได้' });
   try {
+    // idempotency: an offline re-sync with the same client_token returns the
+    // already-stored row instead of inserting a duplicate.
+    if (client_token) {
+      const { rows: dup } = await pool.query(
+        'SELECT * FROM work_order_photos WHERE client_token = $1', [client_token]
+      );
+      if (dup.length) {
+        fs.unlink(req.file.path, () => {}); // discard the redundant upload
+        return res.status(200).json(dup[0]);
+      }
+    }
     // guard: unit belongs to this WO + fetch its unit_id
     const { rows: chk } = await pool.query(
       'SELECT unit_id FROM work_order_units WHERE id=$1 AND work_order_id=$2',
@@ -532,9 +543,16 @@ router.post('/:id/photos', authMiddleware, upload.single('photo'), async (req, r
     if (!chk.length) return res.status(404).json({ error: 'work_order_unit not in this WO' });
     const url = `/uploads/photos/${work_order_unit_id}/${req.file.filename}`;
     const { rows } = await pool.query(`
-      INSERT INTO work_order_photos (work_order_unit_id, unit_id, uploaded_by, phase, point_no, label, url, filename)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
-    `, [work_order_unit_id, chk[0].unit_id, req.user.id, phase, parseInt(point_no || 1, 10), label || null, url, req.file.filename]);
+      INSERT INTO work_order_photos (work_order_unit_id, unit_id, uploaded_by, phase, point_no, label, url, filename, client_token)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (client_token) DO NOTHING
+      RETURNING *
+    `, [work_order_unit_id, chk[0].unit_id, req.user.id, phase, parseInt(point_no || 1, 10), label || null, url, req.file.filename, client_token || null]);
+    // ON CONFLICT race: another concurrent sync won — fetch the winner
+    if (!rows.length && client_token) {
+      const { rows: won } = await pool.query('SELECT * FROM work_order_photos WHERE client_token = $1', [client_token]);
+      return res.status(200).json(won[0]);
+    }
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
