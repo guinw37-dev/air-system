@@ -55,6 +55,30 @@ export default function WorkOrderUnitDetail() {
   // Tab
   const [tab, setTab] = useState('checklist')
 
+  // "ขอเปิด" — explicit repair request (creates repair_logs status 'open')
+  const [repairOpen, setRepairOpen]       = useState(false)
+  const [repairProblem, setRepairProblem] = useState('')
+  const [repairBusy, setRepairBusy]       = useState(false)
+  const [repairDone, setRepairDone]       = useState(false)
+
+  const submitRepairRequest = async () => {
+    if (!repairProblem.trim()) return
+    setRepairBusy(true)
+    try {
+      await api.post(`/work-orders/${woId}/repair-request`, {
+        work_order_unit_id: Number(unitId),
+        problem: repairProblem.trim(),
+      })
+      setRepairDone(true)
+      setRepairOpen(false)
+      setRepairProblem('')
+    } catch (err) {
+      alert(err.response?.data?.error || 'ขอเปิดไม่สำเร็จ')
+    } finally {
+      setRepairBusy(false)
+    }
+  }
+
   const load = useCallback(async () => {
     try {
       const [woRes, photosRes] = await Promise.all([
@@ -123,8 +147,8 @@ export default function WorkOrderUnitDetail() {
             checked:      !!v.checked,
             note:         v.note || null,
           })),
-          has_repair:   nextHasRepair,
-          repair_notes: nextRepairNotes || null,
+          // has_repair/repair_notes intentionally omitted — repairs are raised
+          // via the explicit "ขอเปิด" action, not the inspection auto-save.
         }
         // Persist to the offline outbox (IndexedDB) and let the sync engine push
         // it to the server. Works the same online or offline; the global
@@ -365,29 +389,50 @@ export default function WorkOrderUnitDetail() {
               </div>
             ))}
 
-            {/* Repair flag */}
+            {/* ขอเปิด — แจ้งแอร์ผิดปกติ (สร้างคำขอเปิดงานซ่อม) */}
             <div className="card">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-red-500"
-                  checked={hasRepair}
-                  disabled={!canEdit}
-                  onChange={(e) => updateRepair(e.target.checked, repairNotes)}
-                />
-                <span className="flex items-center gap-2 text-sm font-medium text-red-700">
-                  <AlertTriangle className="h-4 w-4" /> พบปัญหา / แจ้งซ่อม
-                </span>
-              </label>
-              {hasRepair && (
-                <textarea
-                  className="input mt-3"
-                  rows={3}
-                  placeholder="รายละเอียดปัญหา..."
-                  value={repairNotes}
-                  disabled={!canEdit}
-                  onChange={(e) => updateRepair(hasRepair, e.target.value)}
-                />
+              {repairDone ? (
+                <p className="flex items-center gap-2 text-sm font-medium text-green-700">
+                  <AlertTriangle className="h-4 w-4" /> ส่งคำขอเปิดแล้ว
+                </p>
+              ) : !repairOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setRepairOpen(true)}
+                  className="flex items-center gap-2 text-sm font-medium text-red-700"
+                >
+                  <AlertTriangle className="h-4 w-4" /> ขอเปิด (พบแอร์ผิดปกติ)
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-red-700">
+                    <AlertTriangle className="h-4 w-4" /> ขอเปิด — ระบุอาการผิดปกติ
+                  </span>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    placeholder="อาการ / ปัญหาที่พบ..."
+                    value={repairProblem}
+                    onChange={(e) => setRepairProblem(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={submitRepairRequest}
+                      disabled={repairBusy || !repairProblem.trim()}
+                      className="btn-primary text-sm py-2 disabled:opacity-50"
+                    >
+                      {repairBusy ? 'กำลังส่ง...' : 'ส่งคำขอเปิด'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setRepairOpen(false); setRepairProblem('') }}
+                      className="text-sm text-gray-500 px-3"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
