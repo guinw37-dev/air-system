@@ -90,6 +90,7 @@ export async function flush() {
   try {
     const items = await getAllItems() // ordered by createdAt
     for (const item of items) {
+      if (item.failed) continue // permanently un-appliable — kept, not retried (audit F5-B)
       try {
         if (item.kind === 'inspection') {
           await api.put(`/work-orders/${item.woId}/inspection`, item.payload)
@@ -113,10 +114,12 @@ export async function flush() {
         // server rejected (4xx/5xx). Record the error; retry on next flush.
         item.retries = (item.retries || 0) + 1
         item.lastError = err.response?.data?.error || String(err)
+        // After many tries, mark as failed and STOP retrying — but NEVER delete
+        // the user's captured content silently (audit F5-B). It stays in the
+        // outbox (kept for manual recovery) and is skipped on future flushes.
+        if (item.retries >= 8) item.failed = true
         await putItem(item)
         store.setLastError(item.lastError)
-        // give up after many tries to avoid blocking the whole queue
-        if (item.retries >= 8) await deleteItem(item.id)
       }
     }
   } finally {

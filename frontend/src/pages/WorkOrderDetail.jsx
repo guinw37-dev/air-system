@@ -66,6 +66,12 @@ export default function WorkOrderDetail() {
 
   useEffect(() => { load() }, [load])
 
+  // Clear sign-modal poll/countdown intervals on unmount (audit Q-A)
+  useEffect(() => () => {
+    clearInterval(signPollRef.current)
+    clearInterval(signCountRef.current)
+  }, [])
+
   // Load units for edit
   useEffect(() => {
     if (!showAddUnit || !wo) return

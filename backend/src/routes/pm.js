@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware/auth');
+// PM plan write access — provider admins only (not field technicians)
+const canPlan = requireRole('admin', 'central_admin');
 const dayjs = require('dayjs');
 const { buildUnitEvents } = require('../services/pmPlanner');
 
@@ -108,7 +110,7 @@ router.get('/yearly-plan', authMiddleware, async (req, res) => {
 
 // POST /api/pm/plan — create planned PM entry
 // OLD: ac_unit_id → NEW: unit_id; pm_plan now requires client_id too
-router.post('/plan', authMiddleware, async (req, res) => {
+router.post('/plan', authMiddleware, canPlan, async (req, res) => {
   const unit_id = req.body.unit_id || req.body.ac_unit_id;
   const { planned_type, scheduled_date } = req.body;
   if (!unit_id || !planned_type || !scheduled_date) {
@@ -132,7 +134,7 @@ router.post('/plan', authMiddleware, async (req, res) => {
 
 // POST /api/pm/generate-plan — auto-generate planned entries for a year
 // OLD: ac_units, departments → NEW: units, rooms
-router.post('/generate-plan', authMiddleware, async (req, res) => {
+router.post('/generate-plan', authMiddleware, canPlan, async (req, res) => {
   const { building_id, year } = req.body;
   if (!building_id || !year) return res.status(400).json({ error: 'building_id and year required' });
 
@@ -193,7 +195,7 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/pm/plan/:id — remove planned entry
-router.delete('/plan/:id', authMiddleware, async (req, res) => {
+router.delete('/plan/:id', authMiddleware, canPlan, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM pm_plan WHERE id = $1 AND status = 'pending' RETURNING *`,
@@ -229,7 +231,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
 
 // POST /api/pm/generate?client_id=&site_id=&year=  — generate a year's plan
 // (tenant-scoped; idempotent: skips a unit/date that already has a plan row)
-router.post('/generate', authMiddleware, async (req, res) => {
+router.post('/generate', authMiddleware, canPlan, async (req, res) => {
   const client_id = req.query.client_id || req.body.client_id;
   const site_id   = req.query.site_id   || req.body.site_id;
   const year      = parseInt(req.query.year || req.body.year || new Date().getFullYear(), 10);
@@ -307,7 +309,7 @@ router.get('/plan', authMiddleware, async (req, res) => {
 });
 
 // PUT /api/pm/plan/:id — reschedule (+ reason)
-router.put('/plan/:id', authMiddleware, async (req, res) => {
+router.put('/plan/:id', authMiddleware, canPlan, async (req, res) => {
   const { scheduled_date, note } = req.body;
   if (!scheduled_date) return res.status(400).json({ error: 'scheduled_date required' });
   const { rows } = await pool.query(
@@ -320,7 +322,7 @@ router.put('/plan/:id', authMiddleware, async (req, res) => {
 });
 
 // PUT /api/pm/plan/:id/skip — skip (+ reason required)
-router.put('/plan/:id/skip', authMiddleware, async (req, res) => {
+router.put('/plan/:id/skip', authMiddleware, canPlan, async (req, res) => {
   const { note } = req.body;
   if (!note?.trim()) return res.status(400).json({ error: 'ระบุเหตุผลการข้าม' });
   const { rows } = await pool.query(
