@@ -174,7 +174,9 @@ router.get('/:id/history', authMiddleware, async (req, res) => {
 
 // ── PUT /api/work-orders/:id/units ──────────────────────────────────────────
 // เพิ่ม/ลดเครื่อง — เฉพาะตอนยังแก้ได้ (draft/in_progress/rejected) ก่อนปิดงาน
-router.put('/:id/units', authMiddleware, async (req, res) => {
+router.put('/:id/units', authMiddleware,
+  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  async (req, res) => {
   const { unit_ids = [] } = req.body;
   if (!Array.isArray(unit_ids)) return res.status(400).json({ error: 'unit_ids must be an array' });
   const wo = await getWO(req.params.id);
@@ -290,7 +292,9 @@ router.put('/:id/inspection', authMiddleware,
 });
 
 // ── PUT /api/work-orders/:id/condition — team condition assessment (TW) ─────
-router.put('/:id/condition', authMiddleware, async (req, res) => {
+router.put('/:id/condition', authMiddleware,
+  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  async (req, res) => {
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
   if (!isEditable(wo.status)) return res.status(409).json({ error: 'ใบงานปิด/อยู่ระหว่างอนุมัติ แก้ไม่ได้' });
@@ -571,7 +575,9 @@ router.get('/:id/sign-status', authMiddleware, async (req, res) => {
 // is found on-site. Creates a repair_logs row (status 'open'). This is the AC
 // path into the separate repair-report workflow; it is explicit (a button),
 // not a side-effect of submitting the work order.
-router.post('/:id/repair-request', authMiddleware, async (req, res) => {
+router.post('/:id/repair-request', authMiddleware,
+  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  async (req, res) => {
   const { work_order_unit_id, problem } = req.body;
   if (!work_order_unit_id || !problem?.trim()) {
     return res.status(400).json({ error: 'work_order_unit_id และ problem จำเป็น' });
@@ -604,6 +610,16 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
   const valid = ['area_owner', 'central_admin', 'approver'];
   if (!role || !signature_data) return res.status(400).json({ error: 'role and signature_data required' });
   if (!valid.includes(role)) return res.status(400).json({ error: `role must be one of: ${valid.join(', ')}` });
+  // RBAC: a signature of role X may only be written by that role (or admin).
+  // area_owner is the on-site signer captured by the assigned technician/admin.
+  const allowedSigners = {
+    area_owner:    ['technician', 'central_admin', 'admin'],
+    central_admin: ['central_admin', 'admin'],
+    approver:      ['approver', 'admin'],
+  };
+  if (!allowedSigners[role].includes(req.user.role)) {
+    return res.status(403).json({ error: `role ${req.user.role} ลงลายเซ็น ${role} ไม่ได้` });
+  }
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
   if (wo.status === 'approved') return res.status(409).json({ error: 'ใบงานปิดแล้ว แก้ลายเซ็นไม่ได้' });
@@ -621,15 +637,20 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
 
 // ── Photos (nested under work order) ────────────────────────────────────────
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+// Sanitize path components from the multipart body BEFORE they touch the
+// filesystem (multer reads req.body in destination/filename, before the handler
+// validates). Prevents path traversal via crafted work_order_unit_id/phase/point_no.
+const safeInt = (v) => { const n = parseInt(v, 10); return Number.isInteger(n) && n > 0 ? String(n) : 'misc'; };
+const safePhase = (v) => (['before', 'after', 'measurement', 'during'].includes(v) ? v : 'x');
+const safeExt = (name) => { const e = path.extname(String(name || '')).toLowerCase(); return /^\.[a-z0-9]{1,5}$/.test(e) ? e : '.jpg'; };
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(UPLOAD_DIR, 'photos', String(req.body.work_order_unit_id || 'misc'));
+    const dir = path.join(UPLOAD_DIR, 'photos', safeInt(req.body.work_order_unit_id));
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${req.body.phase}_${req.body.point_no || 1}_${Date.now()}${ext}`);
+    cb(null, `${safePhase(req.body.phase)}_${safeInt(req.body.point_no)}_${Date.now()}${safeExt(file.originalname)}`);
   },
 });
 const upload = multer({

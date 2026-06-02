@@ -11,7 +11,9 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       INSERT INTO part_requisitions (client_id, unit_id, work_order_id, part_name, qty, note, requisitioned_by)
-      SELECT u.client_id, $1, $2, $3, $4, $5, $6
+      SELECT u.client_id, $1,
+             (SELECT w.id FROM work_orders w WHERE w.id = $2 AND w.client_id = u.client_id),
+             $3, $4, $5, $6
       FROM units u WHERE u.id = $1
       RETURNING *
     `, [unit_id, work_order_id || null, part_name, qty || 1, note || null, req.user.id]);

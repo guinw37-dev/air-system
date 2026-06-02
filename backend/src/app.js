@@ -24,7 +24,8 @@ app.use('/uploads', express.static(UPLOAD_DIR));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', require('./routes/workOrders'));
-app.use('/api/photos', require('./routes/photos'));
+// /api/photos (legacy, unguarded) retired — secure photo endpoints live under
+// /api/work-orders/:id/photos (audit H-1)
 app.use('/api/repair-logs', require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
 app.use('/api/stats',       require('./routes/stats'));

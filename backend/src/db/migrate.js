@@ -16,6 +16,22 @@ async function migrate() {
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   const client = await pool.connect();
   try {
+    // GUARD (audit B3): refuse the destructive DROP if the DB already holds data,
+    // unless explicitly forced. Prevents an accidental `npm run migrate` from
+    // wiping production. Use additive `npm run migrate:phaseN` for live DBs.
+    if (process.env.ALLOW_DESTRUCTIVE_MIGRATE !== 'yes') {
+      const { rows } = await client.query(
+        "SELECT to_regclass('public.work_orders') IS NOT NULL AS has_tables"
+      );
+      if (rows[0].has_tables) {
+        const { rows: cnt } = await client.query('SELECT COUNT(*)::int AS n FROM work_orders');
+        if (cnt[0].n > 0) {
+          console.error(`REFUSED: work_orders has ${cnt[0].n} rows. This DROPs all tables.`);
+          console.error('Set ALLOW_DESTRUCTIVE_MIGRATE=yes to force, or use npm run migrate:phaseN (additive).');
+          process.exit(1);
+        }
+      }
+    }
     await client.query('BEGIN');
     await client.query(`
       DROP TABLE IF EXISTS

@@ -5,3 +5,12 @@ node_modules/
 uploads/
 *.log
 .DS_Store
+
+# local planning prompts, scratch + data (not part of the app)
+CLAUDE.md
+CLAUDE_*.md
+.claude_tasks/
+ac-data-clean.xlsx
+files.zip
+preview.json
+tw_*.html

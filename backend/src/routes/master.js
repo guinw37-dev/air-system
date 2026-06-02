@@ -366,6 +366,8 @@ router.get('/photo-points', authMiddleware, async (req, res) => {
 
 // ── Users (role ใหม่ 4 แบบ; ตาราง users ไม่มี updated_at) ────────────────────
 
+// NOTE: kept accessible to all authenticated staff — the WO-create assignee
+// picker (technicians) needs id/name/role. Returns no password_hash. (audit F-5)
 router.get('/users', authMiddleware, async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, name, username, role, phone, active FROM users ORDER BY name'

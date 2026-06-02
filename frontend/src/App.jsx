@@ -8,7 +8,6 @@ import WorkOrderList from './pages/WorkOrderList'
 import WorkOrderCreate from './pages/WorkOrderCreate'
 import WorkOrderDetail from './pages/WorkOrderDetail'
 import WorkOrderUnitDetail from './pages/WorkOrderUnitDetail'
-import AcItemDetail from './pages/AcItemDetail'
 import RepairLogs from './pages/RepairLogs'
 import MasterData from './pages/MasterData'
 import Users from './pages/Users'
@@ -51,8 +50,6 @@ export default function App() {
         <Route path="/work-orders/:id" element={<RequireAuth><WorkOrderDetail /></RequireAuth>} />
         {/* New unit-level detail page */}
         <Route path="/work-orders/:id/units/:unitId" element={<RequireAuth><WorkOrderUnitDetail /></RequireAuth>} />
-        {/* Keep old items route alive for any existing links */}
-        <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
