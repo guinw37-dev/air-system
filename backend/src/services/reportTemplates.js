@@ -279,7 +279,7 @@ function styleBlock(brand) {
     .result-line .opt { display: inline-flex; align-items: center; gap: 5px; margin-right: 18px; }
 
     /* ===================================================================== */
-    /* LMT แบบ C — compact per-unit page. All styles scoped to .major-c so   */
+    /* TW แบบ C — compact per-unit page. All styles scoped to .major-c so   */
     /* the minor / cover / fan reports are unaffected.                        */
     /* ===================================================================== */
     @page { size: A4 portrait; }
@@ -655,8 +655,8 @@ function majorCoverSheet(data) {
 
 const PHOTOS_PER_PAGE = 6;
 
-// LMT แบบ C — fixed category order + Thai display labels.
-const LMT_CATEGORIES = [
+// TW แบบ C — fixed category order + Thai display labels.
+const TW_CATEGORIES = [
   { key: 'all3', label: 'ใช้งานทั้ง 3 ประเภท' },
   { key: 'refrigerant', label: 'แอร์น้ำยา' },
   { key: 'fcu', label: 'FCU' },
@@ -717,7 +717,7 @@ function measurementSubBox(it) {
   return '';
 }
 
-// Build the ONE full-width LMT checklist table for a unit. Renders all 5
+// Build the ONE full-width TW checklist table for a unit. Renders all 5
 // categories in fixed order with a vertical teal label column (rowspan).
 function checklistTable(unit) {
   const groups = groupByCategory(unit && unit.inspections);
@@ -725,7 +725,7 @@ function checklistTable(unit) {
   for (const g of groups) byCat.set(g.category, g.items);
 
   const bodyRows = [];
-  for (const cat of LMT_CATEGORIES) {
+  for (const cat of TW_CATEGORIES) {
     const items = byCat.get(cat.key) || [];
     if (!items.length) continue; // template has no rows for this category → skip
     const applies = categoryApplies(cat.key, unit);
@@ -872,7 +872,7 @@ function photoGalleryPages(unit, data) {
   return frags;
 }
 
-// Compact header band for the .major-c LMT page.
+// Compact header band for the .major-c TW page.
 function lmtHeader(data, titleHtml) {
   const brand = data.brand || {};
   return `
@@ -925,7 +925,7 @@ function majorUnitPages(data) {
     </div>`;
 
     const inner = `<div class="major-c">
-    ${lmtHeader(data, 'แบบ C<small>Service Report — รายเครื่อง (LMT)</small>')}
+    ${lmtHeader(data, 'แบบ C<small>Service Report — รายเครื่อง (TW)</small>')}
     ${uhead}
     ${serviceTypeChecks(u).replace('class="checks"', 'class="svc-checks"')}
     ${checklistTable(u)}

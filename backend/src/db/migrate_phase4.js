@@ -1,12 +1,12 @@
 require('dotenv').config();
 const pool = require('./pool');
 
-// ADDITIVE phase-4 migration (LMT form support). No data dropped.
+// ADDITIVE phase-4 migration (TW form support). No data dropped.
 // Run on Coolify Terminal:  node src/db/migrate_phase4.js  (or npm run migrate:phase4)
 async function migrate() {
   const client = await pool.connect();
   try {
-    // 1) allow the LMT special value types on the template
+    // 1) allow the TW special value types on the template
     await client.query(`ALTER TABLE inspection_template_items DROP CONSTRAINT IF EXISTS inspection_template_items_value_type_check`);
     await client.query(`ALTER TABLE inspection_template_items
       ADD CONSTRAINT inspection_template_items_value_type_check
@@ -39,7 +39,7 @@ async function migrate() {
       UNIQUE(equipment_type, work_type, point_no)
     )`);
 
-    console.log('Phase-4 migration complete — LMT value types + inspection_values cols + work_orders cond + photo_point_templates (no data dropped)');
+    console.log('Phase-4 migration complete — TW value types + inspection_values cols + work_orders cond + photo_point_templates (no data dropped)');
   } catch (err) {
     console.error('Phase-4 migration error:', err.message);
     process.exit(1);
