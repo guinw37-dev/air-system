@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Plus, FileText, CheckCircle, XCircle, ChevronRight,
-  Camera, ClipboardCheck, PenLine, ChevronDown, ChevronUp, Wrench
+  Camera, ClipboardCheck, PenLine, ChevronDown, ChevronUp, Wrench,
+  QrCode, Copy, Clock, User
 } from 'lucide-react'
 import dayjs from 'dayjs'
+import QRCode from 'qrcode'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import SignaturePad from '../components/SignaturePad'
@@ -40,6 +42,13 @@ export default function WorkOrderDetail() {
   const [actionLoading, setActionLoading] = useState(false)
   const [rejectReason, setRejectReason]   = useState('')
   const [showReject, setShowReject]       = useState(false)
+
+  // Sign-token modal (QR + countdown + polling)
+  const [signModal, setSignModal]         = useState(null) // null | { token, sign_path, expires_at, qrDataUrl, link }
+  const [signStatus, setSignStatus]       = useState(null) // null | { signed: bool, signer_name? }
+  const [countdown, setCountdown]         = useState(0)   // seconds
+  const signPollRef                       = useRef(null)
+  const signCountRef                      = useRef(null)
 
   const load = useCallback(() => {
     Promise.all([
@@ -154,6 +163,69 @@ export default function WorkOrderDetail() {
     } catch (err) {
       alert(err.response?.data?.error || 'เกิดข้อผิดพลาด')
     } finally { setActionLoading(false) }
+  }
+
+  // ── Sign-token helpers ──────────────────────────────────────────────────
+  const closeSignModal = () => {
+    clearInterval(signPollRef.current)
+    clearInterval(signCountRef.current)
+    setSignModal(null)
+    setSignStatus(null)
+    setCountdown(0)
+  }
+
+  const openSignModal = async () => {
+    try {
+      const res = await api.post(`/work-orders/${id}/sign-token`)
+      const { token, sign_path, expires_at } = res.data
+      const link = `${window.location.origin}${sign_path}`
+      const qrDataUrl = await QRCode.toDataURL(link, { width: 240, margin: 2 })
+
+      const secsLeft = Math.max(0, Math.floor((new Date(expires_at) - Date.now()) / 1000))
+      setCountdown(secsLeft)
+      setSignStatus(null)
+      setSignModal({ token, sign_path, expires_at, qrDataUrl, link })
+
+      // Countdown timer
+      signCountRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(signCountRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      // Poll sign status every 10s
+      const poll = () => {
+        api.get(`/work-orders/${id}/sign-status`)
+          .then((r) => {
+            setSignStatus(r.data)
+            if (r.data.signed) {
+              clearInterval(signPollRef.current)
+              clearInterval(signCountRef.current)
+              load() // refresh WO to show signature
+            }
+          })
+          .catch(() => {})
+      }
+      poll()
+      signPollRef.current = setInterval(poll, 10_000)
+    } catch (err) {
+      alert(err.response?.data?.error || 'ไม่สามารถสร้างลิงก์ลายเซ็นได้')
+    }
+  }
+
+  const copyLink = () => {
+    if (!signModal) return
+    navigator.clipboard.writeText(signModal.link).then(() => alert('คัดลอกลิงก์แล้ว')).catch(() => {})
+  }
+
+  const fmtCountdown = (secs) => {
+    const m = String(Math.floor(secs / 60)).padStart(2, '0')
+    const s = String(secs % 60).padStart(2, '0')
+    return `${m}:${s}`
   }
 
   const saveUnits = async () => {
@@ -356,6 +428,18 @@ export default function WorkOrderDetail() {
         {/* Action buttons by role+status */}
         <div className="flex flex-col gap-2">
 
+          {/* Request area-owner signature via QR link */}
+          {wo.status === 'in_progress' && (isAdmin || isCentralAdmin || isTech ||
+            (wo.assignees || []).some((a) => a.id === user?.id)) && (
+            <button
+              onClick={openSignModal}
+              className="flex items-center justify-center gap-2 border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium py-2.5 rounded-xl text-sm transition-colors"
+            >
+              <QrCode className="h-4 w-4" />
+              ขอลายเซ็นเจ้าของพื้นที่
+            </button>
+          )}
+
           {/* Technician: Start draft */}
           {wo.status === 'draft' && (isTech || isAdmin || isCentralAdmin) && (
             <button onClick={doStart} disabled={actionLoading} className="btn-primary flex items-center justify-center gap-2">
@@ -429,7 +513,7 @@ export default function WorkOrderDetail() {
           )}
         </div>
 
-        {/* History collapsible */}
+        {/* Status Timeline */}
         {history.length > 0 && (
           <div>
             <button
@@ -440,20 +524,60 @@ export default function WorkOrderDetail() {
               ประวัติสถานะ ({history.length})
             </button>
             {historyOpen && (
-              <div className="mt-2 flex flex-col gap-1.5">
-                {history.map((h, idx) => (
-                  <div key={idx} className="flex items-start gap-3 text-xs text-gray-600 bg-gray-50 rounded-xl px-3 py-2">
-                    <div className="flex-1">
-                      <span className="font-medium">{h.from_status || 'สร้าง'}</span>
-                      {h.to_status && <> → <span className="font-medium">{STATUS_LABEL[h.to_status]?.label || h.to_status}</span></>}
-                      {h.reason && <p className="text-gray-500 mt-0.5">{h.reason}</p>}
-                    </div>
-                    <div className="text-gray-400 whitespace-nowrap">
-                      <p>{h.changed_by_name || '-'}</p>
-                      <p>{dayjs(h.changed_at).format('DD/MM/YY HH:mm')}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-3 relative">
+                {/* vertical line */}
+                <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200" />
+                <div className="flex flex-col gap-3">
+                  {history.map((h, idx) => {
+                    const toLabel   = STATUS_LABEL[h.to_status]
+                    const fromLabel = STATUS_LABEL[h.from_status]
+                    const isReject  = h.to_status === 'rejected'
+                    return (
+                      <div key={idx} className="flex items-start gap-3 relative">
+                        {/* dot */}
+                        <div className={`shrink-0 w-5 h-5 rounded-full border-2 z-10 mt-0.5 ${
+                          isReject
+                            ? 'bg-red-100 border-red-400'
+                            : idx === history.length - 1
+                            ? 'bg-blue-600 border-blue-600'
+                            : 'bg-white border-gray-300'
+                        }`} />
+                        <div className="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {h.from_status && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${
+                                fromLabel?.color || 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {fromLabel?.label || h.from_status}
+                              </span>
+                            )}
+                            {h.to_status && (
+                              <>
+                                <span className="text-xs text-gray-400">→</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${
+                                  toLabel?.color || 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {toLabel?.label || h.to_status}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {h.reason && (
+                            <p className="text-xs text-red-600 mt-1 flex items-start gap-1">
+                              <XCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                              {h.reason}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                            <User className="h-3 w-3" />
+                            <span>{h.changed_by_name || '-'}</span>
+                            <span className="ml-1">{dayjs(h.changed_at).format('DD/MM/YY HH:mm')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -547,6 +671,52 @@ export default function WorkOrderDetail() {
           <div className="flex gap-2">
             <button onClick={() => setShowReject(false)} className="btn-secondary flex-1">ยกเลิก</button>
             <button onClick={doReject} disabled={actionLoading} className="btn-danger flex-1">ยืนยัน</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Sign-token modal (QR + countdown + live status) */}
+      {signModal && (
+        <Modal title="ขอลายเซ็นเจ้าของพื้นที่" onClose={closeSignModal}>
+          <div className="flex flex-col items-center gap-4">
+            {/* QR code */}
+            <img
+              src={signModal.qrDataUrl}
+              alt="QR ลายเซ็น"
+              className="w-48 h-48 rounded-xl border border-gray-200"
+            />
+
+            {/* Countdown */}
+            <div className={`flex items-center gap-1.5 text-sm font-medium ${
+              countdown > 60 ? 'text-gray-600' : 'text-red-600'
+            }`}>
+              <Clock className="h-4 w-4" />
+              {countdown > 0 ? `หมดอายุใน ${fmtCountdown(countdown)}` : 'ลิงก์หมดอายุแล้ว'}
+            </div>
+
+            {/* Status */}
+            <div className={`w-full text-center py-2 rounded-xl text-sm font-medium ${
+              signStatus?.signed
+                ? 'bg-green-50 text-green-700'
+                : 'bg-yellow-50 text-yellow-700'
+            }`}>
+              {signStatus?.signed
+                ? `เซ็นแล้ว ✓ (${signStatus.signer_name})`
+                : 'รอเซ็น...'}
+            </div>
+
+            {/* Copyable link */}
+            <div className="w-full">
+              <p className="text-xs text-gray-500 mb-1">ลิงก์สำหรับเจ้าของพื้นที่</p>
+              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                <span className="flex-1 text-xs text-gray-600 truncate">{signModal.link}</span>
+                <button onClick={copyLink} className="shrink-0 text-blue-600 hover:text-blue-800">
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <button onClick={closeSignModal} className="btn-secondary w-full">ปิด</button>
           </div>
         </Modal>
       )}

@@ -30,6 +30,8 @@ app.use('/api/pdf',         require('./routes/pdf'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/pm',          require('./routes/pm'));
 app.use('/api/import',      require('./routes/import'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 
 // Health check
 app.get('/api/health', (req, res) => {

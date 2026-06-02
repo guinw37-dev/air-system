@@ -8,6 +8,7 @@
     "dev": "nodemon src/app.js",
     "migrate": "node src/db/migrate.js",
     "migrate:phase2": "node src/db/migrate_phase2.js",
+    "migrate:phase3": "node src/db/migrate_phase3.js",
     "seed": "node src/db/seed.js",
     "test": "node test/tenant.test.js && node test/woStateMachine.test.js"
   },

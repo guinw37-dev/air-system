@@ -203,6 +203,28 @@ CREATE TABLE IF NOT EXISTS work_order_status_history (
   changed_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- area_owner sign tokens — short-lived, single-use (no login). Store only the
+-- SHA-256 hash to prevent replay; the raw JWT lives in the QR/link.
+CREATE TABLE IF NOT EXISTS sign_tokens (
+  id            SERIAL PRIMARY KEY,
+  work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+  token_hash    VARCHAR(64) NOT NULL UNIQUE,   -- sha256 hex
+  used_at       TIMESTAMPTZ,
+  expires_at    TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- In-app notifications (no push/email yet)
+CREATE TABLE IF NOT EXISTS notifications (
+  id            SERIAL PRIMARY KEY,
+  user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  work_order_id INT REFERENCES work_orders(id) ON DELETE CASCADE,
+  type          VARCHAR(30) NOT NULL,   -- pending_admin/pending_approval/approved/rejected
+  message       TEXT NOT NULL,
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── เบิกอะไหล่ ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS part_requisitions (
   id               SERIAL PRIMARY KEY,
@@ -298,3 +320,5 @@ CREATE INDEX IF NOT EXISTS idx_pmplan_scheduled        ON pm_plan(scheduled_date
 CREATE INDEX IF NOT EXISTS idx_deduction_client        ON deduction_notes(client_id);
 CREATE INDEX IF NOT EXISTS idx_deduction_month         ON deduction_notes(month);
 CREATE INDEX IF NOT EXISTS idx_wo_history_wo            ON work_order_status_history(work_order_id);
+CREATE INDEX IF NOT EXISTS idx_sign_tokens_wo           ON sign_tokens(work_order_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user       ON notifications(user_id, read_at);

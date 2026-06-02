@@ -3,10 +3,14 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const dayjs = require('dayjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { requireWoRole } = require('../middleware/woAccess');
 const { checkTransition, HTTP_FOR_CODE, logTransition, isEditable } = require('../services/woStateMachine');
+const { notifyTransition } = require('../services/notify');
 
 // ── order_no: WO-YYYYMMDD-XXXX ──────────────────────────────────────────────
 async function genOrderNo(client) {
@@ -82,6 +86,11 @@ router.get('/', authMiddleware, async (req, res) => {
   if (client_id) { where.push(`w.client_id = $${i++}`); params.push(client_id); }
   if (status)    { where.push(`w.status = $${i++}`);     params.push(status); }
   if (type)      { where.push(`w.type = $${i++}`);       params.push(type); }
+  // technicians only see WOs they're assigned to (admin/central_admin/approver see all)
+  if (req.user.role === 'technician') {
+    where.push(`EXISTS (SELECT 1 FROM work_order_assignees wa WHERE wa.work_order_id = w.id AND wa.user_id = $${i++})`);
+    params.push(req.user.id);
+  }
   params.push(limit, offset);
   try {
     const { rows } = await pool.query(`
@@ -211,7 +220,9 @@ router.put('/:id/units', authMiddleware, async (req, res) => {
 // บันทึก inspection_values ต่อ unit. body: { work_order_unit_id, values: [...],
 //   has_repair?, repair_notes? }  values[]: { template_item_id, value_before,
 //   value_after, checked, note }
-router.put('/:id/inspection', authMiddleware, async (req, res) => {
+router.put('/:id/inspection', authMiddleware,
+  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  async (req, res) => {
   const { work_order_unit_id, values = [], has_repair, repair_notes } = req.body;
   if (!work_order_unit_id) return res.status(400).json({ error: 'work_order_unit_id required' });
   const wo = await getWO(req.params.id);
@@ -327,6 +338,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
     // /:id/repair-request), not an auto-side-effect of submit. The main repair
     // workflow lives in the separate repair-report system.
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'pending_admin', changedBy: req.user.id });
+    await notifyTransition(client, wo, 'pending_admin');
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -350,6 +362,7 @@ router.post('/:id/admin-approve', authMiddleware, requireRole('central_admin', '
       [req.params.id]
     );
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'pending_approval', changedBy: req.user.id });
+    await notifyTransition(client, wo, 'pending_approval');
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -375,6 +388,7 @@ router.post('/:id/final-approve', authMiddleware, requireRole('approver', 'admin
     );
     await advancePmCycle(client, req.params.id, wo.type);
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'approved', changedBy: req.user.id });
+    await notifyTransition(client, wo, 'approved');
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -435,6 +449,7 @@ router.post('/:id/reject', authMiddleware, requireRole('central_admin', 'approve
       [reason.trim(), req.params.id]
     );
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'rejected', changedBy: req.user.id, reason: reason.trim() });
+    await notifyTransition(client, wo, 'rejected', { reason: reason.trim() });
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -465,6 +480,40 @@ router.post('/:id/resubmit', authMiddleware, async (req, res) => {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
+});
+
+// ── POST /api/work-orders/:id/sign-token ────────────────────────────────────
+// Issue a short-lived (30m), single-use token so the area owner can sign WITHOUT
+// logging in. Returns the raw token + relative sign path; the technician shows it
+// as a QR/link. Only an assignee (or admin) on an in_progress WO may request one.
+router.post('/:id/sign-token', authMiddleware,
+  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['in_progress'], assigneeOnly: true }),
+  async (req, res) => {
+    try {
+      const token = jwt.sign(
+        { work_order_id: Number(req.params.id), scope: 'area_owner_sign' },
+        process.env.JWT_SECRET,
+        { expiresIn: '30m' }
+      );
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      await pool.query(
+        'INSERT INTO sign_tokens (work_order_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+        [req.params.id, tokenHash, expiresAt]
+      );
+      res.status(201).json({ token, sign_path: `/sign/${token}`, expires_at: expiresAt });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  }
+);
+
+// ── GET /api/work-orders/:id/sign-status ────────────────────────────────────
+// Lightweight poll for the QR screen: has the area_owner signed yet?
+router.get('/:id/sign-status', authMiddleware, async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT signer_name, signed_at FROM signatures WHERE work_order_id=$1 AND role='area_owner'",
+    [req.params.id]
+  );
+  res.json(rows.length ? { signed: true, ...rows[0] } : { signed: false });
 });
 
 // ── POST /api/work-orders/:id/repair-request ────────────────────────────────
@@ -540,7 +589,9 @@ const upload = multer({
 });
 
 // POST /api/work-orders/:id/photos — concurrent-safe (always append)
-router.post('/:id/photos', authMiddleware, upload.single('photo'), async (req, res) => {
+router.post('/:id/photos', authMiddleware,
+  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  upload.single('photo'), async (req, res) => {
   let { work_order_unit_id, phase, point_no, label, client_token } = req.body;
   if (!work_order_unit_id || !phase || !req.file) {
     return res.status(400).json({ error: 'work_order_unit_id, phase, and photo required' });
@@ -599,10 +650,10 @@ router.get('/:id/photos', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/work-orders/:id/photos/:photoId — only before submit (editable)
-router.delete('/:id/photos/:photoId', authMiddleware, async (req, res) => {
-  const wo = await getWO(req.params.id);
-  if (!wo) return res.status(404).json({ error: 'Not found' });
-  if (!isEditable(wo.status)) return res.status(409).json({ error: 'ใบงานปิด/อยู่ระหว่างอนุมัติ ลบรูปไม่ได้' });
+router.delete('/:id/photos/:photoId', authMiddleware,
+  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  async (req, res) => {
+  const wo = req.wo;
   const { rows } = await pool.query(`
     DELETE FROM work_order_photos p
     USING work_order_units wou

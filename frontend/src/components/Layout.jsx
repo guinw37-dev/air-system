@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, ClipboardList, Wrench, Database,
   Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity, FileUp,
-  AlertCircle, TableProperties
+  AlertCircle, TableProperties, Bell
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -32,6 +32,8 @@ export default function Layout({ children, title, back, actions }) {
   const [rejectedCount, setRejectedCount] = useState(0)
 
   const isTechAdmin = ['admin', 'technician'].includes(user?.role)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const notifPollRef = useRef(null)
 
   useEffect(() => {
     if (!isTechAdmin) return
@@ -39,6 +41,18 @@ export default function Layout({ children, title, back, actions }) {
       .then((r) => setRejectedCount(r.data.count))
       .catch(() => {})
   }, [isTechAdmin, location.pathname])
+
+  // Poll unread notification count every 30s
+  useEffect(() => {
+    const fetchUnread = () => {
+      api.get('/notifications/unread-count')
+        .then((r) => setUnreadCount(r.data.count || 0))
+        .catch(() => {})
+    }
+    fetchUnread()
+    notifPollRef.current = setInterval(fetchUnread, 30_000)
+    return () => clearInterval(notifPollRef.current)
+  }, [])
 
   const visibleNav = NAV.filter((n) => !n.roles || n.roles.includes(user?.role))
 
@@ -165,6 +179,18 @@ export default function Layout({ children, title, back, actions }) {
 
           <h1 className="flex-1 font-semibold text-gray-800 text-base truncate">{title || 'Air System'}</h1>
           <SyncIndicator />
+          {/* Notification bell */}
+          <button
+            onClick={() => navigate('/notifications')}
+            className="relative p-1 rounded-lg text-gray-500 hover:bg-gray-100"
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
           {actions}
         </header>
 
