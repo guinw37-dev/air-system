@@ -1,371 +1,352 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
-import { PageSpinner } from '../components/Spinner'
 import api from '../api/client'
 
-const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-                 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+// ── constants ─────────────────────────────────────────────────────────────────
 
-const TYPE_SHORT  = { major: 'ใหญ่', minor: 'ย่อย', fan: 'พัดลม' }
-// pm_cycle_pos: 0=major, 1=minor, 2=minor
-const CYCLE_LABEL = ['ใหญ่', 'ย่อย', 'ย่อย']
-const CYCLE_CLS   = ['text-blue-600 bg-blue-50', 'text-teal-600 bg-teal-50', 'text-teal-600 bg-teal-50']
-const TYPE_COLOR = {
-  major: 'bg-blue-500',
-  minor: 'bg-teal-500',
-  fan:   'bg-purple-500',
+const DAYS_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+
+const TYPE_DOT = {
+  major: 'bg-orange-400',
+  minor: 'bg-blue-400',
+  fan:   'bg-teal-400',
+}
+const TYPE_BADGE = {
+  major: 'bg-orange-100 text-orange-800',
+  minor: 'bg-blue-100  text-blue-800',
+  fan:   'bg-teal-100  text-teal-800',
+}
+const TYPE_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'ล้างพัดลม' }
+
+const STATUS_BADGE = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  done:    'bg-green-100  text-green-800',
+  overdue: 'bg-red-100    text-red-800',
+  skipped: 'bg-gray-100   text-gray-600',
+}
+const STATUS_LABEL_MAP = { pending: 'รอดำเนินการ', done: 'เสร็จแล้ว', overdue: 'เลยกำหนด', skipped: 'ข้าม' }
+
+function effectiveStatus(item) {
+  if (item.status === 'done' || item.status === 'skipped') return item.status
+  if (item.status === 'pending' && item.scheduled_date &&
+      dayjs(item.scheduled_date).isBefore(dayjs(), 'day')) return 'overdue'
+  return item.status
 }
 
-const PLAN_TYPES = [
-  { value: 'major', label: 'ล้างใหญ่' },
-  { value: 'minor', label: 'ล้างย่อย' },
-  { value: 'fan',   label: 'ล้างพัดลม' },
-]
+// ── Day popup ─────────────────────────────────────────────────────────────────
 
-function getCellForMonth(pmEntries = [], month /* 1-12 */) {
-  return pmEntries.find((e) => {
-    const d = e.actual_date || e.scheduled_date
-    if (!d) return false
-    return dayjs(d).month() + 1 === month
-  }) || null
-}
-
-// Modal for adding a plan
-function PlanModal({ ac, month, year, onClose, onSaved }) {
-  const [type, setType] = useState('major')
-  const [saving, setSaving] = useState(false)
-
-  const scheduledDate = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('YYYY-MM-DD')
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await api.post('/pm/plan', {
-        ac_unit_id: ac.id,
-        planned_type: type,
-        scheduled_date: scheduledDate,
-      })
-      onSaved()
-    } catch (err) {
-      alert(err.response?.data?.error || 'เกิดข้อผิดพลาด')
-      setSaving(false)
-    }
-  }
-
+function DayPopup({ date, items, onClose, onUnitClick }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">วางแผน PM</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
-        </div>
-        <div className="bg-gray-50 rounded-xl p-3 mb-4">
-          <p className="text-sm font-medium text-gray-800">{ac.asset_code || ac.ac_code} — {ac.name || ac.ac_name}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{ac.room_name || ac.dept_name} · {MONTHS[month - 1]} {year}</p>
-        </div>
-        <div className="mb-4">
-          <label className="label">ประเภทการล้าง</label>
-          <div className="flex gap-2">
-            {PLAN_TYPES.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setType(t.value)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  type === t.value
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-200'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
-          <button onClick={save} disabled={saving} className="btn-primary flex-1">
-            {saving ? 'กำลังบันทึก...' : 'บันทึกแผน'}
+      <div className="relative bg-white rounded-2xl w-full max-w-sm shadow-xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+          <h3 className="font-semibold text-gray-900 text-sm">
+            PM วันที่ {dayjs(date).format('D MMMM YYYY')}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-2">
+          {items.length === 0 && (
+            <p className="text-gray-400 text-sm text-center py-6">ไม่มีรายการ</p>
+          )}
+          {items.map((item, i) => {
+            const eff = effectiveStatus(item)
+            return (
+              <button
+                key={i}
+                onClick={() => onUnitClick(item)}
+                className="w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-blue-700 text-sm">{item.asset_code || '-'}</p>
+                  <div className="flex gap-1 shrink-0">
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${TYPE_BADGE[item.planned_type] || 'bg-gray-100 text-gray-700'}`}>
+                      {TYPE_LABEL[item.planned_type] || item.planned_type}
+                    </span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[eff] || 'bg-gray-100 text-gray-700'}`}>
+                      {STATUS_LABEL_MAP[eff] || eff}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{item.room_name || '-'}</p>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
   )
 }
 
-export default function PMPlan() {
-  const [hospitals, setHospitals] = useState([])
-  const [hospitalBuildings, setHospitalBuildings] = useState([]) // buildings list for selected hospital
-  const [selHospital, setSelHospital] = useState('')
-  const [year, setYear] = useState(dayjs().year())
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState([])
-  const [selBuilding, setSelBuilding] = useState('')
+// ── Calendar grid ─────────────────────────────────────────────────────────────
 
-  // Plan modal
-  const [planModal, setPlanModal] = useState(null) // { ac, month }
-  const [generating, setGenerating] = useState(false)
+function CalendarGrid({ year, month, calData, onDayClick }) {
+  // Build grid: first day of month, 6 rows × 7 cols
+  const firstDay = dayjs(`${year}-${String(month).padStart(2, '0')}-01`)
+  const daysInMonth = firstDay.daysInMonth()
+  const startDow = firstDay.day() // 0=Sun
 
-  const currentMonth = dayjs().month() + 1
-  const currentYear  = dayjs().year()
+  const today = dayjs().format('YYYY-MM-DD')
 
-  useEffect(() => {
-    api.get('/master/clients').then((r) => setHospitals(r.data))
-  }, [])
-
-  // When hospital changes → load buildings list, reset building + data
-  useEffect(() => {
-    setSelBuilding('')
-    setData([])
-    setHospitalBuildings([])
-    if (!selHospital) return
-    // buildings now requires site_id; fall back to hospital_id (compat) or try client-level
-    api.get(`/master/buildings?hospital_id=${selHospital}`)
-      .then((r) => setHospitalBuildings(r.data))
-      .catch(() => {})
-  }, [selHospital])
-
-  const load = () => {
-    if (!selHospital || !selBuilding) return
-    setLoading(true)
-    api.get(`/pm/yearly-plan?hospital_id=${selHospital}&client_id=${selHospital}&year=${year}&building_id=${selBuilding}`)
-      .then((r) => setData(r.data))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    setData([])
-    load()
-  }, [selBuilding, year])
-
-  const generatePlan = async () => {
-    if (!selBuilding) return
-    if (!confirm(`สร้างแผน PM อัตโนมัติสำหรับปี ${year + 543}?\n(จะข้ามเดือนที่มีแผนอยู่แล้ว)`)) return
-    setGenerating(true)
-    try {
-      const r = await api.post('/pm/generate-plan', { building_id: selBuilding, year })
-      alert(`สร้างแผนสำเร็จ: เพิ่ม ${r.data.inserted} รายการ, ข้าม ${r.data.skipped} รายการ (มีอยู่แล้ว)`)
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'เกิดข้อผิดพลาด')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const filtered = data
-
-  const today = dayjs()
-
-  const isOverdue = (ac) => {
-    if (!ac.next_pm_date) return false
-    return dayjs(ac.next_pm_date).isBefore(today, 'day')
-  }
-
-  const years = Array.from({ length: 4 }, (_, i) => currentYear - 1 + i)
+  // cells: null = empty, number = day
+  const cells = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  // pad to complete weeks
+  while (cells.length % 7 !== 0) cells.push(null)
 
   return (
-    <Layout title="PM Plan ประจำปี">
+    <div className="card p-0 overflow-hidden">
+      {/* Day-of-week header */}
+      <div className="grid grid-cols-7 bg-gray-800 text-white text-xs font-medium">
+        {DAYS_TH.map((d) => (
+          <div key={d} className="py-2 text-center">{d}</div>
+        ))}
+      </div>
+
+      {/* Weeks */}
+      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
+        {cells.map((day, idx) => {
+          if (!day) {
+            return <div key={idx} className="min-h-[80px] bg-gray-50/50" />
+          }
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const items = calData[dateStr] || []
+          const isToday = dateStr === today
+
+          // Count by type
+          const counts = {}
+          items.forEach((it) => { counts[it.planned_type] = (counts[it.planned_type] || 0) + 1 })
+          const typeKeys = Object.keys(counts).filter((k) => counts[k] > 0)
+
+          return (
+            <button
+              key={idx}
+              onClick={() => items.length > 0 && onDayClick(dateStr, items)}
+              className={`min-h-[80px] p-1.5 text-left flex flex-col gap-1 transition-colors ${
+                items.length > 0
+                  ? 'hover:bg-blue-50 cursor-pointer'
+                  : 'cursor-default'
+              } ${isToday ? 'bg-blue-50' : ''}`}
+            >
+              {/* Day number */}
+              <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${
+                isToday ? 'bg-blue-600 text-white' : 'text-gray-700'
+              }`}>
+                {day}
+              </span>
+
+              {/* Count bubbles by type */}
+              {typeKeys.length > 0 && (
+                <div className="flex flex-col gap-0.5 w-full">
+                  {typeKeys.map((type) => (
+                    <div
+                      key={type}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white ${TYPE_DOT[type] || 'bg-gray-400'}`}
+                    >
+                      <span className="flex-1 text-center leading-none">{counts[type]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function PMPlan() {
+  const navigate  = useNavigate()
+  const now       = dayjs()
+
+  const [clients, setClients] = useState([])
+  const [sites,   setSites]   = useState([])
+
+  const [clientId, setClientId] = useState('')
+  const [siteId,   setSiteId]   = useState('')
+  const [year,     setYear]     = useState(now.year())
+  const [month,    setMonth]    = useState(now.month() + 1)
+
+  const [calData,  setCalData]  = useState({})  // { "YYYY-MM-DD": [...] }
+  const [loading,  setLoading]  = useState(false)
+
+  // Day popup
+  const [popup, setPopup] = useState(null) // { date, items }
+
+  // Load clients
+  useEffect(() => {
+    api.get('/master/clients').then((r) => setClients(r.data || [])).catch(() => {})
+  }, [])
+
+  // Load sites when client changes
+  useEffect(() => {
+    setSiteId('')
+    setSites([])
+    if (!clientId) return
+    api.get(`/master/sites?client_id=${clientId}`).then((r) => setSites(r.data || [])).catch(() => {})
+  }, [clientId])
+
+  // Load calendar data
+  const loadCalendar = useCallback(() => {
+    if (!clientId) { setCalData({}); return }
+    setLoading(true)
+    const p = new URLSearchParams({ client_id: clientId, year, month })
+    if (siteId) p.set('site_id', siteId)
+    api.get(`/pm/calendar?${p}`)
+      .then((r) => setCalData(r.data || {}))
+      .catch(() => setCalData({}))
+      .finally(() => setLoading(false))
+  }, [clientId, siteId, year, month])
+
+  useEffect(() => { loadCalendar() }, [loadCalendar])
+
+  const prevMonth = () => {
+    const d = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).subtract(1, 'month')
+    setYear(d.year())
+    setMonth(d.month() + 1)
+  }
+  const nextMonth = () => {
+    const d = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).add(1, 'month')
+    setYear(d.year())
+    setMonth(d.month() + 1)
+  }
+
+  // Total PM this month
+  const totalThisMonth = useMemo(() => {
+    return Object.values(calData).reduce((sum, arr) => sum + (arr || []).length, 0)
+  }, [calData])
+
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY')
+
+  const years = Array.from({ length: 4 }, (_, i) => now.year() - 1 + i)
+
+  return (
+    <Layout title="PM Plan — ปฏิทิน">
       <div className="p-4 lg:p-6 flex flex-col gap-5">
 
-        {/* Selectors */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-semibold text-gray-700 shrink-0">โรงพยาบาล</label>
-            <select className="input max-w-xs" value={selHospital} onChange={(e) => setSelHospital(e.target.value)}>
-              <option value="">-- เลือก --</option>
-              {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+        {/* ── Selectors ── */}
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Client <span className="text-red-500">*</span></label>
+            <select
+              className="input min-w-[180px]"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">— เลือก Client —</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-semibold text-gray-700 shrink-0">ปี</label>
-            <select className="input w-28" value={year} onChange={(e) => setYear(Number(e.target.value))}>
-              {years.map((y) => <option key={y} value={y}>{y + 543} (CE {y})</option>)}
-            </select>
-          </div>
-          {selHospital && (
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-semibold text-gray-700 shrink-0">
-                อาคาร <span className="text-red-500">*</span>
-              </label>
+
+          {clientId && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Site</label>
               <select
-                className="input max-w-xs"
-                value={selBuilding}
-                onChange={(e) => setSelBuilding(e.target.value)}
+                className="input min-w-[160px]"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
               >
-                <option value="">— เลือกอาคาร —</option>
-                {hospitalBuildings.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
+                <option value="">ทุก Site</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
+            <select
+              className="input w-28"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+            >
+              {years.map((y) => <option key={y} value={y}>{y + 543} ({y})</option>)}
+            </select>
+          </div>
         </div>
 
-        {!selHospital && (
-          <div className="text-center text-gray-400 py-20 text-sm">เลือกโรงพยาบาลเพื่อดูแผน PM</div>
-        )}
-        {selHospital && !selBuilding && (
-          <div className="text-center text-orange-400 py-20 text-sm">เลือกอาคารเพื่อโหลดข้อมูล (ป้องกัน browser ค้าง)</div>
+        {!clientId && (
+          <div className="text-center text-gray-400 py-20 text-sm">เลือก Client เพื่อดูปฏิทิน PM</div>
         )}
 
-        {selHospital && selBuilding && loading && <PageSpinner />}
-
-        {selHospital && selBuilding && !loading && (
+        {clientId && (
           <>
-            {/* Generate button */}
-            <div className="flex justify-end">
+            {/* ── Month navigation ── */}
+            <div className="flex items-center justify-between">
               <button
-                onClick={generatePlan}
-                disabled={generating}
-                className="btn-primary text-sm px-4 py-2"
+                onClick={prevMonth}
+                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
               >
-                {generating ? 'กำลังสร้าง...' : '✦ สร้างแผนอัตโนมัติ'}
+                <ChevronLeft className="h-4 w-4 text-gray-600" />
+              </button>
+
+              <div className="text-center">
+                <h2 className="font-bold text-gray-900 text-lg capitalize">{monthLabel}</h2>
+                <p className="text-xs text-gray-400">{totalThisMonth} รายการ PM เดือนนี้</p>
+              </div>
+
+              <button
+                onClick={nextMonth}
+                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                <ChevronRight className="h-4 w-4 text-gray-600" />
               </button>
             </div>
 
-            {/* Legend */}
-            <div className="flex gap-4 flex-wrap text-xs">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> ล้างใหญ่ (เสร็จ)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-teal-500 inline-block" /> ล้างย่อย (เสร็จ)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-purple-500 inline-block" /> ล้างพัดลม (เสร็จ)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gray-300 border border-dashed border-gray-400 inline-block" /> แผน (ยังไม่ล้าง)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block border border-red-300" /> เกินกำหนด PM</span>
+            {/* ── Legend ── */}
+            <div className="flex gap-4 flex-wrap text-xs text-gray-600">
+              {[
+                { label: 'ล้างใหญ่',   cls: 'bg-orange-400' },
+                { label: 'ล้างย่อย',   cls: 'bg-blue-400' },
+                { label: 'ล้างพัดลม', cls: 'bg-teal-400' },
+              ].map(({ label, cls }) => (
+                <span key={label} className="flex items-center gap-1.5">
+                  <span className={`w-3 h-3 rounded ${cls} inline-block`} />
+                  {label}
+                </span>
+              ))}
+              <span className="text-gray-400">ตัวเลขในแต่ละสีคือจำนวนเครื่อง · คลิกวันเพื่อดูรายละเอียด</span>
             </div>
 
-            {/* Table */}
-            <div className="card p-0 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="text-xs border-collapse min-w-max w-full">
-                  <thead>
-                    <tr className="bg-gray-800 text-white">
-                      <th className="text-left py-2.5 px-3 font-medium sticky left-0 bg-gray-800 z-10 min-w-[110px]">รหัส</th>
-                      <th className="text-left py-2.5 px-3 font-medium min-w-[140px]">ชื่อ / แผนก</th>
-                      <th className="text-left py-2.5 px-3 font-medium">รอบ</th>
-                      <th className="text-center py-2.5 px-2 font-medium">ถัดไป</th>
-                      {MONTHS.map((m, i) => (
-                        <th
-                          key={i}
-                          className={`py-2.5 px-2 font-medium text-center w-14 ${
-                            i + 1 === currentMonth && year === currentYear
-                              ? 'bg-blue-700 text-white'
-                              : ''
-                          }`}
-                        >
-                          {m}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.length === 0 && (
-                      <tr>
-                        <td colSpan={16} className="py-16 text-center text-gray-400">ไม่พบข้อมูล</td>
-                      </tr>
-                    )}
-                    {filtered.map((ac) => {
-                      const overdue = isOverdue(ac)
-                      const rowBg = overdue ? 'bg-red-50' : ''
-                      const codeColor = overdue ? 'text-red-700 font-bold' : 'text-blue-700 font-semibold'
-
-                      return (
-                        <tr key={ac.id} className={`border-b border-gray-100 hover:bg-blue-50/50 ${rowBg}`}>
-                          {/* Code */}
-                          <td className={`py-2 px-3 sticky left-0 z-10 ${overdue ? 'bg-red-50' : 'bg-white'} ${codeColor}`}>
-                            {ac.asset_code || ac.ac_code}
-                            {overdue && <span className="ml-1 text-red-500">!</span>}
-                          </td>
-                          {/* Name + dept */}
-                          <td className="py-2 px-3 text-gray-700">
-                            <p className="truncate max-w-[130px]">{ac.name || ac.ac_name || '-'}</p>
-                            <p className="text-gray-400 truncate max-w-[130px]">{ac.room_name || ac.dept_name}</p>
-                          </td>
-                          {/* Interval */}
-                          <td className="py-2 px-3 text-gray-500 text-center">
-                            {ac.pm_interval_months ? `${ac.pm_interval_months}ด.` : '-'}
-                          </td>
-                          {/* Next PM type */}
-                          <td className="py-2 px-2 text-center">
-                            {ac.pm_cycle_pos != null ? (
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CYCLE_CLS[ac.pm_cycle_pos]}`}>
-                                {CYCLE_LABEL[ac.pm_cycle_pos]}
-                              </span>
-                            ) : '-'}
-                          </td>
-                          {/* Month cells */}
-                          {MONTHS.map((_, mi) => {
-                            const month = mi + 1
-                            const entry = getCellForMonth(ac.pm_entries, month)
-                            const isFuture = year > currentYear || (year === currentYear && month > currentMonth)
-                            const isCurrentMonth = year === currentYear && month === currentMonth
-
-                            return (
-                              <td
-                                key={mi}
-                                className={`py-2 px-1 text-center align-middle border-l border-gray-50 ${
-                                  isCurrentMonth ? 'bg-blue-50' : ''
-                                }`}
-                              >
-                                {entry ? (
-                                  entry.status === 'done' ? (
-                                    // Done: colored circle
-                                    <span
-                                      className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-white text-[10px] font-medium ${TYPE_COLOR[entry.planned_type] || 'bg-gray-400'}`}
-                                      title={`${TYPE_SHORT[entry.planned_type]} - ${dayjs(entry.actual_date || entry.scheduled_date).format('DD/MM')}`}
-                                    >
-                                      {TYPE_SHORT[entry.planned_type]?.charAt(0)}
-                                    </span>
-                                  ) : (
-                                    // Planned (not done): dashed circle
-                                    <span
-                                      className="inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-dashed border-gray-400 text-gray-400 text-[10px] cursor-pointer hover:border-red-400 hover:text-red-400"
-                                      title={`วางแผน: ${TYPE_SHORT[entry.planned_type]} - ${dayjs(entry.scheduled_date).format('DD/MM')}\nคลิกเพื่อลบแผน`}
-                                      onClick={() => {
-                                        if (confirm('ลบแผนนี้?')) {
-                                          api.delete(`/pm/plan/${entry.id}`).then(() => load())
-                                        }
-                                      }}
-                                    >
-                                      {TYPE_SHORT[entry.planned_type]?.charAt(0)}
-                                    </span>
-                                  )
-                                ) : isFuture ? (
-                                  // Future empty: clickable to add plan
-                                  <button
-                                    onClick={() => setPlanModal({ ac, month })}
-                                    className="w-7 h-7 rounded-full border border-dashed border-gray-200 text-gray-200 hover:border-blue-400 hover:text-blue-400 transition-colors text-lg leading-none flex items-center justify-center mx-auto"
-                                    title="คลิกเพื่อวางแผน PM"
-                                  >
-                                    +
-                                  </button>
-                                ) : (
-                                  // Past empty: dash
-                                  <span className="text-gray-200">—</span>
-                                )}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+            {/* ── Calendar ── */}
+            {loading ? (
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600" />
               </div>
-            </div>
-            <p className="text-xs text-gray-400">{filtered.length} เครื่อง · คลิก + เพื่อวางแผน PM · แถวสีแดง = เกินกำหนด</p>
+            ) : (
+              <CalendarGrid
+                year={year}
+                month={month}
+                calData={calData}
+                onDayClick={(date, items) => setPopup({ date, items })}
+              />
+            )}
           </>
         )}
       </div>
 
-      {/* Plan Modal */}
-      {planModal && (
-        <PlanModal
-          ac={planModal.ac}
-          month={planModal.month}
-          year={year}
-          onClose={() => setPlanModal(null)}
-          onSaved={() => { setPlanModal(null); load() }}
+      {/* Day popup */}
+      {popup && (
+        <DayPopup
+          date={popup.date}
+          items={popup.items}
+          onClose={() => setPopup(null)}
+          onUnitClick={() => {
+            setPopup(null)
+            navigate('/work-orders/new')
+          }}
         />
       )}
     </Layout>
