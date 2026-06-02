@@ -14,10 +14,10 @@ export default function WorkOrderCreate() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
 
-  const [hospitals, setHospitals] = useState([])
+  const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({
-    hospital_id: '',
+    client_id: '',
     type: 'major',
     tech1_id: user?.id || '',
     tech2_id: '',
@@ -27,23 +27,24 @@ export default function WorkOrderCreate() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/master/hospitals'),
+      api.get('/master/clients'),
       api.get('/master/users'),
     ]).then(([h, u]) => {
-      setHospitals(h.data)
+      setClients(h.data)
       setUsers(u.data)
-      if (h.data.length === 1) setForm((f) => ({ ...f, hospital_id: h.data[0].id }))
+      if (h.data.length === 1) setForm((f) => ({ ...f, client_id: h.data[0].id }))
     })
   }, [])
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!form.hospital_id) { setError('กรุณาเลือกโรงพยาบาล'); return }
+    if (!form.client_id) { setError('กรุณาเลือก Client'); return }
     setError('')
     setLoading(true)
     try {
       const { data } = await api.post('/work-orders', {
-        hospital_id: form.hospital_id,
+        client_id: form.client_id,
+        hospital_id: form.client_id, // backward-compat alias
         type: form.type,
         tech1_id: form.tech1_id || undefined,
         tech2_id: form.tech2_id || undefined,
@@ -59,17 +60,17 @@ export default function WorkOrderCreate() {
     <Layout title="เปิดใบงานใหม่" back="/work-orders">
       <form onSubmit={submit} className="px-4 pt-4 flex flex-col gap-5">
 
-        {/* Hospital */}
+        {/* Client */}
         <div>
-          <label className="label">โรงพยาบาล / สถานที่ *</label>
+          <label className="label">Client / สถานที่ *</label>
           <select
             className="input"
-            value={form.hospital_id}
-            onChange={(e) => setForm({ ...form, hospital_id: e.target.value })}
+            value={form.client_id}
+            onChange={(e) => setForm({ ...form, client_id: e.target.value })}
             required
           >
             <option value="">-- เลือก --</option>
-            {hospitals.map((h) => (
+            {clients.map((h) => (
               <option key={h.id} value={h.id}>{h.name}</option>
             ))}
           </select>

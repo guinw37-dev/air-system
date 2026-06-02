@@ -33,8 +33,8 @@ function CreateWoModal({ selected, onClose, onCreated }) {
   const [form, setForm] = useState({ type: 'major', tech1_id: '', tech2_id: '' })
   const [saving, setSaving] = useState(false)
 
-  const hospitalId = selected[0]?.hospital_id
-  const hospitalName = selected[0]?.hospital_name
+  const hospitalId = selected[0]?.client_id || selected[0]?.hospital_id
+  const hospitalName = selected[0]?.client_name || selected[0]?.hospital_name
 
   useEffect(() => {
     api.get('/master/users').then((r) => setUsers(r.data.filter((u) => ['technician', 'admin'].includes(u.role))))
@@ -46,6 +46,7 @@ function CreateWoModal({ selected, onClose, onCreated }) {
     try {
       // 1. Create WO
       const { data: wo } = await api.post('/work-orders', {
+        client_id: hospitalId,
         hospital_id: hospitalId,
         type: form.type,
         tech1_id: form.tech1_id,
@@ -76,7 +77,7 @@ function CreateWoModal({ selected, onClose, onCreated }) {
           <p className="text-sm text-blue-900 mt-0.5">{selected.length} เครื่องที่เลือก</p>
           <div className="flex flex-wrap gap-1 mt-2">
             {selected.map((ac) => (
-              <span key={ac.id} className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{ac.ac_code}</span>
+              <span key={ac.id} className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{ac.asset_code || ac.ac_code}</span>
             ))}
           </div>
         </div>
@@ -141,7 +142,7 @@ export default function PMSchedule() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    api.get('/master/hospitals').then((r) => setHospitals(r.data))
+    api.get('/master/clients').then((r) => setHospitals(r.data))
     api.get('/pm/summary').then((r) => setSummary(r.data))
   }, [])
 
@@ -149,24 +150,26 @@ export default function PMSchedule() {
     setLoading(true)
     setSelected([])
     const params = new URLSearchParams({ filter })
-    if (hospital) params.append('hospital_id', hospital)
+    if (hospital) { params.append('hospital_id', hospital); params.append('client_id', hospital) }
     api.get(`/pm?${params}`).then((r) => setList(r.data)).finally(() => setLoading(false))
   }, [filter, hospital])
 
   const filtered = useMemo(() => list.filter((a) =>
     !search ||
-    a.ac_code?.toLowerCase().includes(search.toLowerCase()) ||
-    a.ac_name?.toLowerCase().includes(search.toLowerCase()) ||
-    a.dept_name?.toLowerCase().includes(search.toLowerCase())
+    (a.asset_code || a.ac_code)?.toLowerCase().includes(search.toLowerCase()) ||
+    (a.name || a.ac_name)?.toLowerCase().includes(search.toLowerCase()) ||
+    (a.room_name || a.dept_name)?.toLowerCase().includes(search.toLowerCase())
   ), [list, search])
 
   // O(1) lookup instead of O(n) find() per row
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected])
 
   const toggleSelect = (ac) => {
-    // can only select same hospital
-    if (selected.length > 0 && selected[0].hospital_id !== ac.hospital_id) {
-      alert('เลือกได้เฉพาะเครื่องในโรงพยาบาลเดียวกัน')
+    // can only select same client/hospital
+    const acClient = ac.client_id || ac.hospital_id
+    const firstClient = selected[0]?.client_id || selected[0]?.hospital_id
+    if (selected.length > 0 && firstClient !== acClient) {
+      alert('เลือกได้เฉพาะเครื่องใน Client เดียวกัน')
       return
     }
     setSelected((prev) =>
@@ -178,9 +181,9 @@ export default function PMSchedule() {
 
   const selectAll = () => {
     if (filtered.length === 0) return
-    const firstHospital = filtered[0].hospital_id
-    const sameHospital = filtered.filter((a) => a.hospital_id === firstHospital)
-    setSelected(sameHospital)
+    const firstClient = filtered[0].client_id || filtered[0].hospital_id
+    const sameClient = filtered.filter((a) => (a.client_id || a.hospital_id) === firstClient)
+    setSelected(sameClient)
   }
 
   const formatDays = (days) => {
@@ -310,16 +313,16 @@ export default function PMSchedule() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
-                        <td className="py-3 px-4 font-semibold text-blue-700">{ac.ac_code}</td>
+                        <td className="py-3 px-4 font-semibold text-blue-700">{ac.asset_code || ac.ac_code}</td>
                         <td className="py-3 px-4">
-                          <p className="text-gray-800">{ac.ac_name || '-'}</p>
-                          <p className="text-xs text-gray-400">{ac.ac_type}</p>
+                          <p className="text-gray-800">{ac.name || ac.ac_name || '-'}</p>
+                          <p className="text-xs text-gray-400">{ac.family || ac.ac_type}</p>
                         </td>
                         <td className="py-3 px-4 text-gray-600 text-xs">
-                          <p>{ac.dept_name}</p>
+                          <p>{ac.room_name || ac.dept_name}</p>
                           <p className="text-gray-400">{ac.floor_name} / {ac.building_name}</p>
                         </td>
-                        <td className="py-3 px-4 text-gray-600 text-xs">{ac.hospital_name}</td>
+                        <td className="py-3 px-4 text-gray-600 text-xs">{ac.client_name || ac.hospital_name}</td>
                         <td className="py-3 px-4">
                           <p className="text-gray-800">{ac.next_pm_date ? dayjs(ac.next_pm_date).format('DD/MM/YYYY') : '-'}</p>
                           <p className={`text-xs mt-0.5 ${ac.days_left < 0 ? 'text-red-500 font-medium' : ac.days_left <= 30 ? 'text-orange-500' : 'text-gray-400'}`}>

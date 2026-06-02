@@ -38,7 +38,7 @@ export default function WorkOrderList() {
     w.tech1_name?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const isOwnerAdmin = ['owner', 'admin'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
 
   return (
     <Layout

@@ -79,14 +79,14 @@ export default function RepairLogs() {
 
   useEffect(() => {
     if (!showCreate) return
-    api.get('/master/hospitals').then((r) => setHospitals(r.data))
+    api.get('/master/clients').then((r) => setHospitals(r.data))
   }, [showCreate])
 
   const CLEAN_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'ล้างพัดลม' }
 
   useEffect(() => {
     if (!selHospital) { setAcList([]); setCreateForm((f) => ({ ...f, ac_unit_id: '' })); return }
-    api.get(`/master/ac-units?hospital_id=${selHospital}`).then((r) => setAcList(r.data))
+    api.get(`/master/units?client_id=${selHospital}`).then((r) => setAcList(r.data))
     setAcSearch('')
     setCreateForm((f) => ({ ...f, ac_unit_id: '' }))
   }, [selHospital])
@@ -198,7 +198,7 @@ export default function RepairLogs() {
                         <div className="flex items-center gap-2">
                           <Wrench className="h-4 w-4 text-gray-400 shrink-0" />
                           <div>
-                            <p className="font-medium text-gray-900">{log.ac_code}</p>
+                            <p className="font-medium text-gray-900">{log.asset_code || log.ac_code}</p>
                             <p className="text-xs text-gray-500">{log.ac_name}</p>
                           </div>
                         </div>
@@ -338,14 +338,14 @@ export default function RepairLogs() {
               {selHospital && (
                 <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
                   {acList
-                    .filter((a) => !acSearch || [a.ac_code, a.name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .filter((a) => !acSearch || [(a.asset_code || a.ac_code), a.name, (a.room_name || a.dept_name), a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
-                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.name}`) }}
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.asset_code || a.ac_code} — ${a.name}`) }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
                       >
-                        <span className="font-medium">{a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
-                        <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
+                        <span className="font-medium">{a.asset_code || a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
+                        <span className="text-xs text-gray-400 ml-1">({a.room_name || a.dept_name})</span>
                       </button>
                     ))}
                 </div>
@@ -387,14 +387,14 @@ export default function RepairLogs() {
               {selHospital && (
                 <div className="border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
                   {acList
-                    .filter((a) => !acSearch || [a.ac_code, a.name, a.dept_name, a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
+                    .filter((a) => !acSearch || [(a.asset_code || a.ac_code), a.name, (a.room_name || a.dept_name), a.floor_name].join(' ').toLowerCase().includes(acSearch.toLowerCase()))
                     .map((a) => (
                       <button key={a.id} type="button"
-                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.ac_code} — ${a.name}`) }}
+                        onClick={() => { setCreateForm((f) => ({ ...f, ac_unit_id: a.id })); setAcSearch(`${a.asset_code || a.ac_code} — ${a.name}`) }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 ${createForm.ac_unit_id === a.id ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-700'}`}
                       >
-                        <span className="font-medium">{a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
-                        <span className="text-xs text-gray-400 ml-1">({a.dept_name})</span>
+                        <span className="font-medium">{a.asset_code || a.ac_code}</span>{a.name ? ` — ${a.name}` : ''}
+                        <span className="text-xs text-gray-400 ml-1">({a.room_name || a.dept_name})</span>
                       </button>
                     ))}
                 </div>

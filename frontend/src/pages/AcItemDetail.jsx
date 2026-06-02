@@ -83,7 +83,7 @@ export default function AcItemDetail() {
 
   const canEdit = ['in_progress', 'rejected'].includes(wo?.status)
   const woType = wo.type
-  const acType = item.ac_type || ''
+  const acType = item.family || item.ac_type || ''
 
   // ── Photos ─────────────────────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ export default function AcItemDetail() {
   const phaseLabel = { before: 'ก่อนล้าง', during: 'ระหว่างล้าง', after: 'หลังล้าง' }
 
   return (
-    <Layout title={`${item.ac_code} — ${item.ac_name}`} back={`/work-orders/${woId}`}>
+    <Layout title={`${item.asset_code || item.ac_code} — ${item.name || item.ac_name}`} back={`/work-orders/${woId}`}>
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -206,7 +206,7 @@ export default function AcItemDetail() {
       {/* AC Info */}
       <div className="px-4 pt-3 pb-1">
         <p className="text-xs text-gray-500">
-          {item.dept_name} · {item.floor_name} · {item.building_name} · {item.ac_type} · {item.capacity_btu ? `${item.capacity_btu} BTU` : ''}
+          {item.room_name || item.dept_name} · {item.floor_name} · {item.building_name} · {item.family || item.ac_type} · {item.capacity_btu ? `${item.capacity_btu} BTU` : ''}
         </p>
       </div>
 
