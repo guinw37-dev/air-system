@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS inspection_template_items (
   unit_label     VARCHAR(30),     -- หน่วย เช่น °C, A, V, RPM
   applies_major  BOOLEAN DEFAULT false,
   applies_minor  BOOLEAN DEFAULT false,
-  sort_order     INT DEFAULT 0
+  sort_order     INT DEFAULT 0,
+  UNIQUE (equipment_type, category, item_label)   -- idempotent seed จาก config
 );
 
 -- ── Work orders (ใบงาน) ─────────────────────────────────────
