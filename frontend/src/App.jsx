@@ -17,6 +17,8 @@ import PMPlan from './pages/PMPlan'
 import CleaningStatus from './pages/CleaningStatus'
 import CleaningDashboard from './pages/CleaningDashboard'
 import ImportPage from './pages/ImportPage'
+import SignPage from './pages/SignPage'
+import Notifications from './pages/Notifications'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -34,7 +36,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public routes — no auth required */}
         <Route path="/login" element={<Login />} />
+        <Route path="/sign/:token" element={<SignPage />} />
+
         <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
 
         {/* Work Orders — phase-2 routes */}
@@ -46,6 +51,7 @@ export default function App() {
         {/* Keep old items route alive for any existing links */}
         <Route path="/work-orders/:id/items/:itemId" element={<RequireAuth><AcItemDetail /></RequireAuth>} />
 
+        <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
         <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
         <Route path="/pm-plan" element={<RequireAuth><PMPlan /></RequireAuth>} />
