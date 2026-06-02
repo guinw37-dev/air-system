@@ -223,6 +223,33 @@ CREATE TABLE IF NOT EXISTS repair_logs (
   updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── แผน PM รายปี (ปฏิทินวางแผนล้างรายเครื่อง) ────────────────
+-- เก็บกลับตามมติเฟส 0: หน้าวางแผน PM (เฟส 5) ต้องใช้ — ผูก client_id ตรง
+CREATE TABLE IF NOT EXISTS pm_plan (
+  id             SERIAL PRIMARY KEY,
+  client_id      INT NOT NULL REFERENCES clients(id),   -- direct tenant key
+  unit_id        INT NOT NULL REFERENCES units(id),
+  planned_type   VARCHAR(10) NOT NULL CHECK (planned_type IN ('major','minor','fan')),
+  scheduled_date DATE NOT NULL,
+  actual_date    DATE,
+  work_order_id  INT REFERENCES work_orders(id),
+  status         VARCHAR(20) NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','done','overdue','skipped')),
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── บันทึกหักเงินค่าบริการรายเดือน ──────────────────────────
+-- เก็บกลับตามมติเฟส 0: ฟีเจอร์หักเงินรายเดือน (UI เฟส 6) — ผูก client_id ตรง
+CREATE TABLE IF NOT EXISTS deduction_notes (
+  id         SERIAL PRIMARY KEY,
+  client_id  INT NOT NULL REFERENCES clients(id),   -- direct tenant key
+  month      CHAR(7) NOT NULL,                       -- 'YYYY-MM'
+  notes      TEXT,
+  created_by INT REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- Indexes — tenant key + FK ที่ query บ่อย
 -- ============================================================
@@ -251,3 +278,9 @@ CREATE INDEX IF NOT EXISTS idx_partreq_wo              ON part_requisitions(work
 CREATE INDEX IF NOT EXISTS idx_repair_client           ON repair_logs(client_id);
 CREATE INDEX IF NOT EXISTS idx_repair_unit             ON repair_logs(unit_id);
 CREATE INDEX IF NOT EXISTS idx_tpl_equip               ON inspection_template_items(equipment_type);
+
+CREATE INDEX IF NOT EXISTS idx_pmplan_client           ON pm_plan(client_id);
+CREATE INDEX IF NOT EXISTS idx_pmplan_unit             ON pm_plan(unit_id);
+CREATE INDEX IF NOT EXISTS idx_pmplan_scheduled        ON pm_plan(scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_deduction_client        ON deduction_notes(client_id);
+CREATE INDEX IF NOT EXISTS idx_deduction_month         ON deduction_notes(month);
