@@ -277,6 +277,114 @@ function styleBlock(brand) {
     }
     .result-line { margin-top: 8px; }
     .result-line .opt { display: inline-flex; align-items: center; gap: 5px; margin-right: 18px; }
+
+    /* ===================================================================== */
+    /* LMT แบบ C — compact per-unit page. All styles scoped to .major-c so   */
+    /* the minor / cover / fan reports are unaffected.                        */
+    /* ===================================================================== */
+    @page { size: A4 portrait; }
+    .major-c { font-size: 7.5pt; line-height: 1.25; color: var(--navy); }
+    .major-c .lmt-head {
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 2px solid var(--teal); padding-bottom: 5px; margin-bottom: 6px;
+    }
+    .major-c .lmt-head .tw-badge.sm { width: 30px; height: 30px; font-size: 13px; border-radius: 7px; }
+    .major-c .lmt-head .th { font-weight: 700; font-size: 9pt; color: var(--navy); line-height: 1.15; }
+    .major-c .lmt-head .en { font-size: 6.5pt; color: var(--teal); letter-spacing: .4px; }
+    .major-c .lmt-head .ttl { margin-left: auto; text-align: right; font-weight: 700; color: var(--navy); font-size: 9pt; }
+    .major-c .lmt-head .ttl small { display: block; font-weight: 400; color: var(--teal); font-size: 6.5pt; }
+
+    /* unit identity grid */
+    .major-c .uhead {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 2px 10px; margin-bottom: 5px;
+      border: 1px solid #cdd9db; border-radius: 5px; padding: 5px 7px; background: #f6faf9;
+    }
+    .major-c .uhead .row { display: flex; gap: 4px; }
+    .major-c .uhead .k { color: #5a6e73; font-weight: 700; white-space: nowrap; }
+    .major-c .uhead .v { color: var(--navy); }
+
+    .major-c .svc-checks { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 5px; font-size: 7.5pt; }
+    .major-c .svc-checks .opt { display: inline-flex; align-items: center; gap: 3px; }
+    .major-c .svc-checks .bx {
+      display: inline-block; width: 10px; height: 10px; border: 1px solid var(--navy);
+      border-radius: 2px; text-align: center; line-height: 9px; font-size: 8px; color: var(--teal);
+    }
+
+    /* the one full-width checklist table */
+    .major-c table.lmt { width: 100%; border-collapse: collapse; font-size: 7pt; table-layout: fixed; }
+    .major-c table.lmt th, .major-c table.lmt td {
+      border: 1px solid #b9c8ca; padding: 2px 4px; vertical-align: middle; text-align: left;
+    }
+    .major-c table.lmt thead th {
+      background: var(--navy); color: #fff; font-weight: 600; text-align: center; font-size: 7pt; padding: 3px 4px;
+    }
+    .major-c table.lmt td.catlbl {
+      background: #0E7C86; color: #fff; font-weight: 700; text-align: center; padding: 1px;
+      width: 22px;
+    }
+    .major-c table.lmt td.catlbl span {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      white-space: nowrap; display: inline-block; font-size: 7.5pt; letter-spacing: .5px;
+    }
+    .major-c table.lmt td.tk { text-align: center; width: 30px; }
+    .major-c table.lmt td.tk.on { color: var(--teal); font-weight: 700; }
+    .major-c table.lmt td.ba { text-align: center; width: 64px; }
+    .major-c table.lmt td.ba.bval { color: #0B3A47; font-weight: 600; }
+    .major-c table.lmt td.ba.aval { color: #0E7C86; font-weight: 600; }
+    .major-c table.lmt tr.na td { background: #eef1f1; color: #9fb0b4; }
+    .major-c table.lmt tr.na td.catlbl { background: #0E7C86; color: #fff; }
+    .major-c table.lmt .itnote { color: #8a999d; font-size: 6.5pt; }
+    .major-c .subbox {
+      margin-top: 2px; background: #f6faf9; border: 1px solid #d9e6e5; border-radius: 3px;
+      padding: 2px 4px; font-size: 6.5pt; color: #45595d; line-height: 1.3;
+    }
+    .major-c .subbox .lbl { color: #0B3A47; font-weight: 700; }
+
+    /* condition + result strip */
+    .major-c .strip { display: flex; gap: 8px; margin-top: 6px; }
+    .major-c .strip .col {
+      flex: 1; border: 1px solid #cdd9db; border-radius: 5px; padding: 5px 7px; background: #fff;
+    }
+    .major-c .strip .col h4 {
+      margin: 0 0 4px; font-size: 7.5pt; color: var(--navy);
+      border-left: 3px solid var(--teal); padding-left: 6px; font-weight: 700;
+    }
+    .major-c .cond-opt { display: block; margin-bottom: 2px; }
+    .major-c .cond-opt .bx {
+      display: inline-block; width: 10px; height: 10px; border: 1px solid var(--navy);
+      border-radius: 2px; text-align: center; line-height: 9px; font-size: 8px; color: var(--teal);
+      margin-right: 4px;
+    }
+    .major-c .cond-opt .det { color: #5a6e73; font-size: 6.5pt; }
+    .major-c .strip .times { margin-top: 5px; color: #5a6e73; }
+    .major-c .sign-row { display: flex; gap: 12px; margin-top: 8px; }
+    .major-c .sign-box .pad { height: 40px; }
+    .major-c .sign-box .role { font-size: 7.5pt; margin-top: 3px; }
+    .major-c .sign-box .nm { font-size: 7.5pt; }
+    .major-c .sign-box .dt { font-size: 6.5pt; }
+
+    /* page-2 by-point photo pairing */
+    .pair-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+    .pair-gallery .phcell {
+      border: 1px solid #d9e2e4; border-radius: 8px; overflow: hidden; background: #fff;
+    }
+    .pair-gallery .phcell.before { border-top: 4px solid var(--teal); }
+    .pair-gallery .phcell.after { border-top: 4px solid var(--navy); }
+    .pair-gallery .phcell .img-wrap {
+      height: 150px; background: #eef3f4; display: flex; align-items: center; justify-content: center;
+    }
+    .pair-gallery .phcell .img-wrap.empty { color: #9fb0b4; font-size: 11px; }
+    .pair-gallery .phcell img { max-width: 100%; max-height: 150px; object-fit: cover; }
+    .pair-gallery .phcell .cap { padding: 5px 7px; font-size: 9.5px; color: #5a6e73; }
+    .pair-gallery .phcell .cap b { color: var(--navy); }
+    .pair-gallery .phcell.before .cap b { color: var(--teal); }
+    .pair-gallery .gallery-head {
+      grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      font-weight: 700; font-size: 10px; margin-bottom: 2px;
+    }
+    .pair-gallery .gallery-head .gb { color: var(--teal); }
+    .pair-gallery .gallery-head .ga { color: var(--navy); }
   </style>`;
 }
 
@@ -547,130 +655,304 @@ function majorCoverSheet(data) {
 
 const PHOTOS_PER_PAGE = 6;
 
-function checklistTable(unit) {
-  const groups = groupByCategory(unit.inspections);
-  if (!groups.length) {
-    return '<table><thead><tr><th>รายการ</th><th class="tick">ตรวจเช็ค</th><th class="center">ก่อน</th><th class="center">หลัง</th></tr></thead><tbody><tr><td colspan="4" class="center muted">ไม่มีรายการตรวจเช็ค</td></tr></tbody></table>';
-  }
-  const body = groups.map((g) => {
-    const head = `<tr class="cat-row"><td colspan="4">${dash(g.category)}</td></tr>`;
-    const items = g.items.map((it) => {
-      const checked = it.checked ? `<span style="color:var(--teal);font-weight:700;">${TICK}</span>` : BOX;
-      let beforeCell;
-      let afterCell;
-      const vt = it.value_type;
-      if (vt === 'number' || vt === 'before_after') {
-        const cmp = compareValues(it, it.unit_label);
-        beforeCell = cmp.beforeHtml;
-        afterCell = `${cmp.afterHtml}${cmp.arrow}`;
-      } else if (vt === 'text') {
-        beforeCell = dash(it.value_before);
-        afterCell = dash(it.value_after);
-      } else {
-        // 'check' or unknown → no comparison values
-        beforeCell = '<span class="muted">—</span>';
-        afterCell = '<span class="muted">—</span>';
-      }
-      const note = it.note ? `<div class="muted" style="font-size:9.5px;">${escapeHtml(it.note)}</div>` : '';
-      return `<tr>
-        <td>${dash(it.item_label)}${note}</td>
-        <td class="tick">${checked}</td>
-        <td class="center">${beforeCell}</td>
-        <td class="center">${afterCell}</td>
-      </tr>`;
-    }).join('');
-    return head + items;
-  }).join('');
+// LMT แบบ C — fixed category order + Thai display labels.
+const LMT_CATEGORIES = [
+  { key: 'all3', label: 'ใช้งานทั้ง 3 ประเภท' },
+  { key: 'refrigerant', label: 'แอร์น้ำยา' },
+  { key: 'fcu', label: 'FCU' },
+  { key: 'ahu', label: 'AHU' },
+  { key: 'other', label: 'อื่น ๆ' },
+];
 
-  return `<table>
-    <thead><tr><th>รายการตรวจเช็ค</th><th class="tick">ตรวจเช็ค</th><th class="center">ก่อน</th><th class="center">หลัง</th></tr></thead>
-    <tbody>${body}</tbody>
+// Measurement value types do not get a simple ✓ tick.
+const MEASUREMENT_TYPES = new Set(['rst_amp', 'ln_vi', 'pressure_pair']);
+
+// Small "_" for a single missing scalar, "—" for an unfilled cell.
+function blankOrNum(v, unitLabel) {
+  const n = toNum(v);
+  if (n === null) return '_';
+  const ul = unitLabel ? ` ${escapeHtml(unitLabel)}` : '';
+  return `${escapeHtml(v)}${ul}`;
+}
+function rawOrUnderscore(v) {
+  if (v === null || v === undefined || v === '') return '_';
+  return escapeHtml(v);
+}
+
+// Decide whether a category row applies to the given unit's family. FCU rows
+// only apply to FCU-family units, AHU rows to AHU-family; the other three
+// categories always apply. Returns false → render greyed "not applicable" row.
+function categoryApplies(catKey, unit) {
+  const fam = String((unit && unit.family) || '').toLowerCase();
+  if (catKey === 'fcu') {
+    if (fam.includes('ahu')) return false;
+    return true;
+  }
+  if (catKey === 'ahu') {
+    if (fam.includes('fcu')) return false;
+    return true;
+  }
+  return true;
+}
+
+// Render the rst_amp / ln_vi / pressure_pair sub-box that lives under the
+// รายการ cell. Returns '' for non-measurement rows.
+function measurementSubBox(it) {
+  const vt = it.value_type;
+  if (vt === 'rst_amp') {
+    const line1 = `<span class="lbl">ก่อน</span> R=${rawOrUnderscore(it.val_r_before)} S=${rawOrUnderscore(it.val_s_before)} T=${rawOrUnderscore(it.val_t_before)} A · `
+      + `<span class="lbl">หลัง</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A`;
+    const line2 = `<span class="lbl">ก่อน</span> LN=${rawOrUnderscore(it.val_ln_before)} V L=${rawOrUnderscore(it.val_l_before)} A · `
+      + `<span class="lbl">หลัง</span> LN=${rawOrUnderscore(it.val_ln_after)} V L=${rawOrUnderscore(it.val_l_after)} A`;
+    return `<div class="subbox">${line1}<br>${line2}</div>`;
+  }
+  if (vt === 'ln_vi') {
+    return `<div class="subbox">LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;
+  }
+  if (vt === 'pressure_pair') {
+    return `<div class="subbox">สาร: ${rawOrUnderscore(it.refrigerant_type)} · `
+      + `Suction=${rawOrUnderscore(it.val_suction)} PSI (135-140) · `
+      + `Discharge=${rawOrUnderscore(it.val_discharge)} PSI (&lt;450-500)</div>`;
+  }
+  return '';
+}
+
+// Build the ONE full-width LMT checklist table for a unit. Renders all 5
+// categories in fixed order with a vertical teal label column (rowspan).
+function checklistTable(unit) {
+  const groups = groupByCategory(unit && unit.inspections);
+  const byCat = new Map();
+  for (const g of groups) byCat.set(g.category, g.items);
+
+  const bodyRows = [];
+  for (const cat of LMT_CATEGORIES) {
+    const items = byCat.get(cat.key) || [];
+    if (!items.length) continue; // template has no rows for this category → skip
+    const applies = categoryApplies(cat.key, unit);
+    const rowspan = items.length;
+
+    items.forEach((it, idx) => {
+      const vt = it.value_type;
+      const isMeasure = MEASUREMENT_TYPES.has(vt);
+
+      // ตรวจเช็ค column
+      let tickCellHtml;
+      if (!applies) {
+        tickCellHtml = '<td class="tk">—</td>';
+      } else if (isMeasure) {
+        tickCellHtml = '<td class="tk"></td>'; // measurement rows leave tick blank
+      } else if (it.checked) {
+        tickCellHtml = `<td class="tk on">${TICK}</td>`;
+      } else {
+        tickCellHtml = '<td class="tk"></td>';
+      }
+
+      // ก่อน / หลัง columns
+      let beforeCell = '<td class="ba">—</td>';
+      let afterCell = '<td class="ba">—</td>';
+      if (applies && (vt === 'number' || vt === 'before_after')) {
+        beforeCell = `<td class="ba bval">${blankOrNum(it.value_before, it.unit_label)}</td>`;
+        afterCell = `<td class="ba aval">${blankOrNum(it.value_after, it.unit_label)}</td>`;
+      }
+
+      // รายการ cell: label + (note/sub-detail for check/text) + measurement sub-box
+      let detail = '';
+      if (vt === 'check' || vt === 'text') {
+        const sub = it.note || it.val_text;
+        if (sub) detail += `<div class="itnote">${escapeHtml(sub)}</div>`;
+      } else if (it.note) {
+        detail += `<div class="itnote">${escapeHtml(it.note)}</div>`;
+      }
+      if (applies && isMeasure) detail += measurementSubBox(it);
+
+      const labelCell = `<td>${dash(it.item_label)}${detail}</td>`;
+
+      let row = `<tr class="${applies ? '' : 'na'}">`;
+      if (idx === 0) {
+        row += `<td class="catlbl" rowspan="${rowspan}"><span>${escapeHtml(cat.label)}</span></td>`;
+      }
+      row += `${labelCell}${tickCellHtml}${beforeCell}${afterCell}</tr>`;
+      bodyRows.push(row);
+    });
+  }
+
+  if (!bodyRows.length) {
+    bodyRows.push('<tr><td colspan="5" style="text-align:center;color:#9fb0b4;">ไม่มีรายการตรวจเช็ค</td></tr>');
+  }
+
+  return `<table class="lmt">
+    <thead><tr>
+      <th style="width:22px;">หมวด</th>
+      <th>รายการ</th>
+      <th style="width:30px;">ตรวจเช็ค</th>
+      <th style="width:64px;">ก่อน</th>
+      <th style="width:64px;">หลัง</th>
+    </tr></thead>
+    <tbody>${bodyRows.join('')}</tbody>
   </table>`;
 }
 
-// Render a list of photos as 2-col gallery cells.
-function photoCells(photos, imageBase) {
-  return (photos || []).map((p) => {
-    const src = `${imageBase || ''}${p.url || ''}`;
-    const cap = [p.label, fmtDate(p.taken_at) !== '—' ? fmtDate(p.taken_at) : '', p.uploaded_by_name]
-      .filter(Boolean)
-      .map((x) => escapeHtml(x))
-      .join(' · ');
-    return `<div class="photo">
-      <div class="img-wrap"><img src="${escapeHtml(src)}" alt="photo"></div>
-      <div class="cap"><b>${cap || '—'}</b></div>
-    </div>`;
-  }).join('');
+// Render one photo cell for the by-point pair gallery. `kind` ∈ 'before'|'after'.
+// A null photo renders an empty placeholder cell so columns stay aligned.
+function pairPhotoCell(p, kind, imageBase) {
+  if (!p) {
+    return `<div class="phcell ${kind}"><div class="img-wrap empty">— ไม่มีรูป —</div><div class="cap"><b>&nbsp;</b></div></div>`;
+  }
+  const src = `${imageBase || ''}${p.url || ''}`;
+  const cap = [p.label, fmtDate(p.taken_at) !== '—' ? fmtDate(p.taken_at) : '', p.uploaded_by_name]
+    .filter(Boolean)
+    .map((x) => escapeHtml(x))
+    .join(' · ');
+  return `<div class="phcell ${kind}">
+    <div class="img-wrap"><img src="${escapeHtml(src)}" alt="photo"></div>
+    <div class="cap"><b>${cap || '—'}</b></div>
+  </div>`;
 }
 
-// Build the photo gallery, splitting into extra pages when a unit has many
-// photos. Returns an array of inner-HTML fragments (one per page).
+// Build the photo gallery page(s). Photos are paired by point_no: one row per
+// point — before(left, teal) / after(right, navy). Measurement photos are
+// appended as their own rows (shown on the left). Returns inner-HTML fragments
+// (one per page); empty array when the unit has no photos.
 function photoGalleryPages(unit, data) {
-  const ph = unit.photos || {};
+  const ph = (unit && unit.photos) || {};
   const before = ph.before || [];
   const after = ph.after || [];
   const measurement = ph.measurement || [];
-  const total = before.length + after.length + measurement.length;
-  if (!total) return [];
+  if (!before.length && !after.length && !measurement.length) return [];
 
-  // Pair before/after side-by-side; flatten in interleaved order so the 2-col
-  // grid naturally lines up before(left)/after(right).
-  const pairs = [];
-  const maxLen = Math.max(before.length, after.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (before[i]) pairs.push(before[i]);
-    if (after[i]) pairs.push(after[i]);
+  // Collect the set of point_no values in first-seen order.
+  const order = [];
+  const seen = new Set();
+  const beforeByPt = new Map();
+  const afterByPt = new Map();
+  const noPt = []; // [{kind, photo}] for photos lacking a point_no
+
+  const register = (p, kind, map) => {
+    const pt = p && p.point_no;
+    if (pt === null || pt === undefined || pt === '') {
+      noPt.push({ kind, photo: p });
+      return;
+    }
+    const key = String(pt);
+    if (!seen.has(key)) { seen.add(key); order.push(key); }
+    if (!map.has(key)) map.set(key, p); // first photo for this point wins
+  };
+  for (const p of before) register(p, 'before', beforeByPt);
+  for (const p of after) register(p, 'after', afterByPt);
+
+  // Build rows: [beforePhoto|null, afterPhoto|null] per point_no.
+  const rows = [];
+  for (const key of order) {
+    rows.push([beforeByPt.get(key) || null, afterByPt.get(key) || null]);
   }
-  for (const m of measurement) pairs.push(m);
+  // Photos without a point_no: pair them positionally as extra rows.
+  const npBefore = noPt.filter((x) => x.kind === 'before').map((x) => x.photo);
+  const npAfter = noPt.filter((x) => x.kind === 'after').map((x) => x.photo);
+  const npMax = Math.max(npBefore.length, npAfter.length);
+  for (let i = 0; i < npMax; i++) {
+    rows.push([npBefore[i] || null, npAfter[i] || null]);
+  }
+  // Measurement photos → own rows on the left.
+  for (const m of measurement) rows.push([m, null]);
 
+  const ROWS_PER_PAGE = 3; // 3 point-rows (= 6 photos) per A4 page
   const frags = [];
-  for (let i = 0; i < pairs.length; i += PHOTOS_PER_PAGE) {
-    const chunk = pairs.slice(i, i + PHOTOS_PER_PAGE);
+  for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
+    const chunk = rows.slice(i, i + ROWS_PER_PAGE);
+    const cells = chunk
+      .map(([b, a]) => pairPhotoCell(b, 'before', data.imageBase) + pairPhotoCell(a, 'after', data.imageBase))
+      .join('');
     frags.push(`
       <div class="section-title">รูปภาพก่อน/หลัง — ${unitTitle(unit)}</div>
-      <div class="gallery">${photoCells(chunk, data.imageBase)}</div>`);
+      <div class="pair-gallery">
+        <div class="gallery-head"><div class="gb">ก่อน (Before)</div><div class="ga">หลัง (After)</div></div>
+        ${cells}
+      </div>`);
   }
   return frags;
+}
+
+// Compact header band for the .major-c LMT page.
+function lmtHeader(data, titleHtml) {
+  const brand = data.brand || {};
+  return `
+  <div class="lmt-head">
+    <div class="tw-badge sm">TW</div>
+    <div class="brand-text">
+      <div class="th">${dash(brand.nameTh)}</div>
+      <div class="en">${dash(brand.name)}</div>
+    </div>
+    <div class="ttl">${titleHtml}</div>
+  </div>`;
+}
+
+// LEFT-column "ความเห็นทีมช่าง" condition checkboxes, derived from data.wo.
+function conditionOpts(wo) {
+  const w = wo || {};
+  const box = (on) => `<span class="bx">${on ? TICK : ''}</span>`;
+  const det = (v) => (v ? ` <span class="det">(${escapeHtml(v)})</span>` : '');
+  return `
+    <div class="cond-opt">${box(w.cond_ac_degraded)}แอร์เสื่อมสภาพ</div>
+    <div class="cond-opt">${box(w.cond_ac_old_5_7yr)}แอร์เก่า 5-7 ปี</div>
+    <div class="cond-opt">${box(w.cond_external_degraded)}สภาพภายนอกเสื่อม${det(w.cond_external_detail)}</div>
+    <div class="cond-opt">${box(w.cond_internal_degraded)}สภาพภายในเสื่อม${det(w.cond_internal_detail)}</div>`;
+}
+
+// "ผลงาน" result checkboxes (□เรียบร้อย □ไม่เรียบร้อย) for the .major-c strip.
+function lmtResultOpts(unit) {
+  const bad = unit && unit.has_repair;
+  const box = (on) => `<span class="bx">${on ? TICK : ''}</span>`;
+  return `
+    <div class="cond-opt">${box(!bad)}เรียบร้อย</div>
+    <div class="cond-opt">${box(bad)}ไม่เรียบร้อย</div>`;
 }
 
 function majorUnitPages(data) {
   const units = data.units || [];
   const sigs = data.signatures || {};
+  const wo = data.wo || {};
   const pages = [];
 
   for (const u of units) {
-    const inner = `
-    ${docHeader(data, 'แบบ C<small>Service Report — รายเครื่อง</small>')}
-    <div class="card">
-      <h3>${unitTitle(u)}</h3>
-      <div class="meta-grid" style="margin-bottom:0;">
-        <div class="row"><span class="k">เลขเครื่อง</span><span class="v">${dash(u.asset_code)}</span></div>
-        <div class="row"><span class="k">ห้อง</span><span class="v">${dash(u.room_name)}</span></div>
-        <div class="row"><span class="k">รุ่น/ตระกูล</span><span class="v">${dash(u.family)}</span></div>
-        <div class="row"><span class="k">ขนาด (BTU)</span><span class="v">${dash(u.capacity_btu)}</span></div>
-        <div class="row"><span class="k">น้ำยา</span><span class="v">${dash(u.refrigerant)}</span></div>
-        <div class="row"><span class="k">ประเภท</span><span class="v">${dash(u.equipment_type)}</span></div>
+    const uhead = `
+    <div class="uhead">
+      <div class="row"><span class="k">เลขเครื่อง:</span><span class="v">${dash(u.asset_code)}</span></div>
+      <div class="row"><span class="k">ตำแหน่ง:</span><span class="v">${dash(u.room_name)}</span></div>
+      <div class="row"><span class="k">ยี่ห้อ-รุ่น:</span><span class="v">${dash(u.family)}</span></div>
+      <div class="row"><span class="k">BTU:</span><span class="v">${dash(u.capacity_btu)}</span></div>
+      <div class="row"><span class="k">น้ำยา:</span><span class="v">${dash(u.refrigerant)}</span></div>
+      <div class="row"><span class="k">ประเภทบำรุงรักษา:</span><span class="v">${dash(u.equipment_type)}</span></div>
+    </div>`;
+
+    const inner = `<div class="major-c">
+    ${lmtHeader(data, 'แบบ C<small>Service Report — รายเครื่อง (LMT)</small>')}
+    ${uhead}
+    ${serviceTypeChecks(u).replace('class="checks"', 'class="svc-checks"')}
+    ${checklistTable(u)}
+
+    <div class="strip">
+      <div class="col">
+        <h4>ความเห็นทีมช่าง</h4>
+        ${conditionOpts(wo)}
+      </div>
+      <div class="col">
+        <h4>ผลงาน</h4>
+        ${lmtResultOpts(u)}
+        <div class="times">เวลาเริ่ม: ${fmtTime(wo.started_at)} &nbsp; เวลาสิ้นสุด: ${fmtTime(wo.completed_at)}</div>
       </div>
     </div>
 
-    <div class="section-title">ประเภทการให้บริการ</div>
-    ${serviceTypeChecks(u)}
-
-    <div class="section-title">รายการตรวจเช็ค</div>
-    ${checklistTable(u)}
-
-    ${resultLine(u)}
-
     <div class="sign-row">
-      ${signatureBox('ผู้ดูแลพื้นที่', sigs.area_owner)}
-      ${signatureBox('ส่วนกลาง (Central Admin)', sigs.central_admin)}
-      ${signatureBox('ผู้อนุมัติ (Approver)', sigs.approver)}
+      ${signatureBox('ลงชื่อวิศวกรรม', sigs.area_owner)}
+      ${signatureBox('ลงชื่อหน่วยงาน', sigs.central_admin)}
+      ${signatureBox('ลงชื่อทีมช่าง', sigs.approver)}
+    </div>
     </div>`;
     pages.push(page(data, inner));
 
-    // Photo gallery (own page(s); >6 photos paginates automatically).
+    // Page 2+: by-point photo gallery (own page(s); skipped when no photos).
     for (const frag of photoGalleryPages(u, data)) {
-      pages.push(page(data, `${docHeader(data, 'แบบ C<small>รูปภาพประกอบ</small>')}${frag}`));
+      pages.push(page(data, `<div style="page-break-before:always;">${docHeader(data, 'แบบ C<small>รูปภาพประกอบ</small>')}${frag}</div>`));
     }
   }
 

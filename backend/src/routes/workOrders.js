@@ -243,15 +243,26 @@ router.put('/:id/inspection', authMiddleware,
       if (!v.template_item_id) continue;
       await client.query(`
         INSERT INTO inspection_values
-          (work_order_unit_id, template_item_id, value_before, value_after, checked, note)
-        VALUES ($1,$2,$3,$4,$5,$6)
+          (work_order_unit_id, template_item_id, value_before, value_after, checked, note,
+           val_r_before, val_s_before, val_t_before, val_r_after, val_s_after, val_t_after,
+           val_ln_before, val_l_before, val_ln_after, val_l_after,
+           val_suction, val_discharge, refrigerant_type, val_text)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
         ON CONFLICT (work_order_unit_id, template_item_id) DO UPDATE SET
-          value_before = EXCLUDED.value_before,
-          value_after  = EXCLUDED.value_after,
-          checked      = EXCLUDED.checked,
-          note         = EXCLUDED.note
-      `, [work_order_unit_id, v.template_item_id, v.value_before ?? null,
-          v.value_after ?? null, v.checked ?? null, v.note ?? null]);
+          value_before=EXCLUDED.value_before, value_after=EXCLUDED.value_after,
+          checked=EXCLUDED.checked, note=EXCLUDED.note,
+          val_r_before=EXCLUDED.val_r_before, val_s_before=EXCLUDED.val_s_before, val_t_before=EXCLUDED.val_t_before,
+          val_r_after=EXCLUDED.val_r_after, val_s_after=EXCLUDED.val_s_after, val_t_after=EXCLUDED.val_t_after,
+          val_ln_before=EXCLUDED.val_ln_before, val_l_before=EXCLUDED.val_l_before,
+          val_ln_after=EXCLUDED.val_ln_after, val_l_after=EXCLUDED.val_l_after,
+          val_suction=EXCLUDED.val_suction, val_discharge=EXCLUDED.val_discharge,
+          refrigerant_type=EXCLUDED.refrigerant_type, val_text=EXCLUDED.val_text
+      `, [work_order_unit_id, v.template_item_id, v.value_before ?? null, v.value_after ?? null,
+          v.checked ?? null, v.note ?? null,
+          v.val_r_before ?? null, v.val_s_before ?? null, v.val_t_before ?? null,
+          v.val_r_after ?? null, v.val_s_after ?? null, v.val_t_after ?? null,
+          v.val_ln_before ?? null, v.val_l_before ?? null, v.val_ln_after ?? null, v.val_l_after ?? null,
+          v.val_suction ?? null, v.val_discharge ?? null, v.refrigerant_type ?? null, v.val_text ?? null]);
     }
     if (has_repair !== undefined || repair_notes !== undefined) {
       await client.query(
@@ -276,6 +287,28 @@ router.put('/:id/inspection', authMiddleware,
   } finally {
     client.release();
   }
+});
+
+// ── PUT /api/work-orders/:id/condition — team condition assessment (LMT) ─────
+router.put('/:id/condition', authMiddleware, async (req, res) => {
+  const wo = await getWO(req.params.id);
+  if (!wo) return res.status(404).json({ error: 'Not found' });
+  if (!isEditable(wo.status)) return res.status(409).json({ error: 'ใบงานปิด/อยู่ระหว่างอนุมัติ แก้ไม่ได้' });
+  const b = req.body || {};
+  const { rows } = await pool.query(`
+    UPDATE work_orders SET
+      cond_ac_degraded = COALESCE($1, cond_ac_degraded),
+      cond_ac_old_5_7yr = COALESCE($2, cond_ac_old_5_7yr),
+      cond_external_degraded = COALESCE($3, cond_external_degraded),
+      cond_external_detail = COALESCE($4, cond_external_detail),
+      cond_internal_degraded = COALESCE($5, cond_internal_degraded),
+      cond_internal_detail = COALESCE($6, cond_internal_detail),
+      updated_at = NOW()
+    WHERE id = $7 RETURNING *
+  `, [b.cond_ac_degraded ?? null, b.cond_ac_old_5_7yr ?? null,
+      b.cond_external_degraded ?? null, b.cond_external_detail ?? null,
+      b.cond_internal_degraded ?? null, b.cond_internal_detail ?? null, req.params.id]);
+  res.json(rows[0]);
 });
 
 // ── PATCH /api/work-orders/:id/start ────────────────────────────────────────
@@ -309,23 +342,40 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
   const t = checkTransition(wo.status, 'pending_admin', req.user.role);
   if (!t.ok) return res.status(HTTP_FOR_CODE[t.code]).json({ error: t.error });
 
-  // photo gate
-  const { rows: missing } = await pool.query(`
-    SELECT wou.id, u.asset_code
-    FROM work_order_units wou
-    JOIN units u ON wou.unit_id = u.id
-    WHERE wou.work_order_id = $1
-      AND ( (SELECT COUNT(*) FROM work_order_photos p WHERE p.work_order_unit_id = wou.id AND p.phase='before') = 0
-         OR (SELECT COUNT(*) FROM work_order_photos p WHERE p.work_order_unit_id = wou.id AND p.phase='after')  = 0 )
-  `, [req.params.id]);
+  // photo gate — each unit must have every REQUIRED photo point (per
+  // photo_point_templates) photographed both before AND after. Falls back to
+  // "≥1 before + ≥1 after" when no point template exists for that equip/type.
+  const { rows: units } = await pool.query(`
+    SELECT wou.id AS wou_id, u.asset_code, u.equipment_type
+    FROM work_order_units wou JOIN units u ON wou.unit_id = u.id
+    WHERE wou.work_order_id = $1`, [req.params.id]);
+  if (!units.length) return res.status(400).json({ error: 'ใบงานยังไม่มีเครื่อง' });
+
+  const missing = [];
+  for (const u of units) {
+    const { rows: pts } = await pool.query(
+      'SELECT point_no FROM photo_point_templates WHERE equipment_type=$1 AND work_type=$2 AND required=true ORDER BY point_no',
+      [u.equipment_type, wo.type]
+    );
+    const { rows: photos } = await pool.query(
+      'SELECT phase, point_no FROM work_order_photos WHERE work_order_unit_id=$1', [u.wou_id]
+    );
+    const have = new Set(photos.map((p) => `${p.phase}:${p.point_no}`));
+    if (pts.length) {
+      const lack = pts.filter((p) => !have.has(`before:${p.point_no}`) || !have.has(`after:${p.point_no}`));
+      if (lack.length) missing.push(`${u.asset_code} (ขาด ${lack.length}/${pts.length} จุด)`);
+    } else {
+      const anyBefore = photos.some((p) => p.phase === 'before');
+      const anyAfter = photos.some((p) => p.phase === 'after');
+      if (!anyBefore || !anyAfter) missing.push(`${u.asset_code} (ก่อน/หลัง)`);
+    }
+  }
   if (missing.length) {
     return res.status(400).json({
-      error: 'มีเครื่องที่ยังถ่ายรูปไม่ครบ (ต้องมีรูปก่อน + หลัง อย่างน้อยอย่างละ 1)',
-      missing_units: missing.map(m => m.asset_code),
+      error: 'มีเครื่องที่ยังถ่ายรูปไม่ครบทุกจุด (ต้องครบทั้งก่อน + หลัง)',
+      missing_units: missing,
     });
   }
-  const { rows: anyUnit } = await pool.query('SELECT 1 FROM work_order_units WHERE work_order_id=$1 LIMIT 1', [req.params.id]);
-  if (!anyUnit.length) return res.status(400).json({ error: 'ใบงานยังไม่มีเครื่อง' });
 
   const client = await pool.connect();
   try {
