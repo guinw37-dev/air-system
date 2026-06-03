@@ -208,6 +208,43 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── PUT /api/simple-wo/:id — edit ───────────────────────────────────────────
+// Allowed: the creator, or admin / central_admin. wo_number/created_by frozen.
+router.put('/:id', authMiddleware, async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    const privileged = ['admin', 'central_admin'].includes(req.user.role);
+    if (!privileged && rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขใบงานนี้' });
+    }
+    const { rows: upd } = await pool.query(`
+      UPDATE simple_work_orders SET
+        tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
+        asset_code=$8, work_type=$9, power_system=$10, checklist_values=$11, result=$12,
+        start_time=$13, end_time=$14, team_comment=$15, photo_urls=$16,
+        sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
+        sig_team=$21, sig_team_name=$22
+      WHERE id=$1
+      RETURNING id, wo_number
+    `, [
+      req.params.id, b.tech_name || null, b.work_date || null, b.client_name || null,
+      b.building || null, b.floor || null, b.room || null, b.asset_code || null,
+      b.work_type || 'major', b.power_system || null,
+      JSON.stringify(b.checklist_values || {}), b.result || null,
+      b.start_time || null, b.end_time || null,
+      JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
+      b.sig_engineer || null, b.sig_engineer_name || null,
+      b.sig_department || null, b.sig_department_name || null,
+      b.sig_team || null, b.sig_team_name || null,
+    ]);
+    res.json(upd[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── DELETE /api/simple-wo/:id ───────────────────────────────────────────────
 // Allowed: the creator, or admin / central_admin. Best-effort unlink of photos.
 router.delete('/:id', authMiddleware, async (req, res) => {

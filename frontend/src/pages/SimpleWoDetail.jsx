@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Download, Trash2 } from 'lucide-react'
+import { FileText, Download, Trash2, Pencil } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
@@ -205,6 +205,13 @@ export default function SimpleWoDetail() {
         </div>
 
         {/* Actions */}
+        <button
+          onClick={() => navigate(`/simple-wo/${id}/edit`)}
+          disabled={busy}
+          className="btn-secondary w-full flex items-center justify-center gap-2"
+        >
+          <Pencil className="h-4 w-4" /> แก้ไขใบงาน
+        </button>
         <div className="flex flex-col sm:flex-row gap-2">
           <button onClick={downloadPdf} disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2">
             <FileText className="h-5 w-5" /> ดาวน์โหลด PDF

@@ -59,6 +59,7 @@ export default function App() {
         {/* Simple Work Orders — one-step flow */}
         <Route path="/simple-wo" element={<RequireAuth><SimpleWoList /></RequireAuth>} />
         <Route path="/simple-wo/new" element={<RequireAuth><SimpleWoForm /></RequireAuth>} />
+        <Route path="/simple-wo/:id/edit" element={<RequireAuth><SimpleWoForm /></RequireAuth>} />
         <Route path="/simple-wo/:id" element={<RequireAuth><SimpleWoDetail /></RequireAuth>} />
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
