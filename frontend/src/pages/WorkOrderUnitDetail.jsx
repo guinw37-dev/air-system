@@ -22,6 +22,8 @@ import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { enqueueInspection, enqueuePhoto, getPendingPhotos } from '../lib/offline/sync'
+import { compressImage } from '../lib/image'
+import { useOfflineStore } from '../store/offline'
 
 export default function WorkOrderUnitDetail() {
   const { id: woId, unitId } = useParams()
@@ -171,6 +173,16 @@ export default function WorkOrderUnitDetail() {
 
   useEffect(() => { load() }, [load])
 
+  // When the offline outbox drains (pending photos finished syncing), reload so
+  // the optimistic "รอ sync" photos are replaced by the real server records —
+  // this is what makes the submit photo-gate pass after capture.
+  const pendingCount = useOfflineStore((s) => s.pending)
+  const prevPending = useRef(0)
+  useEffect(() => {
+    if (prevPending.current > 0 && pendingCount === 0) load()
+    prevPending.current = pendingCount
+  }, [pendingCount, load])
+
   // Debounced auto-save inspection
   const scheduleAutoSave = useCallback((nextValues) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -245,10 +257,12 @@ export default function WorkOrderUnitDetail() {
   }
 
   const handleFileChange = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const raw = e.target.files?.[0]
+    if (!raw) return
     e.target.value = ''
     try {
+      // shrink the mobile photo so the upload actually completes
+      const file = await compressImage(raw, { maxDim: 1600, quality: 0.7 })
       const fields = {
         work_order_unit_id: String(unitId),
         phase: uploadingPhase,
@@ -336,15 +350,9 @@ export default function WorkOrderUnitDetail() {
         onChange={handleFileChange}
       />
 
-      {/* Meta */}
-      <div className="px-4 pt-3 pb-1">
-        <p className="text-xs text-gray-500">
-          {item.room_name} {item.building_name ? `· ${item.building_name}` : ''} · {item.family || item.equipment_type}
-        </p>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200 bg-white sticky top-14 z-20">
+      {/* Tab bar — sticky at the very top of the content area (no overlap) */}
+      <div className="flex border-b border-line bg-surface sticky top-0 z-30 shadow-sm">
+        {/* kept above content; meta moved below to avoid covering data */}
         {[
           { key: 'checklist', label: 'รายการตรวจ' },
           { key: 'photos',    label: 'รูปภาพ' },
@@ -360,6 +368,13 @@ export default function WorkOrderUnitDetail() {
             {tb.label}
           </button>
         ))}
+      </div>
+
+      {/* Meta (below the sticky tabs so it never covers content) */}
+      <div className="px-4 pt-2">
+        <p className="text-xs text-ink-muted">
+          {item.room_name} {item.building_name ? `· ${item.building_name}` : ''} · {item.family || item.equipment_type}
+        </p>
       </div>
 
       {/* Auto-save indicator */}
