@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Camera, X, PenLine, Loader2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
@@ -25,6 +25,8 @@ function photoSrc(url) {
 
 export default function SimpleWoForm() {
   const navigate = useNavigate()
+  const { id } = useParams()
+  const isEdit = !!id
 
   const [header, setHeader] = useState({
     tech_name: '',
@@ -65,6 +67,7 @@ export default function SimpleWoForm() {
   const [sigPad, setSigPad] = useState(null) // 'engineer' | 'department' | 'team' | null
 
   const [submitting, setSubmitting] = useState(false)
+  const [loadingWo, setLoadingWo] = useState(false)
   const [error, setError] = useState('')
 
   const beforeInputRef = useRef(null)
@@ -72,8 +75,47 @@ export default function SimpleWoForm() {
 
   const draftLoaded = useRef(false)
 
-  // Restore saved draft on mount (if any)
+  // Edit: load the existing WO. Create: restore autosaved draft.
   useEffect(() => {
+    if (isEdit) {
+      setLoadingWo(true)
+      api.get(`/simple-wo/${id}`)
+        .then((r) => {
+          const w = r.data
+          setHeader({
+            tech_name: w.tech_name || '',
+            work_date: w.work_date ? String(w.work_date).slice(0, 10) : '',
+            client_name: w.client_name || '',
+            building: w.building || '',
+            floor: w.floor || '',
+            room: w.room || '',
+            asset_code: w.asset_code || '',
+            work_type: w.work_type || 'major',
+            power_system: w.power_system || '380',
+            start_time: w.start_time ? String(w.start_time).slice(0, 5) : '',
+            end_time: w.end_time ? String(w.end_time).slice(0, 5) : '',
+            result: w.result || 'ok',
+          })
+          setChecklistValues(w.checklist_values || {})
+          setPhotoUrls(Array.isArray(w.photo_urls) ? w.photo_urls : [])
+          setTeamComment({
+            ac_degraded: !!w.team_comment?.ac_degraded,
+            ac_old_5_7yr: !!w.team_comment?.ac_old_5_7yr,
+            external_degraded: !!w.team_comment?.external_degraded,
+            external_detail: w.team_comment?.external_detail || '',
+            internal_degraded: !!w.team_comment?.internal_degraded,
+            internal_detail: w.team_comment?.internal_detail || '',
+          })
+          setSignatures({
+            engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
+            department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
+            team:       { name: w.sig_team_name || '',        data: w.sig_team || '' },
+          })
+        })
+        .catch((e) => setError(e.response?.data?.error || 'โหลดใบงานไม่สำเร็จ'))
+        .finally(() => { setLoadingWo(false); draftLoaded.current = true })
+      return
+    }
     try {
       const raw = localStorage.getItem(DRAFT_KEY)
       if (raw) {
@@ -89,10 +131,11 @@ export default function SimpleWoForm() {
     } finally {
       draftLoaded.current = true
     }
-  }, [])
+  }, [isEdit, id])
 
-  // Autosave whole form state to localStorage on any change
+  // Autosave whole form state to localStorage on any change (create mode only)
   useEffect(() => {
+    if (isEdit) return // edit mode pulls from the server, never the draft
     if (!draftLoaded.current) return // don't overwrite before restore runs
     try {
       localStorage.setItem(
@@ -216,9 +259,11 @@ export default function SimpleWoForm() {
         sig_team: signatures.team.data,
         sig_team_name: signatures.team.name,
       }
-      const res = await api.post('/simple-wo', body)
-      localStorage.removeItem(DRAFT_KEY) // clear draft so next new form starts blank
-      navigate(`/simple-wo/${res.data.id}`)
+      const res = isEdit
+        ? await api.put(`/simple-wo/${id}`, body)
+        : await api.post('/simple-wo', body)
+      if (!isEdit) localStorage.removeItem(DRAFT_KEY) // clear draft so next new form starts blank
+      navigate(`/simple-wo/${isEdit ? id : res.data.id}`)
     } catch (err) {
       setError(err.response?.data?.error || 'บันทึกใบงานไม่สำเร็จ')
       setSubmitting(false)
@@ -226,7 +271,7 @@ export default function SimpleWoForm() {
   }
 
   return (
-    <Layout title="เปิดใบงานใหม่" back="/simple-wo">
+    <Layout title={isEdit ? 'แก้ไขใบงาน' : 'เปิดใบงานใหม่'} back={isEdit ? `/simple-wo/${id}` : '/simple-wo'}>
       <div className="px-4 pt-4 pb-8 flex flex-col gap-5 max-w-2xl mx-auto w-full">
 
         {/* ── Header fields ── */}
@@ -454,23 +499,25 @@ export default function SimpleWoForm() {
         )}
 
         <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-page/90 backdrop-blur border-t border-line flex flex-col gap-2">
-          <p className="text-[11px] text-ink-muted text-center">บันทึกร่างอัตโนมัติ</p>
+          {!isEdit && <p className="text-[11px] text-ink-muted text-center">บันทึกร่างอัตโนมัติ</p>}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={clearDraft}
-              disabled={submitting || uploading}
-              className="btn-secondary text-center"
-            >
-              ล้างฟอร์ม
-            </button>
+            {!isEdit && (
+              <button
+                type="button"
+                onClick={clearDraft}
+                disabled={submitting || uploading}
+                className="btn-secondary text-center"
+              >
+                ล้างฟอร์ม
+              </button>
+            )}
             <button
               type="button"
               onClick={submit}
-              disabled={submitting || uploading}
+              disabled={submitting || uploading || loadingWo}
               className="btn-primary text-center flex-1"
             >
-              {submitting ? 'กำลังบันทึก...' : 'ส่งใบงาน'}
+              {submitting ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'ส่งใบงาน')}
             </button>
           </div>
         </div>
