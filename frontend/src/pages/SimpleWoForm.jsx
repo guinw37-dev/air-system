@@ -5,6 +5,23 @@ import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
 import api, { uploadsBase } from '../api/client'
 import { compressImage } from '../lib/image'
+import { useAuthStore } from '../store/auth'
+
+// 12 โรงพยาบาล (ไม่รวม Demo) — ลูกค้าของ simple-wo
+const HOSPITALS = [
+  'โรงพยาบาลพญาไท 1',
+  'โรงพยาบาลพญาไท 2',
+  'โรงพยาบาลพญาไท 3',
+  'โรงพยาบาลพญาไท นวมินทร์',
+  'โรงพยาบาลพญาไท บ่อวิน',
+  'โรงพยาบาลพญาไท พหลโยธิน',
+  'โรงพยาบาลพญาไท ศรีราชา',
+  'โรงพยาบาลเปาโล พระประแดง',
+  'โรงพยาบาลเปาโล รังสิต',
+  'โรงพยาบาลเปาโล สมุทรปราการ',
+  'โรงพยาบาลเปาโล เกษตร',
+  'โรงพยาบาลเปาโล โชคชัย 4',
+]
 
 const WORK_TYPES = [
   { value: 'major', label: 'ล้างใหญ่' },
@@ -27,6 +44,7 @@ export default function SimpleWoForm() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = !!id
+  const { user } = useAuthStore()
 
   const [header, setHeader] = useState({
     tech_name: '',
@@ -121,15 +139,16 @@ export default function SimpleWoForm() {
     }
     try {
       const raw = localStorage.getItem(DRAFT_KEY)
-      if (raw) {
-        const d = JSON.parse(raw)
-        if (d.header) setHeader(d.header)
-        if (d.checklistValues) setChecklistValues(d.checklistValues)
-        if (Array.isArray(d.photoUrls)) setPhotoUrls(d.photoUrls)
-        if (Array.isArray(d.galleryUrls)) setGalleryUrls(d.galleryUrls)
-        if (d.teamComment) setTeamComment(d.teamComment)
-        if (d.signatures) setSignatures(d.signatures)
-      }
+      const d = raw ? JSON.parse(raw) : null
+      // ชื่อช่าง = ชื่อคนล็อกอิน (default), draft ทับได้ถ้าเคยแก้
+      const techName = d?.header?.tech_name || user?.name || ''
+      if (d?.header) setHeader((h) => ({ ...h, ...d.header, tech_name: techName }))
+      else setHeader((h) => ({ ...h, tech_name: techName }))
+      if (d?.checklistValues) setChecklistValues(d.checklistValues)
+      if (Array.isArray(d?.photoUrls)) setPhotoUrls(d.photoUrls)
+      if (Array.isArray(d?.galleryUrls)) setGalleryUrls(d.galleryUrls)
+      if (d?.teamComment) setTeamComment(d.teamComment)
+      if (d?.signatures) setSignatures(d.signatures)
     } catch {
       // malformed draft — ignore
     } finally {
@@ -325,7 +344,13 @@ export default function SimpleWoForm() {
               <label className="label">วันที่</label>
               <input type="date" className="input" value={header.work_date} onChange={(e) => setHeader({ ...header, work_date: e.target.value })} />
             </div>
-            <Text label="ลูกค้า" value={header.client_name} onChange={(v) => setHeader({ ...header, client_name: v })} />
+            <div>
+              <label className="label">ลูกค้า (โรงพยาบาล)</label>
+              <select className="input" value={header.client_name} onChange={(e) => setHeader({ ...header, client_name: e.target.value })}>
+                <option value="">-- เลือกโรงพยาบาล --</option>
+                {HOSPITALS.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
             <Text label="อาคาร" value={header.building} onChange={(v) => setHeader({ ...header, building: v })} />
             <Text label="ชั้น" value={header.floor} onChange={(v) => setHeader({ ...header, floor: v })} />
             <Text label="ห้อง" value={header.room} onChange={(v) => setHeader({ ...header, room: v })} />

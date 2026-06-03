@@ -1106,7 +1106,7 @@ function buildSimpleReportHtml(data) {
     </div>`;
 
   const inner = `<div class="major-c">
-    ${lmtHeader(d, 'แบบ C<small>Service Report (TW)</small>')}
+    ${lmtHeader(d, 'รายงานบริการ<small>Service Report (TW)</small>')}
     ${meta}
     ${serviceTypeChecks(u).replace('class="checks"', 'class="svc-checks"')}
     ${checklistTable(u)}
@@ -1124,15 +1124,15 @@ function buildSimpleReportHtml(data) {
     </div>
 
     <div class="sign-row">
-      ${signatureBox('ลงชื่อวิศวกรรม', sigs.engineer)}
-      ${signatureBox('ลงชื่อหน่วยงาน', sigs.department)}
       ${signatureBox('ลงชื่อทีมช่าง', sigs.team)}
+      ${signatureBox('ลงชื่อหน่วยงาน', sigs.department)}
+      ${signatureBox('ลงชื่อวิศวกรรม', sigs.engineer)}
     </div>
   </div>`;
 
   const pages = [page(d, inner)];
   for (const frag of simplePhotoPages(u, d)) {
-    pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'แบบ C<small>รูปภาพประกอบ</small>')}${frag}</div>`));
+    pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'รายงานบริการ<small>รูปภาพประกอบ</small>')}${frag}</div>`));
   }
   return htmlDoc(d, `ใบงาน ${wo.order_no || ''}`, pages);
 }
