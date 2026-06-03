@@ -12,8 +12,8 @@ ok('technician draft→in_progress');
 assert.strictEqual(checkTransition('in_progress', 'pending_admin', 'technician').ok, true);
 ok('technician submit in_progress→pending_admin');
 
-assert.strictEqual(checkTransition('pending_admin', 'pending_approval', 'central_admin').ok, true);
-ok('central_admin admin-approve');
+assert.strictEqual(checkTransition('pending_admin', 'pending_approval', 'checker').ok, true);
+ok('checker admin-approve (ด่าน 1)');
 
 assert.strictEqual(checkTransition('pending_approval', 'approved', 'approver').ok, true);
 ok('approver final-approve');
@@ -37,11 +37,11 @@ assert.strictEqual(r.ok, false); assert.strictEqual(r.code, 'status');
 ok('approved is terminal (status)');
 
 // Reject requires reason
-r = checkTransition('pending_admin', 'rejected', 'central_admin', { reason: '' });
+r = checkTransition('pending_admin', 'rejected', 'checker', { reason: '' });
 assert.strictEqual(r.ok, false); assert.strictEqual(r.code, 'reason');
 ok('reject needs a reason');
 
-r = checkTransition('pending_admin', 'rejected', 'central_admin', { reason: 'รูปไม่ชัด' });
+r = checkTransition('pending_admin', 'rejected', 'checker', { reason: 'รูปไม่ชัด' });
 assert.strictEqual(r.ok, true);
 ok('reject with reason ok');
 

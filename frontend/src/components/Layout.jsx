@@ -17,12 +17,12 @@ const NAV = [
   { path: '/pm',             icon: CalendarCheck,   label: 'PM Schedule',  roles: null },
   { path: '/pm-plan',        icon: TableProperties, label: 'PM Plan',      roles: null },
   { path: '/cleaning-status',    icon: Activity,        label: 'ติดตามการล้าง', roles: null },
-  { path: '/cleaning-dashboard', icon: LayoutDashboard, label: 'สรุปยอดล้าง',    roles: ['admin', 'central_admin', 'approver'] },
+  { path: '/cleaning-dashboard', icon: LayoutDashboard, label: 'สรุปยอดล้าง',    roles: ['admin', 'checker', 'central_admin', 'approver'] },
   { path: '/work-orders',  icon: ClipboardList,   label: 'ใบงาน',          roles: null },
   { path: '/parts',        icon: Package,          label: 'อะไหล่',         roles: null },
   { path: '/deductions',   icon: BadgeDollarSign,  label: 'หักเงิน',        roles: ['admin', 'central_admin', 'approver'] },
-  { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin', 'approver'] },
-  { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin', 'approver'] },
+  { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },
+  { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin'] },
 ]
 
@@ -33,7 +33,7 @@ export default function Layout({ children, title, back, actions }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [rejectedCount, setRejectedCount] = useState(0)
 
-  const isTechAdmin = ['admin', 'technician'].includes(user?.role)
+  const isTechAdmin = ['admin', 'technician', 'checker'].includes(user?.role)
   const [unreadCount, setUnreadCount] = useState(0)
   const notifPollRef = useRef(null)
 

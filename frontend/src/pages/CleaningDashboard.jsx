@@ -38,7 +38,7 @@ function workingDaysLeft(year, month) {
 
 export default function CleaningDashboard() {
   const user = useAuthStore((s) => s.user)
-  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin', 'checker'].includes(user?.role)
 
   const [tab, setTab] = useState('pts1')
   const [hospitals, setHospitals] = useState([])

@@ -93,11 +93,12 @@ export default function WorkOrderDetail() {
   const t = TYPE_LABEL[wo.type]    || { label: wo.type,   color: 'badge-gray' }
 
   const role = user?.role
-  const isTech        = role === 'technician'
+  const isTech         = role === 'technician'
   const isCentralAdmin = role === 'central_admin'
-  const isApprover    = role === 'approver'
-  const isAdmin       = role === 'admin'
-  const canEdit       = ['draft', 'in_progress'].includes(wo.status)
+  const isApprover     = role === 'approver'
+  const isAdmin        = role === 'admin'
+  const isChecker      = role === 'checker'
+  const canEdit        = ['draft', 'in_progress'].includes(wo.status)
   const editableStatus = ['draft', 'in_progress', 'rejected'].includes(wo.status)
 
   // Action handlers
@@ -311,7 +312,7 @@ export default function WorkOrderDetail() {
                 <p className="text-xs text-danger/80 mt-1">{wo.reject_reason || wo.owner_notes || '-'}</p>
               </div>
             </div>
-            {(isTech || isAdmin || isCentralAdmin) && (
+            {(isTech || isCentralAdmin) && (
               <button
                 onClick={doResubmit}
                 disabled={actionLoading}
@@ -345,7 +346,7 @@ export default function WorkOrderDetail() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold text-ink">อุปกรณ์ ({(wo.items || []).length} รายการ)</h2>
-            {editableStatus && (isAdmin || isCentralAdmin || isTech) && (
+            {editableStatus && (isCentralAdmin || isTech) && (
               <button
                 onClick={() => setShowAddUnit(true)}
                 className="flex items-center gap-1 text-primary text-sm font-medium"
@@ -435,7 +436,7 @@ export default function WorkOrderDetail() {
         <div className="flex flex-col gap-2">
 
           {/* Request area-owner signature via QR link */}
-          {wo.status === 'in_progress' && (isAdmin || isCentralAdmin || isTech ||
+          {wo.status === 'in_progress' && (isCentralAdmin || isTech || isChecker ||
             (wo.assignees || []).some((a) => a.id === user?.id)) && (
             <button
               onClick={openSignModal}
@@ -447,7 +448,7 @@ export default function WorkOrderDetail() {
           )}
 
           {/* Technician: Start draft */}
-          {wo.status === 'draft' && (isTech || isAdmin || isCentralAdmin) && (
+          {wo.status === 'draft' && (isTech || isCentralAdmin) && (
             <button onClick={doStart} disabled={actionLoading} className="btn-primary flex items-center justify-center gap-2">
               <CheckCircle className="h-5 w-5" />
               {actionLoading ? 'กำลังเริ่ม...' : 'เริ่มงาน'}
@@ -455,15 +456,15 @@ export default function WorkOrderDetail() {
           )}
 
           {/* Technician: Submit in_progress */}
-          {wo.status === 'in_progress' && (isTech || isAdmin || isCentralAdmin) && (wo.items || []).length > 0 && (
+          {wo.status === 'in_progress' && (isTech || isCentralAdmin) && (wo.items || []).length > 0 && (
             <button onClick={doSubmit} disabled={actionLoading} className="btn-primary flex items-center justify-center gap-2">
               <CheckCircle className="h-5 w-5" />
               {actionLoading ? 'กำลังส่ง...' : 'ส่งงาน (ขอ Admin ตรวจสอบ)'}
             </button>
           )}
 
-          {/* Central admin: pending_admin */}
-          {wo.status === 'pending_admin' && (isCentralAdmin || isAdmin) && (
+          {/* Checker: pending_admin (ด่าน 1 ตรวจเอกสาร) */}
+          {wo.status === 'pending_admin' && isChecker && (
             <div className="flex gap-2">
               <button
                 onClick={doAdminApprove}
@@ -482,8 +483,8 @@ export default function WorkOrderDetail() {
             </div>
           )}
 
-          {/* Approver: pending_approval */}
-          {wo.status === 'pending_approval' && (isApprover || isAdmin) && (
+          {/* Approver: pending_approval (ด่าน 2 final-approve) */}
+          {wo.status === 'pending_approval' && isApprover && (
             <div className="flex flex-col gap-2">
               <button
                 onClick={doFinalApprove}
@@ -508,13 +509,13 @@ export default function WorkOrderDetail() {
             </div>
           )}
 
-          {/* central_admin sign when pending_approval */}
-          {wo.status === 'pending_approval' && isCentralAdmin && !hasSig('central_admin') && (
+          {/* Checker sign when pending_approval */}
+          {wo.status === 'pending_approval' && isChecker && !hasSig('central_admin') && (
             <button
               onClick={() => { setSigRole('central_admin'); setSignerName(user?.name || '') }}
               className="btn-secondary flex items-center justify-center gap-1"
             >
-              <PenLine className="h-4 w-4" /> ลงนาม (Admin)
+              <PenLine className="h-4 w-4" /> ลงนาม (Checker)
             </button>
           )}
         </div>
@@ -644,7 +645,7 @@ export default function WorkOrderDetail() {
       {/* Signature modal */}
       {sigRole && (
         <Modal
-          title={sigRole === 'area_owner' ? 'ลายเซ็นเจ้าของพื้นที่' : sigRole === 'approver' ? 'ลายเซ็นผู้อนุมัติ' : 'ลายเซ็น Admin'}
+          title={sigRole === 'area_owner' ? 'ลายเซ็นเจ้าของพื้นที่' : sigRole === 'approver' ? 'ลายเซ็นผู้อนุมัติ' : 'ลายเซ็น Checker'}
           onClose={() => { setSigRole(null); setSignerName('') }}
         >
           <div className="mb-3">

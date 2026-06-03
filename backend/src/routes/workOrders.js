@@ -175,7 +175,7 @@ router.get('/:id/history', authMiddleware, async (req, res) => {
 // ── PUT /api/work-orders/:id/units ──────────────────────────────────────────
 // เพิ่ม/ลดเครื่อง — เฉพาะตอนยังแก้ได้ (draft/in_progress/rejected) ก่อนปิดงาน
 router.put('/:id/units', authMiddleware,
-  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   async (req, res) => {
   const { unit_ids = [] } = req.body;
   if (!Array.isArray(unit_ids)) return res.status(400).json({ error: 'unit_ids must be an array' });
@@ -223,7 +223,7 @@ router.put('/:id/units', authMiddleware,
 //   has_repair?, repair_notes? }  values[]: { template_item_id, value_before,
 //   value_after, checked, note }
 router.put('/:id/inspection', authMiddleware,
-  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   async (req, res) => {
   const { work_order_unit_id, values = [], has_repair, repair_notes } = req.body;
   if (!work_order_unit_id) return res.status(400).json({ error: 'work_order_unit_id required' });
@@ -295,7 +295,7 @@ router.put('/:id/inspection', authMiddleware,
 
 // ── PUT /api/work-orders/:id/condition — team condition assessment (TW) ─────
 router.put('/:id/condition', authMiddleware,
-  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   async (req, res) => {
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
@@ -405,7 +405,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
 
 // ── POST /api/work-orders/:id/admin-approve ─────────────────────────────────
 // pending_admin → pending_approval (central_admin)
-router.post('/:id/admin-approve', authMiddleware, requireRole('central_admin', 'admin'), async (req, res) => {
+router.post('/:id/admin-approve', authMiddleware, requireRole('checker'), async (req, res) => {
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
   const t = checkTransition(wo.status, 'pending_approval', req.user.role);
@@ -429,7 +429,7 @@ router.post('/:id/admin-approve', authMiddleware, requireRole('central_admin', '
 
 // ── POST /api/work-orders/:id/final-approve ─────────────────────────────────
 // pending_approval → approved (approver) + advance PM cycle per unit
-router.post('/:id/final-approve', authMiddleware, requireRole('approver', 'admin'), async (req, res) => {
+router.post('/:id/final-approve', authMiddleware, requireRole('approver'), async (req, res) => {
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
   const t = checkTransition(wo.status, 'approved', req.user.role);
@@ -491,7 +491,7 @@ async function advancePmCycle(client, woId, type) {
 }
 
 // ── POST /api/work-orders/:id/reject ────────────────────────────────────────
-router.post('/:id/reject', authMiddleware, requireRole('central_admin', 'approver', 'admin'), async (req, res) => {
+router.post('/:id/reject', authMiddleware, requireRole('checker', 'approver'), async (req, res) => {
   const { reason } = req.body;
   const wo = await getWO(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
@@ -543,7 +543,7 @@ router.post('/:id/resubmit', authMiddleware, async (req, res) => {
 // logging in. Returns the raw token + relative sign path; the technician shows it
 // as a QR/link. Only an assignee (or admin) on an in_progress WO may request one.
 router.post('/:id/sign-token', authMiddleware,
-  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['in_progress'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['in_progress'], assigneeOnly: true }),
   async (req, res) => {
     try {
       const token = jwt.sign(
@@ -578,7 +578,7 @@ router.get('/:id/sign-status', authMiddleware, async (req, res) => {
 // path into the separate repair-report workflow; it is explicit (a button),
 // not a side-effect of submitting the work order.
 router.post('/:id/repair-request', authMiddleware,
-  requireWoRole({ roles: ['technician', 'central_admin', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   async (req, res) => {
   const { work_order_unit_id, problem } = req.body;
   if (!work_order_unit_id || !problem?.trim()) {
@@ -614,10 +614,12 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
   if (!valid.includes(role)) return res.status(400).json({ error: `role must be one of: ${valid.join(', ')}` });
   // RBAC: a signature of role X may only be written by that role (or admin).
   // area_owner is the on-site signer captured by the assigned technician/admin.
+  // signature-role → which user roles may sign it. The 'central_admin' signature
+  // slot is the ด่าน-1 checker's signature (signed by a 'checker' user).
   const allowedSigners = {
-    area_owner:    ['technician', 'central_admin', 'admin'],
-    central_admin: ['central_admin', 'admin'],
-    approver:      ['approver', 'admin'],
+    area_owner:    ['technician', 'checker'],
+    central_admin: ['checker'],
+    approver:      ['approver'],
   };
   if (!allowedSigners[role].includes(req.user.role)) {
     return res.status(403).json({ error: `role ${req.user.role} ลงลายเซ็น ${role} ไม่ได้` });
@@ -663,7 +665,7 @@ const upload = multer({
 
 // POST /api/work-orders/:id/photos — concurrent-safe (always append)
 router.post('/:id/photos', authMiddleware,
-  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   upload.single('photo'), async (req, res) => {
   let { work_order_unit_id, phase, point_no, label, client_token } = req.body;
   if (!work_order_unit_id || !phase || !req.file) {
@@ -728,7 +730,7 @@ router.get('/:id/photos', authMiddleware, async (req, res) => {
 
 // DELETE /api/work-orders/:id/photos/:photoId — only before submit (editable)
 router.delete('/:id/photos/:photoId', authMiddleware,
-  requireWoRole({ roles: ['technician', 'admin'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
+  requireWoRole({ roles: ['technician', 'checker'], statuses: ['draft', 'in_progress', 'rejected'], assigneeOnly: true }),
   async (req, res) => {
   const wo = req.wo;
   const { rows } = await pool.query(`

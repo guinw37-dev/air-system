@@ -7,24 +7,27 @@
 // required. Routes MUST go through assertTransition() before mutating status,
 // and call logTransition() inside the same transaction to keep the audit trail.
 
+// Role model: technician (field) → checker (ด่าน 1 ตรวจ) → approver (ด่าน 2 อนุมัติ).
+// admin = system administrator (users/master/system) — NOT a workflow actor.
+// central_admin = data-entry helper — also NOT in the approval workflow.
 const TRANSITIONS = {
   draft: {
-    in_progress: { roles: ['technician', 'central_admin', 'admin'] },
+    in_progress: { roles: ['technician', 'checker'] },
   },
   in_progress: {
-    pending_admin: { roles: ['technician', 'central_admin', 'admin'], gate: 'photos' },
-    rejected:      { roles: ['central_admin', 'approver', 'admin'], requireReason: true },
+    pending_admin: { roles: ['technician', 'checker'], gate: 'photos' },
+    rejected:      { roles: ['checker', 'approver'], requireReason: true },
   },
   pending_admin: {
-    pending_approval: { roles: ['central_admin', 'admin'] },
-    rejected:         { roles: ['central_admin', 'approver', 'admin'], requireReason: true },
+    pending_approval: { roles: ['checker'] },                          // ด่าน 1
+    rejected:         { roles: ['checker', 'approver'], requireReason: true },
   },
   pending_approval: {
-    approved: { roles: ['approver', 'admin'] },
-    rejected: { roles: ['approver', 'central_admin', 'admin'], requireReason: true },
+    approved: { roles: ['approver'] },                                 // ด่าน 2
+    rejected: { roles: ['approver', 'checker'], requireReason: true },
   },
   rejected: {
-    in_progress: { roles: ['technician', 'central_admin', 'admin'] },
+    in_progress: { roles: ['technician', 'checker'] },
   },
   approved: {}, // terminal — locked, no edits
 };
