@@ -105,6 +105,7 @@ export default function SimpleWoDetail() {
   const cv = wo.checklist_values || {}
   const tc = wo.team_comment || {}
   const photos = Array.isArray(wo.photo_urls) ? wo.photo_urls : []
+  const gallery = Array.isArray(wo.gallery_urls) ? wo.gallery_urls : []
   const result = RESULT_LABEL[wo.result]
   const dateVal = wo.work_date || wo.created_at
 
@@ -186,6 +187,20 @@ export default function SimpleWoDetail() {
             <PhotoGroup title="ก่อน (Before)" tone="teal" items={photos.filter((p) => p.phase === 'before')} />
             <PhotoGroup title="หลัง (After)" tone="navy" items={photos.filter((p) => p.phase === 'after')} />
             <PhotoGroup title="อื่น ๆ" tone="muted" items={photos.filter((p) => !['before', 'after'].includes(p.phase))} />
+          </div>
+        )}
+
+        {/* Gallery (คลังรูป) — extra album photos, not in the PDF */}
+        {gallery.length > 0 && (
+          <div className="card flex flex-col gap-3">
+            <h2 className="section-header">คลังรูป (เพิ่มเติม) ({gallery.length})</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {gallery.map((p, i) => (
+                <a key={i} href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
+                  <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
+                </a>
+              ))}
+            </div>
           </div>
         )}
 

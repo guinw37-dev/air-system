@@ -127,9 +127,9 @@ router.post('/', authMiddleware, async (req, res) => {
       INSERT INTO simple_work_orders (
         wo_number, created_by, tech_name, work_date, client_name, building, floor, room,
         asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
-        team_comment, photo_urls,
+        team_comment, photo_urls, gallery_urls,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
@@ -138,6 +138,7 @@ router.post('/', authMiddleware, async (req, res) => {
       JSON.stringify(b.checklist_values || {}), b.result || null,
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
+      JSON.stringify(b.gallery_urls || []),
       b.sig_engineer || null, b.sig_engineer_name || null,
       b.sig_department || null, b.sig_department_name || null,
       b.sig_team || null, b.sig_team_name || null,
@@ -193,7 +194,7 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const html = buildSimpleReportHtml(data);
     try {
-      const pdf = await htmlToPdf(html, { landscape: true });
+      const pdf = await htmlToPdf(html, { landscape: false });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${data.wo.order_no}.pdf"`);
       return res.end(pdf);
@@ -227,7 +228,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         asset_code=$8, work_type=$9, power_system=$10, checklist_values=$11, result=$12,
         start_time=$13, end_time=$14, team_comment=$15, photo_urls=$16,
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
-        sig_team=$21, sig_team_name=$22
+        sig_team=$21, sig_team_name=$22, gallery_urls=$23
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -240,6 +241,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.sig_engineer || null, b.sig_engineer_name || null,
       b.sig_department || null, b.sig_department_name || null,
       b.sig_team || null, b.sig_team_name || null,
+      JSON.stringify(b.gallery_urls || []),
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -250,7 +252,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT created_by, photo_urls FROM simple_work_orders WHERE id = $1', [req.params.id]
+      'SELECT created_by, photo_urls, gallery_urls FROM simple_work_orders WHERE id = $1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const row = rows[0];
@@ -259,8 +261,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
     }
     await pool.query('DELETE FROM simple_work_orders WHERE id = $1', [req.params.id]);
-    // best-effort: remove photo files (ignore errors)
-    for (const p of (row.photo_urls || [])) {
+    // best-effort: remove photo + gallery files (ignore errors)
+    for (const p of [...(row.photo_urls || []), ...(row.gallery_urls || [])]) {
       if (p && typeof p.url === 'string' && p.url.startsWith('/uploads/')) {
         fs.unlink(path.join(UPLOAD_DIR, p.url.replace('/uploads/', '')), () => {});
       }
