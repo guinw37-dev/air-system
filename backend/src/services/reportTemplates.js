@@ -948,9 +948,9 @@ function majorUnitPages(data) {
     </div>
 
     <div class="sign-row">
-      ${signatureBox('ลงชื่อวิศวกรรม', sigs.area_owner)}
-      ${signatureBox('ลงชื่อหน่วยงาน', sigs.central_admin)}
-      ${signatureBox('ลงชื่อทีมช่าง', sigs.approver)}
+      ${signatureBox('ทีมช่าง', { signer_name: assigneeNames(data) === '—' ? '' : assigneeNames(data) })}
+      ${signatureBox('เจ้าของพื้นที่', sigs.area_owner)}
+      ${signatureBox('ผู้อนุมัติ (Approver)', sigs.approver)}
     </div>
     </div>`;
     pages.push(page(data, inner));
