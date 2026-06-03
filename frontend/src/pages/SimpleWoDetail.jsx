@@ -28,6 +28,7 @@ export default function SimpleWoDetail() {
   const navigate = useNavigate()
 
   const [wo, setWo] = useState(null)
+  const [schema, setSchema] = useState({ sections: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,6 +39,15 @@ export default function SimpleWoDetail() {
       .catch((e) => setError(e.response?.data?.error || 'โหลดข้อมูลไม่สำเร็จ'))
       .finally(() => setLoading(false))
   }, [id])
+
+  // Load the checklist schema (labels + categories) for this WO's work_type so
+  // the values render with their item names instead of raw template ids.
+  useEffect(() => {
+    if (!wo?.work_type) return
+    api.get(`/simple-wo/form-schema?work_type=${wo.work_type}`)
+      .then((r) => setSchema(r.data && Array.isArray(r.data.sections) ? r.data : { sections: [] }))
+      .catch(() => setSchema({ sections: [] }))
+  }, [wo?.work_type])
 
   const downloadPdf = async () => {
     setBusy(true)
@@ -131,15 +141,27 @@ export default function SimpleWoDetail() {
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
         </div>
 
-        {/* Checklist values */}
-        {Object.keys(cv).length > 0 && (
+        {/* Checklist values — grouped by section, with item labels */}
+        {schema.sections.map((section) => (
+          <div key={section.key} className="card">
+            <h2 className="section-header mb-3">{section.label}</h2>
+            <div className="flex flex-col gap-2">
+              {(section.fields || []).map((field) => (
+                <div key={field.id} className="text-sm border-b border-line last:border-0 pb-2 last:pb-0">
+                  <p className="text-ink mb-0.5">{field.item_label}{field.unit_label ? ` (${field.unit_label})` : ''}</p>
+                  <p className="text-ink-muted break-words">{formatFieldValue(field, cv[field.id])}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {schema.sections.length === 0 && Object.keys(cv).length > 0 && (
           <div className="card">
             <h2 className="section-header mb-3">รายการตรวจ</h2>
             <div className="flex flex-col gap-2">
               {Object.entries(cv).map(([fid, val]) => (
                 <div key={fid} className="text-sm border-b border-line last:border-0 pb-2 last:pb-0">
-                  <p className="text-xs text-ink-muted mb-0.5">{fid}</p>
-                  <p className="text-ink break-words">{summarizeValue(val)}</p>
+                  <p className="text-ink-muted break-words">{summarizeValue(val)}</p>
                 </div>
               ))}
             </div>
@@ -203,6 +225,35 @@ export default function SimpleWoDetail() {
       </div>
     </Layout>
   )
+}
+
+// Format one checklist value by its field value_type → readable Thai string.
+// Empty / unfilled → '—' (every item still shows, per the full-form rule).
+function formatFieldValue(field, val) {
+  const v = val || {}
+  const g = (x) => (x === '' || x == null ? '—' : String(x))
+  switch (field.value_type) {
+    case 'check':
+      return `${v.checked ? '✓ ผ่าน' : '— ไม่ได้ทำเครื่องหมาย'}${v.note ? ` · ${v.note}` : ''}`
+    case 'number':
+    case 'before_after':
+      return `ก่อน ${g(v.value_before)} → หลัง ${g(v.value_after)}`
+    case 'text':
+      return g(v.val_text)
+    case 'rst_amp': {
+      const ps = v.power_system || '380'
+      const ln = `LN/L — ก่อน ${g(v.val_ln_before)}V/${g(v.val_l_before)}A · หลัง ${g(v.val_ln_after)}V/${g(v.val_l_after)}A`
+      if (String(ps) === '220') return `220V 1φ · ${ln}`
+      const rst = `R/S/T — ก่อน ${g(v.val_r_before)}/${g(v.val_s_before)}/${g(v.val_t_before)} · หลัง ${g(v.val_r_after)}/${g(v.val_s_after)}/${g(v.val_t_after)} A`
+      return `380V 3φ · ${rst} · ${ln}`
+    }
+    case 'ln_vi':
+      return `LN ${g(v.val_ln_after)}V · L ${g(v.val_l_after)}A`
+    case 'pressure_pair':
+      return `น้ำยา ${g(v.refrigerant_type)} · Suction ${g(v.val_suction)} · Discharge ${g(v.val_discharge)} PSI`
+    default:
+      return summarizeValue(v)
+  }
 }
 
 function summarizeValue(val) {
