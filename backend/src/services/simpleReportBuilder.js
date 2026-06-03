@@ -3,10 +3,9 @@ const QRCode = require('qrcode');
 const { BRAND } = require('./reportBuilder');
 
 // Map work_type → which template items apply.
-function templateFilter(workType) {
-  if (workType === 'fan') return { sql: `equipment_type = 'fan'`, params: [] };
-  if (workType === 'minor') return { sql: `equipment_type = 'ac' AND applies_minor = true`, params: [] };
-  // default major
+// Simple-WO uses ONE checklist for every work type (the full AC/major set);
+// the tech just fills what applies. Keeps field ids stable across work types.
+function templateFilter() {
   return { sql: `equipment_type = 'ac' AND applies_major = true`, params: [] };
 }
 
@@ -51,7 +50,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
       category: it.category,
       item_label: it.item_label,
       value_type: it.value_type,
-      unit_label: it.unit_label,
+      unit_label: v.unit || it.unit_label,
       sort_order: it.sort_order,
       // power preference: per-field override else the WO-level power_system
       power_system: v.power_system || r.power_system || null,
