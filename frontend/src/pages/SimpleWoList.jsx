@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Download, Camera, Trash2 } from 'lucide-react'
+import { Plus, Download, Camera, Trash2, FileText, PenLine, Printer } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
+import SignaturePad from '../components/SignaturePad'
 import api from '../api/client'
+import { useAuthStore } from '../store/auth'
 
 const WORK_TYPE_LABEL = {
   major: { label: 'ล้างใหญ่',  color: 'badge-primary' },
@@ -16,14 +18,34 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
+const SLOT_LABEL = { approver: 'วิศวกรรม', checker: 'หน่วยงาน', technician: 'ทีมช่าง' }
+
 export default function SimpleWoList() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+
+  const role = user?.role
+  const canSign = !!SLOT_LABEL[role]
+  const canBill = role === 'admin' || role === 'central_admin'
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [exporting, setExporting] = useState(false)
+
+  // Multi-select
+  const [selected, setSelected] = useState(() => new Set())
+
+  // Batch sign
+  const [signing, setSigning] = useState(false)
+  const [signerName, setSignerName] = useState('')
+  const [signLoading, setSignLoading] = useState(false)
+
+  // Batch bill (PDF)
+  const [pdfUrl, setPdfUrl] = useState(null)
+  const [billing, setBilling] = useState(false)
+  const iframeRef = useRef(null)
 
   const load = () => {
     setLoading(true)
@@ -41,10 +63,35 @@ export default function SimpleWoList() {
     try {
       await api.delete(`/simple-wo/${id}`)
       setRows((prev) => prev.filter((row) => row.id !== id))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     } catch (err) {
       alert(err.response?.data?.error || 'ลบใบงานไม่สำเร็จ')
     }
   }
+
+  // ── Selection helpers ──────────────────────────────────────────────
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (rows.length > 0 && rows.every((r) => prev.has(r.id))) return new Set()
+      return new Set(rows.map((r) => r.id))
+    })
+  }
+
+  const clearSelection = () => setSelected(new Set())
 
   const exportExcel = async () => {
     setExporting(true)
@@ -68,6 +115,53 @@ export default function SimpleWoList() {
       setExporting(false)
     }
   }
+
+  // ── Batch bill (PDF) ───────────────────────────────────────────────
+  const handleBatchPdf = async () => {
+    setBilling(true)
+    try {
+      const res = await api.post('/simple-wo/batch-pdf', { ids: [...selected] }, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      setPdfUrl(url)
+    } catch (err) {
+      alert(err.response?.data?.error || 'ออกเอกสารไม่สำเร็จ')
+    } finally {
+      setBilling(false)
+    }
+  }
+
+  const closePdf = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    setPdfUrl(null)
+  }
+
+  // ── Batch sign ─────────────────────────────────────────────────────
+  const openSign = () => {
+    setSignerName(user?.name || '')
+    setSigning(true)
+  }
+
+  const handleBatchSign = async (dataUrl) => {
+    setSignLoading(true)
+    try {
+      const count = selected.size
+      await api.post('/simple-wo/batch-sign', {
+        ids: [...selected],
+        signature_data: dataUrl,
+        signer_name: signerName,
+      })
+      alert(`เซ็นแล้ว ${count} ใบ (${SLOT_LABEL[role]})`)
+      setSigning(false)
+      clearSelection()
+      load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'เซ็นไม่สำเร็จ')
+    } finally {
+      setSignLoading(false)
+    }
+  }
+
+  const showBar = selected.size > 0 && (canSign || canBill)
 
   return (
     <Layout
@@ -121,6 +215,15 @@ export default function SimpleWoList() {
               <table className="w-full text-sm">
                 <thead className="bg-page border-b border-line">
                   <tr>
+                    <th className="py-3 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        className="accent-primary h-4 w-4"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        aria-label="เลือกทั้งหมด"
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">เลขใบงาน</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">วันที่</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ช่าง</th>
@@ -135,19 +238,30 @@ export default function SimpleWoList() {
                 <tbody className="divide-y divide-line">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
+                      <td colSpan={10} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
                     </tr>
                   )}
                   {rows.map((wo) => {
                     const t = WORK_TYPE_LABEL[wo.work_type] || { label: wo.work_type, color: 'badge-gray' }
                     const r = RESULT_LABEL[wo.result]
                     const dateVal = wo.work_date || wo.created_at
+                    const checked = selected.has(wo.id)
                     return (
                       <tr
                         key={wo.id}
                         onClick={() => navigate(`/simple-wo/${wo.id}`)}
-                        className="hover:bg-primary-soft/40 cursor-pointer transition-colors"
+                        className={`hover:bg-primary-soft/40 cursor-pointer transition-colors ${checked ? 'bg-primary-soft/30' : ''}`}
                       >
+                        <td className="py-3 px-4 w-10">
+                          <input
+                            type="checkbox"
+                            className="accent-primary h-4 w-4"
+                            checked={checked}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleOne(wo.id)}
+                            aria-label={`เลือกใบงาน ${wo.wo_number || wo.id}`}
+                          />
+                        </td>
                         <td className="py-3 px-4 font-semibold text-primary">{wo.wo_number || `#${wo.id}`}</td>
                         <td className="py-3 px-4 text-ink-muted text-xs">{dateVal ? dayjs(dateVal).format('DD/MM/YY') : '-'}</td>
                         <td className="py-3 px-4 text-ink">{wo.tech_name || '-'}</td>
@@ -188,6 +302,105 @@ export default function SimpleWoList() {
         </div>
         <p className="text-xs text-ink-muted">{rows.length} รายการ</p>
       </div>
+
+      {/* Sticky batch action bar */}
+      {showBar && (
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-line bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+          <div className="max-w-3xl mx-auto flex items-center gap-3">
+            <span className="text-sm text-ink-muted">เลือก {selected.size} ใบ</span>
+            <div className="flex-1" />
+            <button onClick={clearSelection} className="text-sm text-ink-muted hover:text-ink px-2">
+              ยกเลิก
+            </button>
+            {canBill ? (
+              <button
+                onClick={handleBatchPdf}
+                disabled={billing}
+                className="btn-primary flex items-center gap-1.5"
+              >
+                <FileText className="h-4 w-4" />
+                {billing ? 'กำลังออกเอกสาร...' : `วางบิล (${selected.size})`}
+              </button>
+            ) : canSign ? (
+              <button
+                onClick={openSign}
+                className="btn-primary flex items-center gap-1.5"
+              >
+                <PenLine className="h-4 w-4" />
+                {`เซ็นชุด (${selected.size}) — ${SLOT_LABEL[role]}`}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Signature modal */}
+      {signing && (
+        <Modal title={`เซ็นชุด — ${SLOT_LABEL[role] || ''}`} onClose={() => setSigning(false)}>
+          <div className="mb-3">
+            <label className="label">ชื่อผู้ลงนาม</label>
+            <input
+              className="input"
+              placeholder="ชื่อผู้ลงนาม"
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+            />
+          </div>
+          <SignaturePad onSave={handleBatchSign} onCancel={() => setSigning(false)} />
+          {signLoading && <p className="text-xs text-ink-muted mt-2 text-center">กำลังบันทึก...</p>}
+        </Modal>
+      )}
+
+      {/* PDF preview modal */}
+      {pdfUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closePdf} />
+          <div className="relative bg-white rounded-2xl w-full max-w-4xl p-5 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-ink">ตัวอย่างก่อนปริ้น</h3>
+              <button onClick={closePdf} className="text-ink-muted text-2xl leading-none">&times;</button>
+            </div>
+            <iframe
+              ref={iframeRef}
+              src={pdfUrl}
+              className="w-full rounded-xl border border-line"
+              style={{ height: '70vh' }}
+              title="preview"
+            />
+            <div className="flex flex-wrap gap-2 mt-4">
+              <button
+                onClick={() => iframeRef.current?.contentWindow?.print()}
+                className="btn-primary flex items-center gap-1.5"
+              >
+                <Printer className="h-4 w-4" /> ปริ้น
+              </button>
+              <a
+                href={pdfUrl}
+                download="วางบิล.pdf"
+                className="btn-secondary flex items-center gap-1.5"
+              >
+                <Download className="h-4 w-4" /> ดาวน์โหลด
+              </a>
+              <button onClick={closePdf} className="btn-secondary ml-auto">ปิด</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
+  )
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-t-3xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted text-2xl leading-none">&times;</button>
+        </div>
+        {children}
+      </div>
+    </div>
   )
 }

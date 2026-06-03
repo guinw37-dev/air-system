@@ -1087,7 +1087,7 @@ function simplePhotoPages(unit, data) {
   return frags;
 }
 
-function buildSimpleReportHtml(data) {
+function simpleReportPages(data) {
   const d = data || {};
   const wo = d.wo || {};
   const u = d.unit || {};
@@ -1134,7 +1134,73 @@ function buildSimpleReportHtml(data) {
   for (const frag of simplePhotoPages(u, d)) {
     pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'รายงานบริการ<small>รูปภาพประกอบ</small>')}${frag}</div>`));
   }
-  return htmlDoc(d, `ใบงาน ${wo.order_no || ''}`, pages);
+  return pages;
+}
+
+function buildSimpleReportHtml(data) {
+  const d = data || {};
+  return htmlDoc(d, `ใบงาน ${(d.wo || {}).order_no || ''}`, simpleReportPages(d));
+}
+
+// Billing cover sheet for a batch of simple-WO reports (no "แบบ B").
+function simpleBatchCover(data, items, meta) {
+  const teal = 'var(--teal)', navy = 'var(--navy)';
+  const rows = items.map((it, i) => `<tr>
+    <td style="text-align:center">${i + 1}</td>
+    <td>${dash(it.wo_number)}</td>
+    <td style="text-align:center">${dash(it.building)}</td>
+    <td>${dash(it.room)}</td>
+    <td>${dash(it.asset_code)}</td>
+    <td style="text-align:center">${dash(it.work_type)}</td>
+    <td style="text-align:center">${fmtDate(it.work_date)}</td>
+  </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:#9fb0b4">ไม่มีรายการ</td></tr>`;
+  const metaRows = [
+    ['ลูกค้า', meta.client_name],
+    ['เลขที่เอกสาร', meta.doc_no],
+    ['วันที่ออกเอกสาร', fmtDate(meta.issue_date)],
+    ['ช่วงปฏิบัติงาน', meta.date_range],
+    ['รวมจำนวนเครื่อง', `${items.length} เครื่อง`],
+    ['รวมใบงาน', `${meta.wo_count} ใบงาน`],
+  ].map(([k, v]) => `<div style="display:flex;gap:8px;padding:3px 0"><div style="color:#5a6e73;font-weight:600;min-width:130px">${escapeHtml(k)}</div><div style="color:${navy}">${dash(v)}</div></div>`).join('');
+  const inner = `
+    ${docHeader(data, 'ใบปะหน้า — วางบิล<small>Cover Sheet · Service Report (TW)</small>')}
+    <div style="font-weight:700;color:${teal};font-size:13px;margin:12px 0 8px;letter-spacing:.5px">สรุปงานล้างเครื่องปรับอากาศ · วางบิล</div>
+    ${metaRows}
+    <style>
+      table.bcov{width:100%;border-collapse:collapse;margin-top:8px}
+      table.bcov th{background:${navy};color:#fff;font-size:12px;padding:7px 8px}
+      table.bcov td{border:1px solid #d9e2e4;padding:6px 8px;font-size:12px;color:${navy}}
+      table.bcov tbody tr:nth-child(even) td{background:#f4f8f9}
+    </style>
+    <table class="bcov">
+      <thead><tr>
+        <th style="width:44px">ลำดับ</th><th>เลขใบงาน</th><th style="width:50px">อาคาร</th><th>ห้อง</th><th>เลขเครื่อง</th><th style="width:74px">ประเภท</th><th style="width:90px">วันที่</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:10px;text-align:right;font-weight:700;color:${navy}">รวมทั้งสิ้น ${items.length} เครื่อง · ${meta.wo_count} ใบงาน</div>
+    <div style="display:flex;justify-content:space-around;margin-top:54px;text-align:center">
+      <div><div style="border-top:1px solid ${navy};width:200px;margin:0 auto;padding-top:6px">ผู้วางบิล (TW)</div><div style="font-size:11px;color:#5a6e73;margin-top:28px">วันที่ ___/___/____</div></div>
+      <div><div style="border-top:1px solid ${navy};width:200px;margin:0 auto;padding-top:6px">ผู้รับวางบิล (โรงพยาบาล)</div><div style="font-size:11px;color:#5a6e73;margin-top:28px">วันที่ ___/___/____</div></div>
+    </div>`;
+  return page(data, inner);
+}
+
+// Combined batch document: billing cover + every selected WO's report pages.
+function buildSimpleBatchHtml(dataArray, meta) {
+  const arr = dataArray || [];
+  const d0 = arr[0] || {};
+  const items = arr.map((d) => ({
+    wo_number: (d.wo || {}).order_no,
+    building: (d.unit || {}).building_name,
+    room: (d.unit || {}).room_name,
+    asset_code: (d.unit || {}).asset_code,
+    work_type: (d.unit || {}).equipment_type,
+    work_date: (d.wo || {}).work_date || (d.wo || {}).created_at,
+  }));
+  const pages = [simpleBatchCover(d0, items, meta || {})];
+  for (const d of arr) pages.push(...simpleReportPages(d));
+  return htmlDoc(d0, `วางบิล ${(meta || {}).doc_no || ''}`, pages);
 }
 
 function buildReportHtml(data, type) {
@@ -1156,4 +1222,4 @@ function buildReportHtml(data, type) {
   return htmlDoc(d, TYPE_TITLES[type] || 'รายงานการปฏิบัติงาน', pages);
 }
 
-module.exports = { buildReportHtml, buildSimpleReportHtml };
+module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml };
