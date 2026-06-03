@@ -179,18 +179,13 @@ export default function SimpleWoDetail() {
           </div>
         </div>
 
-        {/* Photos */}
+        {/* Photos — grouped ก่อน / หลัง */}
         {photos.length > 0 && (
-          <div className="card">
-            <h2 className="section-header mb-3">รูปภาพ ({photos.length})</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {photos.map((p, i) => (
-                <a key={i} href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="relative block">
-                  <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
-                  {p.label && <span className="absolute top-1 left-1 badge badge-primary text-[10px] px-1.5 py-0">{p.label}</span>}
-                </a>
-              ))}
-            </div>
+          <div className="card flex flex-col gap-4">
+            <h2 className="section-header">รูปภาพ ({photos.length})</h2>
+            <PhotoGroup title="ก่อน (Before)" tone="teal" items={photos.filter((p) => p.phase === 'before')} />
+            <PhotoGroup title="หลัง (After)" tone="navy" items={photos.filter((p) => p.phase === 'after')} />
+            <PhotoGroup title="อื่น ๆ" tone="muted" items={photos.filter((p) => !['before', 'after'].includes(p.phase))} />
           </div>
         )}
 
@@ -270,6 +265,28 @@ function summarizeValue(val) {
     .filter(([, v]) => v !== '' && v != null)
     .map(([k, v]) => `${k}: ${v}`)
   return parts.length ? parts.join(' · ') : '-'
+}
+
+function PhotoGroup({ title, tone, items }) {
+  if (!items || items.length === 0) return null
+  const bar = tone === 'teal' ? 'bg-primary' : tone === 'navy' ? 'bg-primary-dark' : 'bg-ink-muted'
+  const text = tone === 'teal' ? 'text-primary' : tone === 'navy' ? 'text-primary-dark' : 'text-ink-muted'
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span className={`inline-block w-1.5 h-4 rounded ${bar}`} />
+        <span className={`text-sm font-semibold ${text}`}>{title}</span>
+        <span className="text-xs text-ink-muted">({items.length})</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {items.map((p, i) => (
+          <a key={i} href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
+            <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-xl border border-line" />
+          </a>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function InfoRow({ label, value }) {
