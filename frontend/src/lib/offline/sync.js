@@ -98,13 +98,16 @@ export async function flush() {
         if (item.kind === 'inspection') {
           await api.put(`/work-orders/${item.woId}/inspection`, item.payload)
         } else if (item.kind === 'photo') {
+          // Text fields MUST be appended BEFORE the file so multer's
+          // destination/filename callbacks see req.body (otherwise the file is
+          // saved under 'misc'/'x' while the DB url uses the real ids → 404).
           const fd = new FormData()
-          fd.append('photo', item.blob, `${item.fields.phase}_${Date.now()}.jpg`)
           fd.append('work_order_unit_id', item.fields.work_order_unit_id)
           fd.append('phase', item.fields.phase)
           fd.append('point_no', item.fields.point_no || 1)
           if (item.fields.label) fd.append('label', item.fields.label)
           fd.append('client_token', item.token)
+          fd.append('photo', item.blob, `${item.fields.phase}_${Date.now()}.jpg`)
           await api.post(`/work-orders/${item.woId}/photos`, fd)
         }
         await deleteItem(item.id)

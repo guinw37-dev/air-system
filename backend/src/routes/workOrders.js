@@ -694,7 +694,11 @@ router.post('/:id/photos', authMiddleware,
       [work_order_unit_id, req.params.id]
     );
     if (!chk.length) return res.status(404).json({ error: 'work_order_unit not in this WO' });
-    const url = `/uploads/photos/${work_order_unit_id}/${req.file.filename}`;
+    // Derive the URL from where multer ACTUALLY saved the file (req.file.path),
+    // not from work_order_unit_id — otherwise a multipart field-order quirk
+    // (file part before text fields) saves under a different dir than the URL
+    // points to, giving a 404. path.relative keeps it robust.
+    const url = '/uploads/' + path.relative(UPLOAD_DIR, req.file.path).split(path.sep).join('/');
     const { rows } = await pool.query(`
       INSERT INTO work_order_photos (work_order_unit_id, unit_id, uploaded_by, phase, point_no, label, url, filename, client_token)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
