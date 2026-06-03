@@ -21,6 +21,9 @@ import Notifications from './pages/Notifications'
 import Parts from './pages/Parts'
 import UnitDetail from './pages/UnitDetail'
 import Deductions from './pages/Deductions'
+import SimpleWoList from './pages/SimpleWoList'
+import SimpleWoForm from './pages/SimpleWoForm'
+import SimpleWoDetail from './pages/SimpleWoDetail'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -50,6 +53,11 @@ export default function App() {
         <Route path="/work-orders/:id" element={<RequireAuth><WorkOrderDetail /></RequireAuth>} />
         {/* New unit-level detail page */}
         <Route path="/work-orders/:id/units/:unitId" element={<RequireAuth><WorkOrderUnitDetail /></RequireAuth>} />
+
+        {/* Simple Work Orders — one-step flow */}
+        <Route path="/simple-wo" element={<RequireAuth><SimpleWoList /></RequireAuth>} />
+        <Route path="/simple-wo/new" element={<RequireAuth><SimpleWoForm /></RequireAuth>} />
+        <Route path="/simple-wo/:id" element={<RequireAuth><SimpleWoDetail /></RequireAuth>} />
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />

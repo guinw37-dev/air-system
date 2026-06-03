@@ -1,0 +1,211 @@
+const express = require('express');
+const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const dayjs = require('dayjs');
+const XLSX = require('xlsx');
+const pool = require('../db/pool');
+const { authMiddleware } = require('../middleware/auth');
+const { getSimpleReportData } = require('../services/simpleReportBuilder');
+const { buildSimpleReportHtml } = require('../services/reportTemplates');
+const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
+
+const PUBLIC_BASE = process.env.FRONTEND_URL || '';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+
+// ── photo upload (multer → /uploads/photos/simple/...) ──────────────────────
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(UPLOAD_DIR, 'photos', 'simple');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname || '') || '.jpg').slice(0, 8);
+    cb(null, `s_${Date.now()}_${Math.round(Math.random() * 1e6)}${ext}`);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+
+// ── WO number: WO-{พ.ศ.}-{MM}-{running4} ────────────────────────────────────
+async function genWoNumber(client) {
+  const be = dayjs().year() + 543;
+  const mm = dayjs().format('MM');
+  const prefix = `WO-${be}-${mm}-`;
+  const { rows } = await client.query(
+    'SELECT COUNT(*) FROM simple_work_orders WHERE wo_number LIKE $1', [`${prefix}%`]
+  );
+  return `${prefix}${String(parseInt(rows[0].count, 10) + 1).padStart(4, '0')}`;
+}
+
+// ── POST /api/simple-wo/upload — single photo → { url } ─────────────────────
+router.post('/upload', authMiddleware, upload.single('photo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file' });
+  const url = '/uploads/' + path.relative(UPLOAD_DIR, req.file.path).split(path.sep).join('/');
+  res.status(201).json({ url });
+});
+
+// ── GET /api/simple-wo/form-schema?work_type= — template items grouped ──────
+const CAT_ORDER = ['all3', 'refrigerant', 'fcu', 'ahu', 'other', 'fan'];
+const CAT_LABEL = {
+  all3: 'ใช้งานทั้ง 3 ประเภท', refrigerant: 'แอร์น้ำยา', fcu: 'FCU',
+  ahu: 'AHU', other: 'อื่น ๆ', fan: 'พัดลม',
+};
+router.get('/form-schema', authMiddleware, async (req, res) => {
+  const wt = req.query.work_type || 'major';
+  let where;
+  if (wt === 'fan') where = `equipment_type = 'fan'`;
+  else if (wt === 'minor') where = `equipment_type = 'ac' AND applies_minor = true`;
+  else where = `equipment_type = 'ac' AND applies_major = true`;
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, category, item_label, value_type, unit_label, sort_order
+      FROM inspection_template_items WHERE ${where}
+      ORDER BY sort_order, id
+    `);
+    const byCat = new Map();
+    for (const it of rows) {
+      if (!byCat.has(it.category)) byCat.set(it.category, []);
+      byCat.get(it.category).push(it);
+    }
+    const sections = CAT_ORDER
+      .filter((k) => byCat.has(k))
+      .map((k) => ({ key: k, label: CAT_LABEL[k] || k, fields: byCat.get(k) }));
+    res.json({ work_type: wt, sections });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/simple-wo/export/excel — all (filter date range) ───────────────
+const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
+const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
+router.get('/export/excel', authMiddleware, async (req, res) => {
+  const { date_from, date_to } = req.query;
+  const where = ['1=1']; const params = []; let i = 1;
+  if (date_from) { where.push(`created_at >= $${i++}`); params.push(date_from); }
+  if (date_to)   { where.push(`created_at < ($${i++}::date + 1)`); params.push(date_to); }
+  try {
+    const { rows } = await pool.query(`
+      SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
+      LEFT JOIN users u ON s.created_by = u.id
+      WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
+    `, params);
+    const data = rows.map((r) => ({
+      'เลขใบงาน': r.wo_number,
+      'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
+      'ช่าง': r.tech_name || r.created_by_name || '',
+      'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+      'ลูกค้า': r.client_name || '',
+      'อาคาร': r.building || '',
+      'ชั้น': r.floor || '',
+      'ห้อง': r.room || '',
+      'เลขเครื่อง': r.asset_code || '',
+      'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+      'ระบบไฟ': r.power_system || '',
+      'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
+      'เวลาเริ่ม': r.start_time || '',
+      'เวลาเสร็จ': r.end_time || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ใบงาน');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
+    res.end(buf);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/simple-wo — create + submit ───────────────────────────────────
+router.post('/', authMiddleware, async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const wo_number = await genWoNumber(client);
+    const { rows } = await client.query(`
+      INSERT INTO simple_work_orders (
+        wo_number, created_by, tech_name, work_date, client_name, building, floor, room,
+        asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
+        team_comment, photo_urls,
+        sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+      RETURNING id, wo_number
+    `, [
+      wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
+      b.building || null, b.floor || null, b.room || null, b.asset_code || null,
+      b.work_type || 'major', b.power_system || null,
+      JSON.stringify(b.checklist_values || {}), b.result || null,
+      b.start_time || null, b.end_time || null,
+      JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
+      b.sig_engineer || null, b.sig_engineer_name || null,
+      b.sig_department || null, b.sig_department_name || null,
+      b.sig_team || null, b.sig_team_name || null,
+    ]);
+    await client.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
+// ── GET /api/simple-wo — list (filter date range / created_by) ──────────────
+router.get('/', authMiddleware, async (req, res) => {
+  const { date_from, date_to, created_by, limit = 100, offset = 0 } = req.query;
+  const where = ['1=1']; const params = []; let i = 1;
+  if (date_from)  { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
+  if (date_to)    { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
+  if (created_by) { where.push(`s.created_by = $${i++}`); params.push(created_by); }
+  params.push(limit, offset);
+  try {
+    const { rows } = await pool.query(`
+      SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
+             s.building, s.asset_code, s.work_type, s.result, s.status,
+             u.name AS created_by_name,
+             jsonb_array_length(COALESCE(s.photo_urls,'[]'::jsonb)) AS photo_count
+      FROM simple_work_orders s
+      LEFT JOIN users u ON s.created_by = u.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY s.created_at DESC
+      LIMIT $${i++} OFFSET $${i++}
+    `, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
+      LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1
+    `, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/simple-wo/:id/pdf ──────────────────────────────────────────────
+router.get('/:id/pdf', authMiddleware, async (req, res) => {
+  try {
+    const data = await getSimpleReportData(req.params.id, { publicBaseUrl: PUBLIC_BASE });
+    if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    const html = buildSimpleReportHtml(data);
+    try {
+      const pdf = await htmlToPdf(html, { landscape: true });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${data.wo.order_no}.pdf"`);
+      return res.end(pdf);
+    } catch (err) {
+      if (err instanceof PdfUnavailableError) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-PDF-Fallback', 'html');
+        return res.send(html);
+      }
+      throw err;
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;

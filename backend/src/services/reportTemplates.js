@@ -1036,6 +1036,68 @@ function fanReport(data) {
 // Public entry
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Simple Work Order report (phase 1) — single unit, no approval.
+// Reuses the TW แบบ C chrome (lmtHeader / checklistTable / photoGalleryPages)
+// but renders 3 image signatures (วิศวกรรม / หน่วยงาน / ทีมช่าง) collected
+// directly on the device. Expects:
+//   data = { brand, qr, imageBase,
+//            wo:   { order_no, client_name, site_name, tech_name, work_date,
+//                    started_at, completed_at, cond_*, ... },
+//            unit: { asset_code, room_name, family, equipment_type, building_name,
+//                    floor_name, has_repair, inspections:[], photos:{} },
+//            sigs: { engineer, department, team }   // each {signer_name,signature_data,signed_at}
+//          }
+function buildSimpleReportHtml(data) {
+  const d = data || {};
+  const wo = d.wo || {};
+  const u = d.unit || {};
+  const sigs = d.sigs || {};
+
+  const meta = `
+    <div class="uhead">
+      <div class="row"><span class="k">ลูกค้า:</span><span class="v">${dash(wo.client_name)}</span></div>
+      <div class="row"><span class="k">อาคาร:</span><span class="v">${dash(u.building_name)}</span></div>
+      <div class="row"><span class="k">ชั้น:</span><span class="v">${dash(u.floor_name)}</span></div>
+      <div class="row"><span class="k">ห้อง:</span><span class="v">${dash(u.room_name)}</span></div>
+      <div class="row"><span class="k">เลขเครื่อง:</span><span class="v">${dash(u.asset_code)}</span></div>
+      <div class="row"><span class="k">ช่าง:</span><span class="v">${dash(wo.tech_name)}</span></div>
+      <div class="row"><span class="k">วันที่:</span><span class="v">${fmtDate(wo.work_date || wo.created_at)}</span></div>
+      <div class="row"><span class="k">ประเภทงาน:</span><span class="v">${dash(u.equipment_type)}</span></div>
+    </div>`;
+
+  const inner = `<div class="major-c">
+    ${lmtHeader(d, 'แบบ C<small>Service Report (TW)</small>')}
+    ${meta}
+    ${serviceTypeChecks(u).replace('class="checks"', 'class="svc-checks"')}
+    ${checklistTable(u)}
+
+    <div class="strip">
+      <div class="col">
+        <h4>ความเห็นทีมช่าง</h4>
+        ${conditionOpts(wo)}
+      </div>
+      <div class="col">
+        <h4>ผลงาน</h4>
+        ${lmtResultOpts(u)}
+        <div class="times">เวลาเริ่ม: ${fmtTime(wo.started_at)} &nbsp; เวลาสิ้นสุด: ${fmtTime(wo.completed_at)}</div>
+      </div>
+    </div>
+
+    <div class="sign-row">
+      ${signatureBox('ลงชื่อวิศวกรรม', sigs.engineer)}
+      ${signatureBox('ลงชื่อหน่วยงาน', sigs.department)}
+      ${signatureBox('ลงชื่อทีมช่าง', sigs.team)}
+    </div>
+  </div>`;
+
+  const pages = [page(d, inner)];
+  for (const frag of photoGalleryPages(u, d)) {
+    pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'แบบ C<small>รูปภาพประกอบ</small>')}${frag}</div>`));
+  }
+  return htmlDoc(d, `ใบงาน ${wo.order_no || ''}`, pages);
+}
+
 function buildReportHtml(data, type) {
   const d = data || {};
   const pages = [coverPage(d, type)];
@@ -1055,4 +1117,4 @@ function buildReportHtml(data, type) {
   return htmlDoc(d, TYPE_TITLES[type] || 'รายงานการปฏิบัติงาน', pages);
 }
 
-module.exports = { buildReportHtml };
+module.exports = { buildReportHtml, buildSimpleReportHtml };
