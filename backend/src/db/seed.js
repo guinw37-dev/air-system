@@ -20,6 +20,7 @@ async function seed() {
       INSERT INTO users (name, username, password_hash, role, phone)
       VALUES
         ('Administrator',   'admin',   $1, 'admin',         ''),
+        ('Checker Admin',   'checker', $1, 'checker',       ''),
         ('Central Admin',   'cadmin',  $1, 'central_admin', ''),
         ('Approver',        'approver',$1, 'approver',      ''),
         ('ช่างทดสอบ 1',     'tech1',   $1, 'technician',    ''),

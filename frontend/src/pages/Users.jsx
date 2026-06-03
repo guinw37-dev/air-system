@@ -3,15 +3,17 @@ import { Plus, Pencil, Shield } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 
-const ROLES = ['admin', 'central_admin', 'approver', 'technician']
+const ROLES = ['admin', 'checker', 'central_admin', 'approver', 'technician']
 const ROLE_COLOR = {
   admin:         'badge-danger',
-  central_admin: 'badge-primary',
+  checker:       'badge-primary',
+  central_admin: 'bg-primary-soft text-primary',
   approver:      'badge-warn',
   technician:    'badge-gray',
 }
 const ROLE_TH = {
   admin:         'ผู้ดูแลระบบ',
+  checker:       'Checker / ผู้ตรวจสอบ',
   central_admin: 'แอดมินกลาง',
   approver:      'ผู้อนุมัติ',
   technician:    'ช่าง',

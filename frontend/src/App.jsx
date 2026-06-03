@@ -58,10 +58,10 @@ export default function App() {
         <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
         <Route path="/cleaning-dashboard" element={<RequireAuth><CleaningDashboard /></RequireAuth>} />
         <Route path="/import" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><ImportPage /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'central_admin']}><ImportPage /></RequireRole></RequireAuth>
         } />
         <Route path="/master" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><MasterData /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'central_admin']}><MasterData /></RequireRole></RequireAuth>
         } />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin']}><Users /></RequireRole></RequireAuth>
@@ -69,7 +69,7 @@ export default function App() {
         <Route path="/parts" element={<RequireAuth><Parts /></RequireAuth>} />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
         <Route path="/deductions" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver']}><Deductions /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver', 'checker']}><Deductions /></RequireRole></RequireAuth>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

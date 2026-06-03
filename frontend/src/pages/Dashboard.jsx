@@ -173,7 +173,7 @@ export default function Dashboard() {
 
   if (loading) return <PageSpinner />
 
-  const isOwnerAdmin = ['approver', 'admin', 'central_admin'].includes(user?.role)
+  const isOwnerAdmin = ['approver', 'admin', 'central_admin', 'checker'].includes(user?.role)
 
   // Summary cards
   const wo = overview?.wo || {}

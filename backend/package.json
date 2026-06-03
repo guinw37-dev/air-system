@@ -11,6 +11,7 @@
     "migrate:phase3": "node src/db/migrate_phase3.js",
     "migrate:phase4": "node src/db/migrate_phase4.js",
     "migrate:phase5": "node src/db/migrate_phase5.js",
+    "migrate:role": "node src/db/migrate_role_checker.js",
     "seed": "node src/db/seed.js",
     "test": "node test/tenant.test.js && node test/woStateMachine.test.js && node test/pmPlanner.test.js"
   },

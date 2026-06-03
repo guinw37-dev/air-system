@@ -68,7 +68,7 @@ export default function WorkOrderList() {
     w.hospital_name?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const canCreate = ['admin', 'central_admin', 'technician'].includes(user?.role)
+  const canCreate = ['central_admin', 'technician'].includes(user?.role)
 
   return (
     <Layout
