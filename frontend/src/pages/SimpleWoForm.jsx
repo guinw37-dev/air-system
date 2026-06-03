@@ -61,6 +61,8 @@ export default function SimpleWoForm() {
     result: 'ok',
   })
 
+  const [acInfo, setAcInfo] = useState({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '' })
+
   const [schema, setSchema] = useState({ sections: [] })
   const [schemaLoading, setSchemaLoading] = useState(false)
   const [checklistValues, setChecklistValues] = useState({})
@@ -116,6 +118,7 @@ export default function SimpleWoForm() {
             end_time: w.end_time ? String(w.end_time).slice(0, 5) : '',
             result: w.result || 'ok',
           })
+          setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '', ...(w.ac_info || {}) })
           setChecklistValues(w.checklist_values || {})
           setPhotoUrls(Array.isArray(w.photo_urls) ? w.photo_urls : [])
           setGalleryUrls(Array.isArray(w.gallery_urls) ? w.gallery_urls : [])
@@ -144,6 +147,7 @@ export default function SimpleWoForm() {
       const techName = d?.header?.tech_name || user?.name || ''
       if (d?.header) setHeader((h) => ({ ...h, ...d.header, tech_name: techName }))
       else setHeader((h) => ({ ...h, tech_name: techName }))
+      if (d?.acInfo) setAcInfo(d.acInfo)
       if (d?.checklistValues) setChecklistValues(d.checklistValues)
       if (Array.isArray(d?.photoUrls)) setPhotoUrls(d.photoUrls)
       if (Array.isArray(d?.galleryUrls)) setGalleryUrls(d.galleryUrls)
@@ -163,12 +167,12 @@ export default function SimpleWoForm() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ header, checklistValues, photoUrls, galleryUrls, teamComment, signatures })
+        JSON.stringify({ header, acInfo, checklistValues, photoUrls, galleryUrls, teamComment, signatures })
       )
     } catch {
       // storage full / unavailable — ignore
     }
-  }, [header, checklistValues, photoUrls, galleryUrls, teamComment, signatures])
+  }, [header, acInfo, checklistValues, photoUrls, galleryUrls, teamComment, signatures])
 
   // ONE checklist for all work types (full AC set) — load once on mount.
   // ประเภทงาน is stored/printed but does NOT change the checklist.
@@ -183,6 +187,8 @@ export default function SimpleWoForm() {
   const setField = (id, patch) => {
     setChecklistValues((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
   }
+
+  const setAc = (patch) => setAcInfo((p) => ({ ...p, ...patch }))
 
   const handlePhotos = async (files, phase) => {
     if (!files || files.length === 0) return
@@ -272,6 +278,7 @@ export default function SimpleWoForm() {
       end_time: '',
       result: 'ok',
     })
+    setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '' })
     setChecklistValues({})
     setPhotoUrls([])
     setGalleryUrls([])
@@ -307,6 +314,7 @@ export default function SimpleWoForm() {
         asset_code: header.asset_code,
         work_type: header.work_type,
         power_system: header.power_system,
+        ac_info: acInfo,
         checklist_values: checklistValues,
         result: header.result,
         start_time: header.start_time,
@@ -387,6 +395,43 @@ export default function SimpleWoForm() {
           <div>
             <label className="label">ระบบไฟ</label>
             <PowerToggle value={header.power_system} onChange={(v) => setHeader({ ...header, power_system: v })} />
+          </div>
+        </div>
+
+        {/* ── AC info (รายละเอียดเครื่องปรับอากาศ) ── */}
+        <div className="card flex flex-col gap-3">
+          <h2 className="section-header">รายละเอียดเครื่องปรับอากาศ</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Text label="รายละเอียดเครื่อง" value={acInfo.detail} onChange={(v) => setAc({ detail: v })} />
+            <Text label="ตำแหน่งที่ติดตั้ง" value={acInfo.location} onChange={(v) => setAc({ location: v })} />
+            <Text label="ยี่ห้อ" value={acInfo.brand} onChange={(v) => setAc({ brand: v })} />
+            <Text label="รุ่น" value={acInfo.model} onChange={(v) => setAc({ model: v })} />
+            <Text label="ขนาดทำความเย็น (BTU)" value={acInfo.cooling_size} onChange={(v) => setAc({ cooling_size: v })} />
+          </div>
+
+          {/* kind segmented */}
+          <div>
+            <label className="label">ชนิดเครื่อง</label>
+            <div className="flex gap-2">
+              {[
+                { value: 'water', label: 'แอร์น้ำ' },
+                { value: 'refrigerant', label: 'แอร์น้ำยา' },
+                { value: 'other', label: 'อื่นๆ' },
+              ].map((k) => (
+                <button
+                  key={k.value}
+                  type="button"
+                  onClick={() => setAc({ kind: k.value })}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    acInfo.kind === k.value
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-ink-muted border-line'
+                  }`}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

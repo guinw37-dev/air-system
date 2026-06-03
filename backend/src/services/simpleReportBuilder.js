@@ -116,7 +116,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
   const imageBase = `http://localhost:${process.env.PORT || 3001}`;
 
   // No QR badge on the simple-wo report (qr omitted → qrBadge() renders nothing).
-  return { wo, unit, sigs, brand: BRAND, qr: '', woUrl, imageBase };
+  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase };
 }
 
 module.exports = { getSimpleReportData };

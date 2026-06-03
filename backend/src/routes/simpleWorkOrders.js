@@ -127,9 +127,9 @@ router.post('/', authMiddleware, async (req, res) => {
       INSERT INTO simple_work_orders (
         wo_number, created_by, tech_name, work_date, client_name, building, floor, room,
         asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
-        team_comment, photo_urls, gallery_urls,
+        team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
@@ -138,7 +138,7 @@ router.post('/', authMiddleware, async (req, res) => {
       JSON.stringify(b.checklist_values || {}), b.result || null,
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
-      JSON.stringify(b.gallery_urls || []),
+      JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
       b.sig_engineer || null, b.sig_engineer_name || null,
       b.sig_department || null, b.sig_department_name || null,
       b.sig_team || null, b.sig_team_name || null,
@@ -228,7 +228,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         asset_code=$8, work_type=$9, power_system=$10, checklist_values=$11, result=$12,
         start_time=$13, end_time=$14, team_comment=$15, photo_urls=$16,
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
-        sig_team=$21, sig_team_name=$22, gallery_urls=$23
+        sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -241,7 +241,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.sig_engineer || null, b.sig_engineer_name || null,
       b.sig_department || null, b.sig_department_name || null,
       b.sig_team || null, b.sig_team_name || null,
-      JSON.stringify(b.gallery_urls || []),
+      JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
