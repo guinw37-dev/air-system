@@ -9,6 +9,7 @@
 
 import api from '../../api/client'
 import { useOfflineStore } from '../../store/offline'
+import { useAuthStore } from '../../store/auth'
 import { putItem, deleteItem, getAllItems, getItemsByWo, countItems } from './db'
 
 const uuid = () =>
@@ -84,6 +85,9 @@ function isNetworkError(err) {
 export async function flush() {
   const store = useOfflineStore.getState()
   if (flushing || !store.online) return
+  // Don't flush while logged out — the queued requests would 401 and the axios
+  // interceptor would hard-redirect to /login, causing an endless reload loop.
+  if (!useAuthStore.getState().token) return
   flushing = true
   store.setSyncing(true)
   store.setLastError(null)
