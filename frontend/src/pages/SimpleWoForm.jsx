@@ -170,14 +170,15 @@ export default function SimpleWoForm() {
     }
   }, [header, checklistValues, photoUrls, galleryUrls, teamComment, signatures])
 
-  // Load checklist schema when work_type changes
+  // ONE checklist for all work types (full AC set) — load once on mount.
+  // ประเภทงาน is stored/printed but does NOT change the checklist.
   useEffect(() => {
     setSchemaLoading(true)
-    api.get(`/simple-wo/form-schema?work_type=${header.work_type}`)
+    api.get('/simple-wo/form-schema?work_type=major')
       .then((r) => setSchema(r.data && Array.isArray(r.data.sections) ? r.data : { sections: [] }))
       .catch(() => setSchema({ sections: [] }))
       .finally(() => setSchemaLoading(false))
-  }, [header.work_type])
+  }, [])
 
   const setField = (id, patch) => {
     setChecklistValues((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
@@ -680,7 +681,7 @@ function CheckRow({ label, checked, onChange }) {
   )
 }
 
-function NumPair({ value, onChange, unit }) {
+function NumPair({ value, onChange, unit, unitOptions }) {
   return (
     <div className="flex items-center gap-2">
       <input
@@ -695,7 +696,17 @@ function NumPair({ value, onChange, unit }) {
         value={value.value_after || ''}
         onChange={(e) => onChange({ value_after: e.target.value })}
       />
-      {unit && <span className="text-xs text-ink-muted shrink-0">{unit}</span>}
+      {unitOptions ? (
+        <select
+          className="input w-24 shrink-0"
+          value={value.unit || unitOptions[0]}
+          onChange={(e) => onChange({ unit: e.target.value })}
+        >
+          {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+      ) : (
+        unit && <span className="text-xs text-ink-muted shrink-0">{unit}</span>
+      )}
     </div>
   )
 }
@@ -733,13 +744,21 @@ function ChecklistField({ field, value, onChange }) {
       )
 
     case 'number':
-    case 'before_after':
+    case 'before_after': {
+      // ความเร็วลม (Ft/m) → ให้เลือกหน่วย ft/m หรือ CFM
+      const airflow = (unit_label || '').toLowerCase() === 'ft/m'
       return (
         <div>
           {labelEl}
-          <NumPair value={value} onChange={onChange} unit={unit_label} />
+          <NumPair
+            value={value}
+            onChange={onChange}
+            unit={unit_label}
+            unitOptions={airflow ? ['ft/m', 'CFM'] : undefined}
+          />
         </div>
       )
+    }
 
     case 'text':
       return (
