@@ -365,18 +365,18 @@ function styleBlock(brand) {
     .major-c .sign-box .dt { font-size: 6.5pt; }
 
     /* page-2 by-point photo pairing */
-    .pair-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+    .pair-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
     .pair-gallery .phcell {
-      border: 1px solid #d9e2e4; border-radius: 8px; overflow: hidden; background: #fff;
+      border: 1px solid #d9e2e4; border-radius: 6px; overflow: hidden; background: #fff;
     }
-    .pair-gallery .phcell.before { border-top: 4px solid var(--teal); }
-    .pair-gallery .phcell.after { border-top: 4px solid var(--navy); }
+    .pair-gallery .phcell.before { border-top: 3px solid var(--teal); }
+    .pair-gallery .phcell.after { border-top: 3px solid var(--navy); }
     .pair-gallery .phcell .img-wrap {
-      height: 150px; background: #eef3f4; display: flex; align-items: center; justify-content: center;
+      height: 78px; background: #eef3f4; display: flex; align-items: center; justify-content: center;
     }
-    .pair-gallery .phcell .img-wrap.empty { color: #9fb0b4; font-size: 11px; }
-    .pair-gallery .phcell img { max-width: 100%; max-height: 150px; object-fit: cover; }
-    .pair-gallery .phcell .cap { padding: 5px 7px; font-size: 9.5px; color: #5a6e73; }
+    .pair-gallery .phcell .img-wrap.empty { color: #9fb0b4; font-size: 10px; }
+    .pair-gallery .phcell img { width: 100%; height: 78px; object-fit: cover; }
+    .pair-gallery .phcell .cap { padding: 2px 6px; font-size: 8px; color: #5a6e73; line-height: 1.2; }
     .pair-gallery .phcell .cap b { color: var(--navy); }
     .pair-gallery .phcell.before .cap b { color: var(--teal); }
     .pair-gallery .gallery-head {
@@ -860,7 +860,7 @@ function photoGalleryPages(unit, data) {
   // Measurement photos → own rows on the left.
   for (const m of measurement) rows.push([m, null]);
 
-  const ROWS_PER_PAGE = 3; // 3 point-rows (= 6 photos) per A4 page
+  const ROWS_PER_PAGE = 8; // all point-rows (7 points + extras) on one A4 page
   const frags = [];
   for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
     const chunk = rows.slice(i, i + ROWS_PER_PAGE);
