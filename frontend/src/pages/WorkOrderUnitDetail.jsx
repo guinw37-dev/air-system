@@ -350,15 +350,9 @@ export default function WorkOrderUnitDetail() {
         onChange={handleFileChange}
       />
 
-      {/* Meta */}
-      <div className="px-4 pt-3 pb-1">
-        <p className="text-xs text-gray-500">
-          {item.room_name} {item.building_name ? `· ${item.building_name}` : ''} · {item.family || item.equipment_type}
-        </p>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200 bg-white sticky top-14 z-20">
+      {/* Tab bar — sticky at the very top of the content area (no overlap) */}
+      <div className="flex border-b border-line bg-surface sticky top-0 z-30 shadow-sm">
+        {/* kept above content; meta moved below to avoid covering data */}
         {[
           { key: 'checklist', label: 'รายการตรวจ' },
           { key: 'photos',    label: 'รูปภาพ' },
@@ -374,6 +368,13 @@ export default function WorkOrderUnitDetail() {
             {tb.label}
           </button>
         ))}
+      </div>
+
+      {/* Meta (below the sticky tabs so it never covers content) */}
+      <div className="px-4 pt-2">
+        <p className="text-xs text-ink-muted">
+          {item.room_name} {item.building_name ? `· ${item.building_name}` : ''} · {item.family || item.equipment_type}
+        </p>
       </div>
 
       {/* Auto-save indicator */}
