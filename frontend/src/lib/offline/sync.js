@@ -90,7 +90,6 @@ export async function flush() {
   try {
     const items = await getAllItems() // ordered by createdAt
     for (const item of items) {
-      if (item.failed) continue // permanently un-appliable — kept, not retried (audit F5-B)
       try {
         if (item.kind === 'inspection') {
           await api.put(`/work-orders/${item.woId}/inspection`, item.payload)
@@ -111,13 +110,13 @@ export async function flush() {
           store.setOnline(false)
           break
         }
-        // server rejected (4xx/5xx). Record the error; retry on next flush.
+        // Server rejected (4xx/5xx). Keep the item and retry on every future
+        // flush — a transient server bug (e.g. a fixed 500) then auto-recovers
+        // without dropping the user's captured content. A 4xx on one item never
+        // breaks the loop (only a network error does), so it can't block others.
         item.retries = (item.retries || 0) + 1
+        item.failed = false // clear any stale permanent-fail flag → keep trying
         item.lastError = err.response?.data?.error || String(err)
-        // After many tries, mark as failed and STOP retrying — but NEVER delete
-        // the user's captured content silently (audit F5-B). It stays in the
-        // outbox (kept for manual recovery) and is skipped on future flushes.
-        if (item.retries >= 8) item.failed = true
         await putItem(item)
         store.setLastError(item.lastError)
       }
