@@ -165,7 +165,7 @@ export default function SimpleWoList() {
 
   return (
     <Layout
-      title="ใบงาน (ง่าย)"
+      title="ใบงาน"
       actions={
         <button
           onClick={() => navigate('/simple-wo/new')}
@@ -186,22 +186,25 @@ export default function SimpleWoList() {
         </button>
 
         {/* Export Excel */}
-        <div className="card flex flex-col sm:flex-row sm:items-end gap-3">
-          <div>
-            <label className="label">วันที่เริ่ม</label>
-            <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <div className="card flex flex-col gap-3">
+          <h2 className="section-header">ส่งออก Excel</h2>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div>
+              <label className="label">วันที่เริ่ม</label>
+              <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">วันที่สิ้นสุด</label>
+              <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+            <button
+              onClick={exportExcel}
+              disabled={exporting}
+              className="btn-secondary flex items-center justify-center gap-1.5 sm:ml-auto"
+            >
+              <Download className="h-4 w-4" /> {exporting ? 'กำลังสร้าง...' : 'ส่งออก Excel'}
+            </button>
           </div>
-          <div>
-            <label className="label">วันที่สิ้นสุด</label>
-            <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <button
-            onClick={exportExcel}
-            disabled={exporting}
-            className="btn-secondary flex items-center justify-center gap-1.5 sm:ml-auto"
-          >
-            <Download className="h-4 w-4" /> {exporting ? 'กำลังโหลด...' : 'Export Excel'}
-          </button>
         </div>
 
         {/* Table */}
@@ -238,7 +241,18 @@ export default function SimpleWoList() {
                 <tbody className="divide-y divide-line">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
+                      <td colSpan={10} className="py-16">
+                        <div className="flex flex-col items-center gap-3 text-ink-muted">
+                          <FileText className="h-8 w-8 opacity-40" />
+                          <p className="text-sm">ยังไม่มีใบงาน</p>
+                          <button
+                            onClick={() => navigate('/simple-wo/new')}
+                            className="btn-secondary flex items-center gap-1.5 text-sm"
+                          >
+                            <Plus className="h-4 w-4" /> เปิดใบงานใหม่
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )}
                   {rows.map((wo) => {
@@ -300,7 +314,7 @@ export default function SimpleWoList() {
             </div>
           )}
         </div>
-        <p className="text-xs text-ink-muted">{rows.length} รายการ</p>
+        {rows.length > 0 && <p className="text-xs text-ink-muted">ทั้งหมด {rows.length} รายการ</p>}
       </div>
 
       {/* Sticky batch action bar */}
@@ -357,7 +371,7 @@ export default function SimpleWoList() {
           <div className="absolute inset-0 bg-black/50" onClick={closePdf} />
           <div className="relative bg-white rounded-2xl w-full max-w-4xl p-5 max-h-[90vh] overflow-y-auto flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-ink">ตัวอย่างก่อนปริ้น</h3>
+              <h3 className="font-semibold text-ink">ตัวอย่างก่อนพิมพ์</h3>
               <button onClick={closePdf} className="text-ink-muted text-2xl leading-none">&times;</button>
             </div>
             <iframe
@@ -372,7 +386,7 @@ export default function SimpleWoList() {
                 onClick={() => iframeRef.current?.contentWindow?.print()}
                 className="btn-primary flex items-center gap-1.5"
               >
-                <Printer className="h-4 w-4" /> ปริ้น
+                <Printer className="h-4 w-4" /> พิมพ์
               </button>
               <a
                 href={pdfUrl}

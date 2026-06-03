@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, ClipboardList, Wrench, Database,
+  LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2,
 } from 'lucide-react'
@@ -10,6 +10,7 @@ import api from '../api/client'
 import SyncIndicator from './SyncIndicator'
 
 const NAV = [
+  { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null },
   { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
   // 'แจ้งซ่อม' (RepairLogs) hidden from nav — repair reporting lives in the
   // separate repair-report system. AC abnormalities are raised via "ขอเปิด".
@@ -18,8 +19,8 @@ const NAV = [
   { path: '/pm-plan',        icon: TableProperties, label: 'PM Plan',      roles: null },
   { path: '/cleaning-status',    icon: Activity,        label: 'ติดตามการล้าง', roles: null },
   { path: '/cleaning-dashboard', icon: LayoutDashboard, label: 'สรุปยอดล้าง',    roles: ['admin', 'checker', 'central_admin', 'approver'] },
-  { path: '/work-orders',  icon: ClipboardList,   label: 'ใบงาน',          roles: null },
-  { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน (ง่าย)',    roles: null },
+  // '/work-orders' (ใบงาน เดิม) hidden from nav — superseded by Simple Work
+  // Order above. Route still resolves by typing the URL directly.
   { path: '/parts',        icon: Package,          label: 'อะไหล่',         roles: null },
   { path: '/deductions',   icon: BadgeDollarSign,  label: 'หักเงิน',        roles: ['admin', 'central_admin', 'approver'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },

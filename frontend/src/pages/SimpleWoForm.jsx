@@ -195,7 +195,7 @@ export default function SimpleWoForm() {
     const existing = photoUrls.filter((p) => p.phase === phase).length
     const room = 6 - existing
     if (room <= 0) {
-      alert(`เฟส${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
+      alert(`รูป${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
       if (beforeInputRef.current) beforeInputRef.current.value = ''
       if (afterInputRef.current)  afterInputRef.current.value = ''
       return
@@ -204,7 +204,7 @@ export default function SimpleWoForm() {
     const picked = Array.from(files)
     const toUpload = picked.slice(0, room)
     if (picked.length > room) {
-      alert(`เฟส${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
+      alert(`รูป${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
     }
     setUploading(true)
     try {
@@ -406,7 +406,10 @@ export default function SimpleWoForm() {
             <Text label="ตำแหน่งที่ติดตั้ง" value={acInfo.location} onChange={(v) => setAc({ location: v })} />
             <Text label="ยี่ห้อ" value={acInfo.brand} onChange={(v) => setAc({ brand: v })} />
             <Text label="รุ่น" value={acInfo.model} onChange={(v) => setAc({ model: v })} />
-            <Text label="ขนาดทำความเย็น (BTU)" value={acInfo.cooling_size} onChange={(v) => setAc({ cooling_size: v })} />
+            <div>
+              <label className="label">ขนาดทำความเย็น (BTU)</label>
+              <input className="input" inputMode="decimal" value={acInfo.cooling_size} onChange={(e) => setAc({ cooling_size: e.target.value })} />
+            </div>
           </div>
 
           {/* kind segmented */}
@@ -501,10 +504,10 @@ export default function SimpleWoForm() {
         {/* ── Gallery (คลังรูป) — extra album photos, not in PDF ── */}
         <div className="card flex flex-col gap-3">
           <h2 className="section-header">เพิ่มเติม (คลังรูป)</h2>
-          <p className="text-xs text-ink-muted">อัปจากอัลบัมได้ไม่จำกัด · บีบรูปอัตโนมัติ · ไม่เข้า PDF</p>
+          <p className="text-xs text-ink-muted">อัปโหลดจากอัลบั้มได้ไม่จำกัด · บีบอัดรูปอัตโนมัติ · ไม่เข้า PDF</p>
           <label className={`flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-line rounded-xl py-6 cursor-pointer text-ink-muted hover:border-primary transition-colors ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
             <Camera className="h-6 w-6" />
-            <span className="text-xs font-medium">เลือกจากอัลบัม</span>
+            <span className="text-xs font-medium">เลือกจากอัลบั้ม</span>
             <input
               ref={galleryInputRef}
               type="file"
@@ -731,12 +734,14 @@ function NumPair({ value, onChange, unit, unitOptions }) {
     <div className="flex items-center gap-2">
       <input
         className="input"
+        inputMode="decimal"
         placeholder="ก่อน"
         value={value.value_before || ''}
         onChange={(e) => onChange({ value_before: e.target.value })}
       />
       <input
         className="input"
+        inputMode="decimal"
         placeholder="หลัง"
         value={value.value_after || ''}
         onChange={(e) => onChange({ value_after: e.target.value })}
@@ -827,28 +832,28 @@ function ChecklistField({ field, value, onChange }) {
             <div className="flex flex-col gap-2">
               <p className="text-xs text-ink-muted">R / S / T (ก่อน)</p>
               <div className="grid grid-cols-3 gap-2">
-                <input className="input" placeholder="R" value={value.val_r_before || ''} onChange={(e) => onChange({ val_r_before: e.target.value })} />
-                <input className="input" placeholder="S" value={value.val_s_before || ''} onChange={(e) => onChange({ val_s_before: e.target.value })} />
-                <input className="input" placeholder="T" value={value.val_t_before || ''} onChange={(e) => onChange({ val_t_before: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="R" value={value.val_r_before || ''} onChange={(e) => onChange({ val_r_before: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="S" value={value.val_s_before || ''} onChange={(e) => onChange({ val_s_before: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="T" value={value.val_t_before || ''} onChange={(e) => onChange({ val_t_before: e.target.value })} />
               </div>
               <p className="text-xs text-ink-muted">R / S / T (หลัง)</p>
               <div className="grid grid-cols-3 gap-2">
-                <input className="input" placeholder="R" value={value.val_r_after || ''} onChange={(e) => onChange({ val_r_after: e.target.value })} />
-                <input className="input" placeholder="S" value={value.val_s_after || ''} onChange={(e) => onChange({ val_s_after: e.target.value })} />
-                <input className="input" placeholder="T" value={value.val_t_after || ''} onChange={(e) => onChange({ val_t_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="R" value={value.val_r_after || ''} onChange={(e) => onChange({ val_r_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="S" value={value.val_s_after || ''} onChange={(e) => onChange({ val_s_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="T" value={value.val_t_after || ''} onChange={(e) => onChange({ val_t_after: e.target.value })} />
               </div>
             </div>
           )}
           {/* LN / L always shown */}
           <p className="text-xs text-ink-muted">LN / L (ก่อน)</p>
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" placeholder="LN" value={value.val_ln_before || ''} onChange={(e) => onChange({ val_ln_before: e.target.value })} />
-            <input className="input" placeholder="L" value={value.val_l_before || ''} onChange={(e) => onChange({ val_l_before: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_before || ''} onChange={(e) => onChange({ val_ln_before: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_before || ''} onChange={(e) => onChange({ val_l_before: e.target.value })} />
           </div>
           <p className="text-xs text-ink-muted">LN / L (หลัง)</p>
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" placeholder="LN" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
-            <input className="input" placeholder="L" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
           </div>
         </div>
       )
@@ -859,8 +864,8 @@ function ChecklistField({ field, value, onChange }) {
         <div>
           {labelEl}
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" placeholder="LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
-            <input className="input" placeholder="L (A)" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="L (A)" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
           </div>
         </div>
       )
@@ -878,8 +883,8 @@ function ChecklistField({ field, value, onChange }) {
             {REFRIGERANTS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" placeholder="Suction" value={value.val_suction || ''} onChange={(e) => onChange({ val_suction: e.target.value })} />
-            <input className="input" placeholder="Discharge" value={value.val_discharge || ''} onChange={(e) => onChange({ val_discharge: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="Suction" value={value.val_suction || ''} onChange={(e) => onChange({ val_suction: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="Discharge" value={value.val_discharge || ''} onChange={(e) => onChange({ val_discharge: e.target.value })} />
           </div>
         </div>
       )
