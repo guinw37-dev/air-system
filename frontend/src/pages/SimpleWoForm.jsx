@@ -48,6 +48,7 @@ export default function SimpleWoForm() {
   const [checklistValues, setChecklistValues] = useState({})
 
   const [photoUrls, setPhotoUrls] = useState([]) // { url, phase, point_no, label }
+  const [galleryUrls, setGalleryUrls] = useState([]) // { url }
   const [uploading, setUploading] = useState(false)
 
   const [teamComment, setTeamComment] = useState({
@@ -72,6 +73,7 @@ export default function SimpleWoForm() {
 
   const beforeInputRef = useRef(null)
   const afterInputRef  = useRef(null)
+  const galleryInputRef = useRef(null)
 
   const draftLoaded = useRef(false)
 
@@ -98,6 +100,7 @@ export default function SimpleWoForm() {
           })
           setChecklistValues(w.checklist_values || {})
           setPhotoUrls(Array.isArray(w.photo_urls) ? w.photo_urls : [])
+          setGalleryUrls(Array.isArray(w.gallery_urls) ? w.gallery_urls : [])
           setTeamComment({
             ac_degraded: !!w.team_comment?.ac_degraded,
             ac_old_5_7yr: !!w.team_comment?.ac_old_5_7yr,
@@ -123,6 +126,7 @@ export default function SimpleWoForm() {
         if (d.header) setHeader(d.header)
         if (d.checklistValues) setChecklistValues(d.checklistValues)
         if (Array.isArray(d.photoUrls)) setPhotoUrls(d.photoUrls)
+        if (Array.isArray(d.galleryUrls)) setGalleryUrls(d.galleryUrls)
         if (d.teamComment) setTeamComment(d.teamComment)
         if (d.signatures) setSignatures(d.signatures)
       }
@@ -140,12 +144,12 @@ export default function SimpleWoForm() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ header, checklistValues, photoUrls, teamComment, signatures })
+        JSON.stringify({ header, checklistValues, photoUrls, galleryUrls, teamComment, signatures })
       )
     } catch {
       // storage full / unavailable — ignore
     }
-  }, [header, checklistValues, photoUrls, teamComment, signatures])
+  }, [header, checklistValues, photoUrls, galleryUrls, teamComment, signatures])
 
   // Load checklist schema when work_type changes
   useEffect(() => {
@@ -162,11 +166,24 @@ export default function SimpleWoForm() {
 
   const handlePhotos = async (files, phase) => {
     if (!files || files.length === 0) return
+    const existing = photoUrls.filter((p) => p.phase === phase).length
+    const room = 6 - existing
+    if (room <= 0) {
+      alert(`เฟส${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
+      if (beforeInputRef.current) beforeInputRef.current.value = ''
+      if (afterInputRef.current)  afterInputRef.current.value = ''
+      return
+    }
+    // Cap at 6 per phase: only upload the first N that fit.
+    const picked = Array.from(files)
+    const toUpload = picked.slice(0, room)
+    if (picked.length > room) {
+      alert(`เฟส${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
+    }
     setUploading(true)
     try {
-      const startNo = photoUrls.filter((p) => p.phase === phase).length
-      let idx = startNo
-      for (const file of Array.from(files)) {
+      let idx = existing
+      for (const file of toUpload) {
         const compressed = await compressImage(file)
         const fd = new FormData()
         fd.append('photo', compressed)
@@ -191,6 +208,29 @@ export default function SimpleWoForm() {
 
   const removePhoto = (i) => setPhotoUrls((prev) => prev.filter((_, idx) => idx !== i))
 
+  // Gallery (คลังรูป): unlimited extra album photos, not in the PDF.
+  const handleGallery = async (files) => {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const compressed = await compressImage(file)
+        const fd = new FormData()
+        fd.append('photo', compressed)
+        // Do NOT set Content-Type manually — the browser must add the multipart boundary.
+        const res = await api.post('/simple-wo/upload', fd)
+        setGalleryUrls((prev) => [...prev, { url: res.data.url }])
+      }
+    } catch {
+      alert('อัปโหลดรูปไม่สำเร็จ')
+    } finally {
+      setUploading(false)
+      if (galleryInputRef.current) galleryInputRef.current.value = ''
+    }
+  }
+
+  const removeGallery = (i) => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))
+
   const saveSig = (role, dataUrl) => {
     setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], data: dataUrl } }))
     setSigPad(null)
@@ -214,6 +254,7 @@ export default function SimpleWoForm() {
     })
     setChecklistValues({})
     setPhotoUrls([])
+    setGalleryUrls([])
     setTeamComment({
       ac_degraded: false,
       ac_old_5_7yr: false,
@@ -252,6 +293,7 @@ export default function SimpleWoForm() {
         end_time: header.end_time,
         team_comment: teamComment,
         photo_urls: photoUrls,
+        gallery_urls: galleryUrls,
         sig_engineer: signatures.engineer.data,
         sig_engineer_name: signatures.engineer.name,
         sig_department: signatures.department.data,
@@ -351,18 +393,18 @@ export default function SimpleWoForm() {
           <h2 className="section-header">รูปภาพ</h2>
           <div className="grid grid-cols-2 gap-3">
             <PhotoPicker
-              label="รูปก่อน"
+              label={`รูปก่อน (${photoUrls.filter((p) => p.phase === 'before').length}/6)`}
               phase="before"
               inputRef={beforeInputRef}
               onPick={(files) => handlePhotos(files, 'before')}
-              disabled={uploading}
+              disabled={uploading || photoUrls.filter((p) => p.phase === 'before').length >= 6}
             />
             <PhotoPicker
-              label="รูปหลัง"
+              label={`รูปหลัง (${photoUrls.filter((p) => p.phase === 'after').length}/6)`}
               phase="after"
               inputRef={afterInputRef}
               onPick={(files) => handlePhotos(files, 'after')}
-              disabled={uploading}
+              disabled={uploading || photoUrls.filter((p) => p.phase === 'after').length >= 6}
             />
           </div>
           {uploading && <p className="text-xs text-ink-muted">กำลังอัปโหลด...</p>}
@@ -375,6 +417,43 @@ export default function SimpleWoForm() {
                   <button
                     type="button"
                     onClick={() => removePhoto(i)}
+                    className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Gallery (คลังรูป) — extra album photos, not in PDF ── */}
+        <div className="card flex flex-col gap-3">
+          <h2 className="section-header">เพิ่มเติม (คลังรูป)</h2>
+          <p className="text-xs text-ink-muted">อัปจากอัลบัมได้ไม่จำกัด · บีบรูปอัตโนมัติ · ไม่เข้า PDF</p>
+          <label className={`flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-line rounded-xl py-6 cursor-pointer text-ink-muted hover:border-primary transition-colors ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+            <Camera className="h-6 w-6" />
+            <span className="text-xs font-medium">เลือกจากอัลบัม</span>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => handleGallery(e.target.files)}
+            />
+          </label>
+          {uploading && <p className="text-xs text-ink-muted">กำลังอัปโหลด...</p>}
+          {galleryUrls.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {galleryUrls.map((p, i) => (
+                <div key={i} className="relative">
+                  <a href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
+                    <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeGallery(i)}
                     className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5"
                   >
                     <X className="h-3 w-3" />

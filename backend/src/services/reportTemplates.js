@@ -1048,6 +1048,45 @@ function fanReport(data) {
 //                    floor_name, has_repair, inspections:[], photos:{} },
 //            sigs: { engineer, department, team }   // each {signer_name,signature_data,signed_at}
 //          }
+// Simple-WO photo pages (portrait): ก่อน 3×2 + หลัง 3×2 per A4 page, large
+// ~195px frames. Only ก่อน/หลัง (the report set) — the album gallery is excluded.
+function simplePhotoPages(unit, data) {
+  const ph = (unit && unit.photos) || {};
+  const before = ph.before || [];
+  const after = ph.after || [];
+  if (!before.length && !after.length) return [];
+  const base = data.imageBase || '';
+  const PER = 6;
+
+  const cell = (p) => {
+    const src = `${base}${p.url || ''}`;
+    const cap = [p.label, fmtDate(p.taken_at) !== '—' ? fmtDate(p.taken_at) : '']
+      .filter(Boolean).map((x) => escapeHtml(x)).join(' · ');
+    return `<div style="border:1px solid #d9e2e4;border-radius:8px;overflow:hidden;background:#fff;break-inside:avoid;">
+      <div style="height:195px;background:#eef3f4;"><img src="${escapeHtml(src)}" alt="photo" style="width:100%;height:195px;object-fit:cover;display:block;"></div>
+      <div style="padding:2px 7px;font-size:9px;color:#5a6e73;">${cap || '&nbsp;'}</div>
+    </div>`;
+  };
+  const group = (title, color, items, total, pg) => {
+    if (!items.length) return '';
+    const part = total > PER ? ` — หน้า ${pg + 1}` : '';
+    return `<div style="font-weight:700;color:${color};font-size:12px;margin:7px 0 6px;border-left:4px solid ${color};padding-left:7px;">${escapeHtml(title)} (${total})${part}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">${items.map(cell).join('')}</div>`;
+  };
+
+  const npages = Math.max(Math.ceil(before.length / PER), Math.ceil(after.length / PER), 1);
+  const frags = [];
+  for (let pg = 0; pg < npages; pg++) {
+    const b = before.slice(pg * PER, pg * PER + PER);
+    const a = after.slice(pg * PER, pg * PER + PER);
+    frags.push(
+      group('ก่อน (Before)', 'var(--teal)', b, before.length, pg)
+      + group('หลัง (After)', 'var(--navy)', a, after.length, pg)
+    );
+  }
+  return frags;
+}
+
 function buildSimpleReportHtml(data) {
   const d = data || {};
   const wo = d.wo || {};
@@ -1092,7 +1131,7 @@ function buildSimpleReportHtml(data) {
   </div>`;
 
   const pages = [page(d, inner)];
-  for (const frag of photoGalleryPages(u, d)) {
+  for (const frag of simplePhotoPages(u, d)) {
     pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'แบบ C<small>รูปภาพประกอบ</small>')}${frag}</div>`));
   }
   return htmlDoc(d, `ใบงาน ${wo.order_no || ''}`, pages);
