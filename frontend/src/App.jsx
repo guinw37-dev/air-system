@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
 import { initOfflineSync } from './lib/offline/sync'
+import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import WorkOrderList from './pages/WorkOrderList'
@@ -40,6 +41,7 @@ export default function App() {
   useEffect(() => { initOfflineSync() }, [])
   return (
     <BrowserRouter>
+      <ErrorBoundary>
       <Routes>
         {/* Public routes — no auth required */}
         <Route path="/login" element={<Login />} />
@@ -81,6 +83,7 @@ export default function App() {
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

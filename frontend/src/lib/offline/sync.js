@@ -117,10 +117,19 @@ export async function flush() {
           store.setOnline(false)
           break
         }
-        // Server rejected (4xx/5xx). Keep the item and retry on every future
+        // Permanent client errors will NEVER succeed on retry (e.g. the target
+        // work order was deleted → 404 forever). Drop the item so it stops
+        // spamming the console + the "รอ sync" badge. 5xx/408/429 stay queued
+        // (transient — may recover after a fix/redeploy).
+        const PERMANENT = [400, 403, 404, 409, 410, 413, 422]
+        if (PERMANENT.includes(err.response?.status)) {
+          await deleteItem(item.id)
+          continue
+        }
+        // Server rejected (5xx/other). Keep the item and retry on every future
         // flush — a transient server bug (e.g. a fixed 500) then auto-recovers
-        // without dropping the user's captured content. A 4xx on one item never
-        // breaks the loop (only a network error does), so it can't block others.
+        // without dropping the user's captured content. It never breaks the loop
+        // (only a network error does), so it can't block others.
         item.retries = (item.retries || 0) + 1
         item.failed = false // clear any stale permanent-fail flag → keep trying
         item.lastError = err.response?.data?.error || String(err)
