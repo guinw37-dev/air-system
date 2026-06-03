@@ -698,7 +698,7 @@ router.post('/:id/photos', authMiddleware,
     const { rows } = await pool.query(`
       INSERT INTO work_order_photos (work_order_unit_id, unit_id, uploaded_by, phase, point_no, label, url, filename, client_token)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      ON CONFLICT (client_token) DO NOTHING
+      ON CONFLICT (client_token) WHERE client_token IS NOT NULL DO NOTHING
       RETURNING *
     `, [work_order_unit_id, chk[0].unit_id, req.user.id, phase, parseInt(point_no || 1, 10), label || null, url, req.file.filename, client_token || null]);
     // ON CONFLICT race: another concurrent sync won — fetch the winner
