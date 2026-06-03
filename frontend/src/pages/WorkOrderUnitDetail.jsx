@@ -22,6 +22,8 @@ import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { enqueueInspection, enqueuePhoto, getPendingPhotos } from '../lib/offline/sync'
+import { compressImage } from '../lib/image'
+import { useOfflineStore } from '../store/offline'
 
 export default function WorkOrderUnitDetail() {
   const { id: woId, unitId } = useParams()
@@ -171,6 +173,16 @@ export default function WorkOrderUnitDetail() {
 
   useEffect(() => { load() }, [load])
 
+  // When the offline outbox drains (pending photos finished syncing), reload so
+  // the optimistic "รอ sync" photos are replaced by the real server records —
+  // this is what makes the submit photo-gate pass after capture.
+  const pendingCount = useOfflineStore((s) => s.pending)
+  const prevPending = useRef(0)
+  useEffect(() => {
+    if (prevPending.current > 0 && pendingCount === 0) load()
+    prevPending.current = pendingCount
+  }, [pendingCount, load])
+
   // Debounced auto-save inspection
   const scheduleAutoSave = useCallback((nextValues) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -245,10 +257,12 @@ export default function WorkOrderUnitDetail() {
   }
 
   const handleFileChange = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const raw = e.target.files?.[0]
+    if (!raw) return
     e.target.value = ''
     try {
+      // shrink the mobile photo so the upload actually completes
+      const file = await compressImage(raw, { maxDim: 1600, quality: 0.7 })
       const fields = {
         work_order_unit_id: String(unitId),
         phase: uploadingPhase,
