@@ -8,7 +8,7 @@ const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
-const { buildSimpleReportHtml } = require('../services/reportTemplates');
+const { buildSimpleReportHtml, buildSimpleBatchHtml } = require('../services/reportTemplates');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
 
 const PUBLIC_BASE = process.env.FRONTEND_URL || '';
@@ -268,6 +268,70 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       }
     }
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
+// role → which signature slot: approver=วิศวกรรม, checker=หน่วยงาน, technician=ทีมช่าง
+const ROLE_SLOT = { approver: 'engineer', checker: 'department', technician: 'team' };
+router.post('/batch-sign', authMiddleware, async (req, res) => {
+  const slot = ROLE_SLOT[req.user.role];
+  if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });
+  const { ids = [], signature_data, signer_name } = req.body || {};
+  const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
+  if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
+  if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
+  const dataCol = `sig_${slot}`;
+  const nameCol = `sig_${slot}_name`;
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
+      [signature_data, signer_name || '', cleanIds]
+    );
+    res.json({ ok: true, signed: rowCount, slot });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/simple-wo/batch-pdf — billing cover + each WO report ───────────
+router.post('/batch-pdf', authMiddleware, async (req, res) => {
+  if (!['admin', 'central_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'เฉพาะ admin ออกเอกสารชุดได้' });
+  }
+  const { ids = [] } = req.body || {};
+  const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
+  if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
+  try {
+    const dataArray = [];
+    for (const id of cleanIds) {
+      const d = await getSimpleReportData(id, { publicBaseUrl: PUBLIC_BASE });
+      if (d) dataArray.push(d);
+    }
+    if (!dataArray.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    // billing cover meta
+    const clients = [...new Set(dataArray.map((d) => d.wo.client_name).filter(Boolean))];
+    const dates = dataArray.map((d) => d.wo.work_date || d.wo.created_at).filter(Boolean).sort();
+    const fmt = (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '');
+    const meta = {
+      client_name: clients.length === 1 ? clients[0] : `${clients.length} โรงพยาบาล`,
+      doc_no: `BILL-${dayjs().format('YYYYMM')}-${String(cleanIds[0]).padStart(4, '0')}`,
+      issue_date: new Date(),
+      date_range: dates.length ? (fmt(dates[0]) === fmt(dates[dates.length - 1]) ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`) : '—',
+      wo_count: dataArray.length,
+    };
+    const html = buildSimpleBatchHtml(dataArray, meta);
+    try {
+      const pdf = await htmlToPdf(html, { landscape: false });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${meta.doc_no}.pdf"`);
+      return res.end(pdf);
+    } catch (err) {
+      if (err instanceof PdfUnavailableError) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-PDF-Fallback', 'html');
+        return res.send(html);
+      }
+      throw err;
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
