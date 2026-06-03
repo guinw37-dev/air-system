@@ -1087,6 +1087,33 @@ function simplePhotoPages(unit, data) {
   return frags;
 }
 
+// "รายละเอียดเครื่องปรับอากาศ" header block (simple-wo). ac = {detail,location,
+// kind('water'|'refrigerant'|'other'),brand,model,cooling_size}.
+function acDetailBlock(ac, wo, unit) {
+  const a = ac || {};
+  const cb = (on) => `<span style="display:inline-block;width:11px;height:11px;border:1.3px solid #0B3A47;border-radius:2px;text-align:center;line-height:9px;font-size:9px;margin-right:3px">${on ? TICK : ''}</span>`;
+  const line = (k, v) => `<div style="display:flex;gap:6px;padding:1px 0"><span style="color:#5a6e73;min-width:118px">${k}</span><span style="border-bottom:1px dotted #9fb0b4;flex:1">${dash(v)}</span></div>`;
+  const wt = String((wo || {}).work_type || (unit || {}).work_type || '');
+  return `
+  <div style="font-weight:700;color:var(--teal);font-size:12px;border-left:4px solid var(--teal);padding-left:6px;margin:8px 0 5px">รายละเอียดเครื่องปรับอากาศ</div>
+  <div style="border:1px solid #e3eaec;border-radius:6px;padding:7px 10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px">
+      <div>
+        ${line('รายละเอียดเครื่อง', a.detail)}
+        ${line('ตำแหน่งที่ติดตั้ง', a.location)}
+        <div style="padding:2px 0"><span style="color:#5a6e73">ชนิดเครื่อง</span> &nbsp; ${cb(a.kind === 'water')}แอร์น้ำ ${cb(a.kind === 'refrigerant')}แอร์น้ำยา ${cb(a.kind === 'other')}อื่นๆ</div>
+      </div>
+      <div>
+        ${line('ยี่ห้อ', a.brand)}
+        ${line('รุ่น', a.model)}
+        ${line('หมายเลขเครื่อง', (unit || {}).asset_code)}
+        ${line('ขนาดทำความเย็น (BTU)', a.cooling_size)}
+      </div>
+    </div>
+    <div style="margin-top:4px"><span style="color:#5a6e73">ประเภทการบำรุงรักษา:</span> &nbsp; ${cb(wt === 'major')}S = ล้างใหญ่ &nbsp; ${cb(wt === 'minor')}ล้างย่อย &nbsp; ${cb(wt === 'fan')}พัดลม</div>
+  </div>`;
+}
+
 function simpleReportPages(data) {
   const d = data || {};
   const wo = d.wo || {};
@@ -1108,6 +1135,7 @@ function simpleReportPages(data) {
   const inner = `<div class="major-c">
     ${lmtHeader(d, 'รายงานบริการ<small>Service Report (TW)</small>')}
     ${meta}
+    ${acDetailBlock(d.ac, wo, u)}
     ${serviceTypeChecks(u).replace('class="checks"', 'class="svc-checks"')}
     ${checklistTable(u)}
 

@@ -104,6 +104,8 @@ export default function SimpleWoDetail() {
 
   const cv = wo.checklist_values || {}
   const tc = wo.team_comment || {}
+  const ac = wo.ac_info || {}
+  const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่นๆ' }
   const photos = Array.isArray(wo.photo_urls) ? wo.photo_urls : []
   const gallery = Array.isArray(wo.gallery_urls) ? wo.gallery_urls : []
   const result = RESULT_LABEL[wo.result]
@@ -140,6 +142,17 @@ export default function SimpleWoDetail() {
           <InfoRow label="ระบบไฟ" value={wo.power_system ? `${wo.power_system}V` : '-'} />
           <InfoRow label="เวลาเริ่ม" value={wo.start_time} />
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
+        </div>
+
+        {/* AC info (รายละเอียดเครื่องปรับอากาศ) */}
+        <div className="card">
+          <h2 className="section-header mb-3">รายละเอียดเครื่องปรับอากาศ</h2>
+          <InfoRow label="รายละเอียดเครื่อง" value={ac.detail} />
+          <InfoRow label="ตำแหน่งที่ติดตั้ง" value={ac.location} />
+          <InfoRow label="ชนิดเครื่อง" value={AC_KIND_LABEL[ac.kind] || '-'} />
+          <InfoRow label="ยี่ห้อ" value={ac.brand} />
+          <InfoRow label="รุ่น" value={ac.model} />
+          <InfoRow label="ขนาดทำความเย็น (BTU)" value={ac.cooling_size} />
         </div>
 
         {/* Checklist values — grouped by section, with item labels */}
