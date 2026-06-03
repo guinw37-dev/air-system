@@ -127,9 +127,10 @@ export default function SimpleWoForm() {
         const compressed = await compressImage(file)
         const fd = new FormData()
         fd.append('photo', compressed)
-        const res = await api.post('/simple-wo/upload', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        // Do NOT set Content-Type manually — the browser must add the multipart
+        // boundary. Setting 'multipart/form-data' without a boundary makes multer
+        // fail to parse → 500 on every upload.
+        const res = await api.post('/simple-wo/upload', fd)
         idx += 1
         setPhotoUrls((prev) => [
           ...prev,
