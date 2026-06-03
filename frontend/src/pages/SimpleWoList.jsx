@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Download, Camera } from 'lucide-react'
+import { Plus, Download, Camera, Trash2 } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import api from '../api/client'
@@ -34,6 +34,17 @@ export default function SimpleWoList() {
   }
 
   useEffect(() => { load() }, [])
+
+  const remove = async (e, id) => {
+    e.stopPropagation() // don't trigger row navigate
+    if (!window.confirm('ลบใบงานนี้? ลบแล้วกู้คืนไม่ได้')) return
+    try {
+      await api.delete(`/simple-wo/${id}`)
+      setRows((prev) => prev.filter((row) => row.id !== id))
+    } catch (err) {
+      alert(err.response?.data?.error || 'ลบใบงานไม่สำเร็จ')
+    }
+  }
 
   const exportExcel = async () => {
     setExporting(true)
@@ -118,12 +129,13 @@ export default function SimpleWoList() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ประเภท</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ผลงาน</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">รูป</th>
+                    <th className="py-3 px-4"><span className="sr-only">ลบ</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
+                      <td colSpan={9} className="py-16 text-center text-ink-muted">ไม่พบใบงาน</td>
                     </tr>
                   )}
                   {rows.map((wo) => {
@@ -154,6 +166,17 @@ export default function SimpleWoList() {
                           <span className="inline-flex items-center gap-1">
                             <Camera className="h-3.5 w-3.5" /> {wo.photo_count ?? 0}
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => remove(e, wo.id)}
+                            title="ลบใบงาน"
+                            aria-label="ลบใบงาน"
+                            className="p-1.5 rounded-lg text-ink-muted hover:bg-danger-soft hover:text-danger transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </td>
                       </tr>
                     )

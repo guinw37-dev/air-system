@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { FileText, Download } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { FileText, Download, Trash2 } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
@@ -25,6 +25,7 @@ function photoSrc(url) {
 
 export default function SimpleWoDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
 
   const [wo, setWo] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -72,6 +73,18 @@ export default function SimpleWoDetail() {
     } catch {
       alert('ดาวน์โหลด Excel ไม่สำเร็จ')
     } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    if (!window.confirm('ลบใบงานนี้? ลบแล้วกู้คืนไม่ได้')) return
+    setBusy(true)
+    try {
+      await api.delete(`/simple-wo/${id}`)
+      navigate('/simple-wo')
+    } catch (err) {
+      alert(err.response?.data?.error || 'ลบใบงานไม่สำเร็จ')
       setBusy(false)
     }
   }
@@ -178,6 +191,15 @@ export default function SimpleWoDetail() {
             <Download className="h-4 w-4" /> Export Excel แถวนี้
           </button>
         </div>
+
+        {/* Delete */}
+        <button
+          onClick={remove}
+          disabled={busy}
+          className="btn-danger w-full flex items-center justify-center gap-2"
+        >
+          <Trash2 className="h-4 w-4" /> ลบใบงาน
+        </button>
       </div>
     </Layout>
   )

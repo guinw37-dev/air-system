@@ -208,4 +208,28 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── DELETE /api/simple-wo/:id ───────────────────────────────────────────────
+// Allowed: the creator, or admin / central_admin. Best-effort unlink of photos.
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT created_by, photo_urls FROM simple_work_orders WHERE id = $1', [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    const row = rows[0];
+    const privileged = ['admin', 'central_admin'].includes(req.user.role);
+    if (!privileged && row.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
+    }
+    await pool.query('DELETE FROM simple_work_orders WHERE id = $1', [req.params.id]);
+    // best-effort: remove photo files (ignore errors)
+    for (const p of (row.photo_urls || [])) {
+      if (p && typeof p.url === 'string' && p.url.startsWith('/uploads/')) {
+        fs.unlink(path.join(UPLOAD_DIR, p.url.replace('/uploads/', '')), () => {});
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

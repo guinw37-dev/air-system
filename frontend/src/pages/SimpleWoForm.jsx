@@ -14,6 +14,8 @@ const WORK_TYPES = [
 
 const REFRIGERANTS = ['R32', 'R410', 'R22']
 
+const DRAFT_KEY = 'simple-wo-draft'
+
 // Resolve a stored photo URL for thumbnail display (handles relative paths)
 function photoSrc(url) {
   if (!url) return ''
@@ -68,6 +70,40 @@ export default function SimpleWoForm() {
   const beforeInputRef = useRef(null)
   const afterInputRef  = useRef(null)
 
+  const draftLoaded = useRef(false)
+
+  // Restore saved draft on mount (if any)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const d = JSON.parse(raw)
+        if (d.header) setHeader(d.header)
+        if (d.checklistValues) setChecklistValues(d.checklistValues)
+        if (Array.isArray(d.photoUrls)) setPhotoUrls(d.photoUrls)
+        if (d.teamComment) setTeamComment(d.teamComment)
+        if (d.signatures) setSignatures(d.signatures)
+      }
+    } catch {
+      // malformed draft — ignore
+    } finally {
+      draftLoaded.current = true
+    }
+  }, [])
+
+  // Autosave whole form state to localStorage on any change
+  useEffect(() => {
+    if (!draftLoaded.current) return // don't overwrite before restore runs
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ header, checklistValues, photoUrls, teamComment, signatures })
+      )
+    } catch {
+      // storage full / unavailable — ignore
+    }
+  }, [header, checklistValues, photoUrls, teamComment, signatures])
+
   // Load checklist schema when work_type changes
   useEffect(() => {
     setSchemaLoading(true)
@@ -116,6 +152,41 @@ export default function SimpleWoForm() {
     setSigPad(null)
   }
 
+  const clearDraft = () => {
+    if (!window.confirm('ล้างฟอร์มทั้งหมด? ข้อมูลที่กรอกไว้จะหายไป')) return
+    setHeader({
+      tech_name: '',
+      work_date: '',
+      client_name: '',
+      building: '',
+      floor: '',
+      room: '',
+      asset_code: '',
+      work_type: 'major',
+      power_system: '380',
+      start_time: '',
+      end_time: '',
+      result: 'ok',
+    })
+    setChecklistValues({})
+    setPhotoUrls([])
+    setTeamComment({
+      ac_degraded: false,
+      ac_old_5_7yr: false,
+      external_degraded: false,
+      external_detail: '',
+      internal_degraded: false,
+      internal_detail: '',
+    })
+    setSignatures({
+      engineer:   { name: '', data: '' },
+      department: { name: '', data: '' },
+      team:       { name: '', data: '' },
+    })
+    setError('')
+    localStorage.removeItem(DRAFT_KEY)
+  }
+
   const submit = async () => {
     if (submitting) return
     setError('')
@@ -145,6 +216,7 @@ export default function SimpleWoForm() {
         sig_team_name: signatures.team.name,
       }
       const res = await api.post('/simple-wo', body)
+      localStorage.removeItem(DRAFT_KEY) // clear draft so next new form starts blank
       navigate(`/simple-wo/${res.data.id}`)
     } catch (err) {
       setError(err.response?.data?.error || 'บันทึกใบงานไม่สำเร็จ')
@@ -380,15 +452,26 @@ export default function SimpleWoForm() {
           <p className="text-sm text-danger bg-danger-soft rounded-xl px-3 py-2">{error}</p>
         )}
 
-        <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-page/90 backdrop-blur border-t border-line">
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting || uploading}
-            className="btn-primary text-center w-full"
-          >
-            {submitting ? 'กำลังบันทึก...' : 'ส่งใบงาน'}
-          </button>
+        <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-page/90 backdrop-blur border-t border-line flex flex-col gap-2">
+          <p className="text-[11px] text-ink-muted text-center">บันทึกร่างอัตโนมัติ</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={clearDraft}
+              disabled={submitting || uploading}
+              className="btn-secondary text-center"
+            >
+              ล้างฟอร์ม
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || uploading}
+              className="btn-primary text-center flex-1"
+            >
+              {submitting ? 'กำลังบันทึก...' : 'ส่งใบงาน'}
+            </button>
+          </div>
         </div>
       </div>
 
