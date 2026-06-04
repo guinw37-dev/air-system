@@ -79,6 +79,55 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/export/excel — all (filter date range) ───────────────
 const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
+const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่น ๆ' };
+
+// Format one stored checklist value (per value_type) into a single compact cell
+// string, keeping every field the tech could have filled in.
+function fmtChecklistCell(valueType, v) {
+  v = v || {};
+  const s = (x) => (x === null || x === undefined || x === '' ? '' : String(x));
+  const parts = [];
+  switch (valueType) {
+    case 'number':
+    case 'before_after': {
+      if (s(v.value_before) !== '') parts.push(`ก่อน ${s(v.value_before)}`);
+      if (s(v.value_after) !== '') parts.push(`หลัง ${s(v.value_after)}`);
+      if (s(v.unit) !== '') parts.push(s(v.unit));
+      break;
+    }
+    case 'rst_amp': {
+      const b = [v.val_r_before, v.val_s_before, v.val_t_before].map(s);
+      const a = [v.val_r_after, v.val_s_after, v.val_t_after].map(s);
+      if (b.some((x) => x !== '')) parts.push(`ก่อน R/S/T=${b.join('/')}`);
+      if (a.some((x) => x !== '')) parts.push(`หลัง R/S/T=${a.join('/')}`);
+      if (s(v.val_ln_before) !== '' || s(v.val_l_before) !== '') parts.push(`ก่อน LN/L=${s(v.val_ln_before)}/${s(v.val_l_before)}`);
+      if (s(v.val_ln_after) !== '' || s(v.val_l_after) !== '') parts.push(`หลัง LN/L=${s(v.val_ln_after)}/${s(v.val_l_after)}`);
+      break;
+    }
+    case 'ln_vi': {
+      if (s(v.val_ln_before) !== '' || s(v.val_l_before) !== '') parts.push(`ก่อน LN/L=${s(v.val_ln_before)}/${s(v.val_l_before)}`);
+      if (s(v.val_ln_after) !== '' || s(v.val_l_after) !== '') parts.push(`หลัง LN/L=${s(v.val_ln_after)}/${s(v.val_l_after)}`);
+      break;
+    }
+    case 'pressure_pair': {
+      if (s(v.val_suction) !== '') parts.push(`Suction=${s(v.val_suction)}`);
+      if (s(v.val_discharge) !== '') parts.push(`Discharge=${s(v.val_discharge)}`);
+      break;
+    }
+    case 'check': {
+      if (v.checked === true || v.checked === 'true') parts.push('✓');
+      break;
+    }
+    case 'text': {
+      if (s(v.val_text) !== '') parts.push(s(v.val_text));
+      break;
+    }
+    default: break;
+  }
+  if (s(v.refrigerant_type) !== '') parts.push(`น้ำยา ${s(v.refrigerant_type)}`);
+  if (s(v.note) !== '') parts.push(`(${s(v.note)})`);
+  return parts.join(' ');
+}
 router.get('/export/excel', authMiddleware, async (req, res) => {
   const { date_from, date_to } = req.query;
   const where = ['1=1']; const params = []; let i = 1;
@@ -90,22 +139,63 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       LEFT JOIN users u ON s.created_by = u.id
       WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
     `, params);
-    const data = rows.map((r) => ({
-      'เลขใบงาน': r.wo_number,
-      'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
-      'ช่าง': r.tech_name || r.created_by_name || '',
-      'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
-      'ลูกค้า': r.client_name || '',
-      'อาคาร': r.building || '',
-      'ชั้น': r.floor || '',
-      'ห้อง': r.room || '',
-      'เลขเครื่อง': r.asset_code || '',
-      'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
-      'ระบบไฟ': r.power_system || '',
-      'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
-      'เวลาเริ่ม': r.start_time || '',
-      'เวลาเสร็จ': r.end_time || '',
+    // Simple-WO uses ONE checklist (the full AC/major set) — fetch it once so
+    // every checklist item becomes its own column, filled per WO.
+    const { rows: items } = await pool.query(`
+      SELECT id, category, item_label, value_type, sort_order
+      FROM inspection_template_items
+      WHERE equipment_type = 'ac' AND applies_major = true
+      ORDER BY sort_order, id
+    `);
+    // Unique, ordered column header per item (number-prefixed to avoid clashes).
+    const itemCol = items.map((it, idx) => ({
+      it,
+      header: `${String(idx + 1).padStart(2, '0')}. [${CAT_LABEL[it.category] || it.category}] ${it.item_label}`,
     }));
+
+    const data = rows.map((r) => {
+      const cv = r.checklist_values || {};
+      const tc = r.team_comment || {};
+      const ac = r.ac_info || {};
+      const row = {
+        'เลขใบงาน': r.wo_number,
+        'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
+        'ช่าง': r.tech_name || r.created_by_name || '',
+        'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+        'ลูกค้า': r.client_name || '',
+        'อาคาร': r.building || '',
+        'ชั้น': r.floor || '',
+        'ห้อง': r.room || '',
+        'เลขเครื่อง': r.asset_code || '',
+        'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+        'ระบบไฟ': r.power_system || '',
+        'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
+        'เวลาเริ่ม': r.start_time || '',
+        'เวลาเสร็จ': r.end_time || '',
+        // AC unit detail
+        'แอร์: รายละเอียด': ac.detail || '',
+        'แอร์: ตำแหน่ง': ac.location || '',
+        'แอร์: ชนิด': AC_KIND_LABEL[ac.kind] || ac.kind || '',
+        'แอร์: ยี่ห้อ': ac.brand || '',
+        'แอร์: รุ่น': ac.model || '',
+        'แอร์: ขนาดทำความเย็น': ac.cooling_size || '',
+        // Team condition assessment
+        'สภาพ: แอร์เสื่อม': tc.ac_degraded ? '✓' : '',
+        'สภาพ: แอร์เก่า 5-7 ปี': tc.ac_old_5_7yr ? '✓' : '',
+        'สภาพ: ภายนอกเสื่อม': [tc.external_degraded ? '✓' : '', tc.external_detail || ''].filter(Boolean).join(' '),
+        'สภาพ: ภายในเสื่อม': [tc.internal_degraded ? '✓' : '', tc.internal_detail || ''].filter(Boolean).join(' '),
+      };
+      // One column per checklist item.
+      for (const { it, header } of itemCol) {
+        const v = cv[it.id] || cv[String(it.id)] || {};
+        row[header] = fmtChecklistCell(it.value_type, v);
+      }
+      // Signatures.
+      row['เซ็น: ทีมช่าง'] = r.sig_team_name || '';
+      row['เซ็น: หน่วยงาน'] = r.sig_department_name || '';
+      row['เซ็น: วิศวกรรม'] = r.sig_engineer_name || '';
+      return row;
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'ใบงาน');
