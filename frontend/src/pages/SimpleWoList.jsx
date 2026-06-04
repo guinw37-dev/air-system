@@ -18,7 +18,7 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
-const SLOT_LABEL = { approver: 'วิศวกรรม', checker: 'หน่วยงาน', technician: 'ทีมช่าง', building: 'ช่างอาคาร' }
+const SLOT_LABEL = { technician: 'ช่าง', supervisor: 'หัวหน้าช่าง', checker: 'เจ้าหน้าที่ในแผนก', approver: 'วิศวกรรม', building: 'ช่างอาคาร' }
 
 export default function SimpleWoList() {
   const navigate = useNavigate()

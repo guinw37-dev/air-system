@@ -186,8 +186,9 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         'สภาพ: ภายนอก รายละเอียด': tc.external_detail || '',
         'สภาพ: ภายในเสื่อม': tc.internal_degraded ? '1' : '',
         'สภาพ: ภายใน รายละเอียด': tc.internal_detail || '',
-        'เซ็น: ทีมช่าง': r.sig_team_name || '',
-        'เซ็น: หน่วยงาน': r.sig_department_name || '',
+        'เซ็น: ช่าง': r.sig_team_name || '',
+        'เซ็น: หัวหน้าช่าง': r.sig_supervisor_name || '',
+        'เซ็น: เจ้าหน้าที่ในแผนก': r.sig_department_name || '',
         'เซ็น: วิศวกรรม': r.sig_engineer_name || '',
         'เซ็น: ช่างอาคาร': r.sig_building_name || '',
       };
@@ -222,8 +223,8 @@ router.post('/', authMiddleware, async (req, res) => {
         asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
         team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
-        sig_building, sig_building_name
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+        sig_supervisor, sig_supervisor_name, sig_building, sig_building_name
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
@@ -236,6 +237,7 @@ router.post('/', authMiddleware, async (req, res) => {
       b.sig_engineer || null, b.sig_engineer_name || null,
       b.sig_department || null, b.sig_department_name || null,
       b.sig_team || null, b.sig_team_name || null,
+      b.sig_supervisor || null, b.sig_supervisor_name || null,
       b.sig_building || null, b.sig_building_name || null,
     ]);
     await client.query('COMMIT');
@@ -324,7 +326,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         start_time=$13, end_time=$14, team_comment=$15, photo_urls=$16,
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
-        sig_building=$25, sig_building_name=$26
+        sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -339,6 +341,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.sig_team || null, b.sig_team_name || null,
       JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
       b.sig_building || null, b.sig_building_name || null,
+      b.sig_supervisor || null, b.sig_supervisor_name || null,
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -370,7 +373,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
 // role → which signature slot: approver=วิศวกรรม, checker=หน่วยงาน, technician=ทีมช่าง
-const ROLE_SLOT = { approver: 'engineer', checker: 'department', technician: 'team', building: 'building' };
+const ROLE_SLOT = { approver: 'engineer', checker: 'department', technician: 'team', supervisor: 'supervisor', building: 'building' };
 router.post('/batch-sign', authMiddleware, async (req, res) => {
   const slot = ROLE_SLOT[req.user.role];
   if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });

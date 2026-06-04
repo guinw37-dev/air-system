@@ -23,9 +23,10 @@ async function seed() {
         ('Checker Admin',   'checker', $1, 'checker',       ''),
         ('Central Admin',   'cadmin',  $1, 'central_admin', ''),
         ('Approver',        'approver',$1, 'approver',      ''),
-        ('ช่างทดสอบ 1',     'tech1',   $1, 'technician',    ''),
-        ('ช่างทดสอบ 2',     'tech2',   $1, 'technician',    ''),
-        ('ช่างอาคาร',       'building',$1, 'building',      '')
+        ('ช่างทดสอบ 1',     'tech1',     $1, 'technician',    ''),
+        ('ช่างทดสอบ 2',     'tech2',     $1, 'technician',    ''),
+        ('หัวหน้าช่าง',     'supervisor',$1, 'supervisor',    ''),
+        ('ช่างอาคาร',       'building',  $1, 'building',      '')
       ON CONFLICT (username) DO NOTHING
     `, [passwordHash]);
 

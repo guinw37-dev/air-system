@@ -84,9 +84,10 @@ export default function SimpleWoForm() {
     engineer:   { name: '', data: '' },
     department: { name: '', data: '' },
     team:       { name: '', data: '' },
+    supervisor: { name: '', data: '' },
     building:   { name: '', data: '' },
   })
-  const [sigPad, setSigPad] = useState(null) // 'engineer' | 'department' | 'team' | 'building' | null
+  const [sigPad, setSigPad] = useState(null) // 'engineer' | 'department' | 'team' | 'supervisor' | 'building' | null
 
   const [submitting, setSubmitting] = useState(false)
   const [loadingWo, setLoadingWo] = useState(false)
@@ -135,6 +136,7 @@ export default function SimpleWoForm() {
             engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
             department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
             team:       { name: w.sig_team_name || '',        data: w.sig_team || '' },
+            supervisor: { name: w.sig_supervisor_name || '',   data: w.sig_supervisor || '' },
             building:   { name: w.sig_building_name || '',     data: w.sig_building || '' },
           })
         })
@@ -296,6 +298,7 @@ export default function SimpleWoForm() {
       engineer:   { name: '', data: '' },
       department: { name: '', data: '' },
       team:       { name: '', data: '' },
+      supervisor: { name: '', data: '' },
       building:   { name: '', data: '' },
     })
     setError('')
@@ -331,6 +334,8 @@ export default function SimpleWoForm() {
         sig_department_name: signatures.department.name,
         sig_team: signatures.team.data,
         sig_team_name: signatures.team.name,
+        sig_supervisor: signatures.supervisor.data,
+        sig_supervisor_name: signatures.supervisor.name,
         sig_building: signatures.building.data,
         sig_building_name: signatures.building.name,
       }
@@ -626,9 +631,10 @@ export default function SimpleWoForm() {
         <div className="card flex flex-col gap-4">
           <h2 className="section-header">ลายเซ็น</h2>
           {[
+            { role: 'team',       label: 'ช่าง' },
+            { role: 'supervisor', label: 'หัวหน้าช่าง' },
+            { role: 'department', label: 'เจ้าหน้าที่ในแผนก' },
             { role: 'engineer',   label: 'วิศวกรรม' },
-            { role: 'department', label: 'หน่วยงาน' },
-            { role: 'team',       label: 'ทีมช่าง' },
             { role: 'building',   label: 'ช่างอาคาร' },
           ].map(({ role, label }) => (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
