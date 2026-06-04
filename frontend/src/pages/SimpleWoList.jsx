@@ -34,6 +34,12 @@ export default function SimpleWoList() {
   const [dateTo, setDateTo] = useState('')
   const [exporting, setExporting] = useState(false)
 
+  // List filter + sort (client-side)
+  const [fType, setFType] = useState('')     // '' | major | minor | fan
+  const [fClient, setFClient] = useState('') // '' | client_name
+  const [fResult, setFResult] = useState('') // '' | ok | not_ok
+  const [sortBy, setSortBy] = useState('date_desc') // date_desc|date_asc|wo_asc|wo_desc
+
   // Multi-select
   const [selected, setSelected] = useState(() => new Set())
 
@@ -59,6 +65,25 @@ export default function SimpleWoList() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Distinct client names for the filter dropdown.
+  const clientOptions = [...new Set(rows.map((r) => r.client_name).filter(Boolean))].sort()
+
+  // Apply filters + sort to produce the rows actually rendered.
+  const visibleRows = rows
+    .filter((r) => (!fType || r.work_type === fType)
+      && (!fClient || r.client_name === fClient)
+      && (!fResult || r.result === fResult))
+    .sort((a, b) => {
+      if (sortBy === 'wo_asc') return String(a.wo_number || '').localeCompare(String(b.wo_number || ''))
+      if (sortBy === 'wo_desc') return String(b.wo_number || '').localeCompare(String(a.wo_number || ''))
+      const da = new Date(a.work_date || a.created_at || 0).getTime()
+      const db = new Date(b.work_date || b.created_at || 0).getTime()
+      return sortBy === 'date_asc' ? da - db : db - da
+    })
+
+  const hasFilter = fType || fClient || fResult
+  const clearFilters = () => { setFType(''); setFClient(''); setFResult('') }
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -86,11 +111,11 @@ export default function SimpleWoList() {
     })
   }
 
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id))
   const toggleAll = () => {
     setSelected((prev) => {
-      if (rows.length > 0 && rows.every((r) => prev.has(r.id))) return new Set()
-      return new Set(rows.map((r) => r.id))
+      if (visibleRows.length > 0 && visibleRows.every((r) => prev.has(r.id))) return new Set()
+      return new Set(visibleRows.map((r) => r.id))
     })
   }
 
@@ -233,6 +258,54 @@ export default function SimpleWoList() {
           </div>
         </div>
 
+        {/* Filter + sort */}
+        <div className="card flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="section-header">กรอง / เรียงลำดับ</h2>
+            {hasFilter && (
+              <button onClick={clearFilters} className="text-xs text-ink-muted hover:text-ink underline">
+                ล้างตัวกรอง
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="label">ประเภท</label>
+              <select className="input" value={fType} onChange={(e) => setFType(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                <option value="major">ล้างใหญ่</option>
+                <option value="minor">ล้างย่อย</option>
+                <option value="fan">ล้างพัดลม</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">ลูกค้า</label>
+              <select className="input" value={fClient} onChange={(e) => setFClient(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">ผลงาน</label>
+              <select className="input" value={fResult} onChange={(e) => setFResult(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                <option value="ok">เรียบร้อย</option>
+                <option value="not_ok">ไม่เรียบร้อย</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">เรียงตาม</label>
+              <select className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <option value="date_desc">วันที่ ใหม่→เก่า</option>
+                <option value="date_asc">วันที่ เก่า→ใหม่</option>
+                <option value="wo_desc">เลขใบงาน มาก→น้อย</option>
+                <option value="wo_asc">เลขใบงาน น้อย→มาก</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-ink-muted">แสดง {visibleRows.length} จาก {rows.length} ใบงาน</p>
+        </div>
+
         {/* Table */}
         <div className="card overflow-hidden p-0">
           {loading ? (
@@ -265,23 +338,27 @@ export default function SimpleWoList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {rows.length === 0 && (
+                  {visibleRows.length === 0 && (
                     <tr>
                       <td colSpan={10} className="py-16">
                         <div className="flex flex-col items-center gap-3 text-ink-muted">
                           <FileText className="h-8 w-8 opacity-40" />
-                          <p className="text-sm">ยังไม่มีใบงาน</p>
-                          <button
-                            onClick={() => navigate('/simple-wo/new')}
-                            className="btn-secondary flex items-center gap-1.5 text-sm"
-                          >
-                            <Plus className="h-4 w-4" /> เปิดใบงานใหม่
-                          </button>
+                          <p className="text-sm">{rows.length === 0 ? 'ยังไม่มีใบงาน' : 'ไม่พบใบงานตามตัวกรอง'}</p>
+                          {rows.length === 0 ? (
+                            <button
+                              onClick={() => navigate('/simple-wo/new')}
+                              className="btn-secondary flex items-center gap-1.5 text-sm"
+                            >
+                              <Plus className="h-4 w-4" /> เปิดใบงานใหม่
+                            </button>
+                          ) : (
+                            <button onClick={clearFilters} className="btn-secondary text-sm">ล้างตัวกรอง</button>
+                          )}
                         </div>
                       </td>
                     </tr>
                   )}
-                  {rows.map((wo) => {
+                  {visibleRows.map((wo) => {
                     const t = WORK_TYPE_LABEL[wo.work_type] || { label: wo.work_type, color: 'badge-gray' }
                     const r = RESULT_LABEL[wo.result]
                     const dateVal = wo.work_date || wo.created_at
