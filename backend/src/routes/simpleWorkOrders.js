@@ -83,24 +83,46 @@ const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร�
 
 const s = (x) => (x === null || x === undefined || x === '' ? '' : String(x));
 
-// Explode one stored checklist value into atomic, machine-reusable columns.
-// Every sub-field gets its own key so the data can be imported / pivoted later.
-function checklistAtomicFields(v) {
+// Extract one atomic sub-field of a stored checklist value by column key.
+function atomicValue(v, key) {
   v = v || {};
-  return {
-    'ก่อน': s(v.value_before),
-    'หลัง': s(v.value_after),
-    'หน่วย': s(v.unit),
-    'R ก่อน': s(v.val_r_before), 'S ก่อน': s(v.val_s_before), 'T ก่อน': s(v.val_t_before),
-    'R หลัง': s(v.val_r_after), 'S หลัง': s(v.val_s_after), 'T หลัง': s(v.val_t_after),
-    'LN ก่อน': s(v.val_ln_before), 'L ก่อน': s(v.val_l_before),
-    'LN หลัง': s(v.val_ln_after), 'L หลัง': s(v.val_l_after),
-    'Suction': s(v.val_suction), 'Discharge': s(v.val_discharge),
-    'ติ๊ก': (v.checked === true || v.checked === 'true') ? '1' : '',
-    'ข้อความ': s(v.val_text),
-    'น้ำยา': s(v.refrigerant_type),
-    'หมายเหตุ': s(v.note),
-  };
+  switch (key) {
+    case 'ก่อน': return s(v.value_before);
+    case 'หลัง': return s(v.value_after);
+    case 'หน่วย': return s(v.unit);
+    case 'R ก่อน': return s(v.val_r_before);
+    case 'S ก่อน': return s(v.val_s_before);
+    case 'T ก่อน': return s(v.val_t_before);
+    case 'R หลัง': return s(v.val_r_after);
+    case 'S หลัง': return s(v.val_s_after);
+    case 'T หลัง': return s(v.val_t_after);
+    case 'LN ก่อน': return s(v.val_ln_before);
+    case 'L ก่อน': return s(v.val_l_before);
+    case 'LN หลัง': return s(v.val_ln_after);
+    case 'L หลัง': return s(v.val_l_after);
+    case 'Suction': return s(v.val_suction);
+    case 'Discharge': return s(v.val_discharge);
+    case 'น้ำยา': return s(v.refrigerant_type);
+    case 'ข้อความ': return s(v.val_text);
+    case 'หมายเหตุ': return s(v.note);
+    case 'ติ๊ก': return (v.checked === true || v.checked === 'true') ? '1' : '';
+    default: return '';
+  }
+}
+
+// Which atomic sub-columns to expose for each value_type (keeps the sheet
+// narrow — only the fields that type can actually hold). 'หมายเหตุ' appended.
+function relevantKeys(valueType) {
+  switch (valueType) {
+    case 'number':
+    case 'before_after': return ['ก่อน', 'หลัง', 'หน่วย'];
+    case 'rst_amp': return ['R ก่อน', 'S ก่อน', 'T ก่อน', 'R หลัง', 'S หลัง', 'T หลัง', 'LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
+    case 'ln_vi': return ['LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
+    case 'pressure_pair': return ['Suction', 'Discharge', 'น้ำยา'];
+    case 'check': return ['ติ๊ก'];
+    case 'text': return ['ข้อความ'];
+    default: return ['ก่อน', 'หลัง'];
+  }
 }
 
 router.get('/export/excel', authMiddleware, async (req, res) => {
@@ -122,11 +144,22 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       ORDER BY sort_order, id
     `);
 
-    // ── Sheet 1 "ใบงาน": one row per WO, every header datum in its own column ──
-    const woRows = rows.map((r) => {
+    // Build the checklist columns once — each item expands rightward into its
+    // relevant atomic sub-columns, number-prefixed so headers stay unique/ordered.
+    const itemCols = [];
+    items.forEach((it, idx) => {
+      const nn = String(idx + 1).padStart(2, '0');
+      for (const key of [...relevantKeys(it.value_type), 'หมายเหตุ']) {
+        itemCols.push({ id: it.id, key, header: `${nn}. ${it.item_label} · ${key}` });
+      }
+    });
+
+    // ── Single wide sheet: one row per WO, checklist expands to the right ──
+    const data = rows.map((r) => {
       const tc = r.team_comment || {};
       const ac = r.ac_info || {};
-      return {
+      const cv = r.checklist_values || {};
+      const row = {
         'เลขใบงาน': r.wo_number,
         'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
         'ช่าง': r.tech_name || r.created_by_name || '',
@@ -157,41 +190,17 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         'เซ็น: หน่วยงาน': r.sig_department_name || '',
         'เซ็น: วิศวกรรม': r.sig_engineer_name || '',
       };
+      // Checklist columns to the right.
+      for (const c of itemCols) {
+        row[c.header] = atomicValue(cv[c.id] || cv[String(c.id)], c.key);
+      }
+      return row;
     });
 
-    // ── Sheet 2 "Checklist": long/normalized — one row per filled checklist value ──
-    const ATOMIC_KEYS = Object.keys(checklistAtomicFields({}));
-    const clRows = [];
-    for (const r of rows) {
-      const cv = r.checklist_values || {};
-      items.forEach((it, idx) => {
-        const v = cv[it.id] || cv[String(it.id)] || {};
-        const atomic = checklistAtomicFields(v);
-        // Skip items the tech left entirely blank to keep the sheet clean.
-        if (!ATOMIC_KEYS.some((k) => atomic[k] !== '')) return;
-        clRows.push({
-          'เลขใบงาน': r.wo_number,
-          'ลูกค้า': r.client_name || '',
-          'อาคาร': r.building || '',
-          'ชั้น': r.floor || '',
-          'ห้อง': r.room || '',
-          'เลขเครื่อง': r.asset_code || '',
-          'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
-          'ระบบไฟ': r.power_system || '',
-          'ลำดับ': idx + 1,
-          'หมวด': CAT_LABEL[it.category] || it.category,
-          'รายการ': it.item_label,
-          'ชนิดค่า': it.value_type,
-          ...atomic,
-        });
-      });
-    }
-
+    const baseHeader = data.length ? Object.keys(data[0]).filter((k) => !itemCols.some((c) => c.header === k)) : [];
+    const header = [...baseHeader, ...itemCols.map((c) => c.header)];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(woRows), 'ใบงาน');
-    // Force a stable header order even when every row is sparse.
-    const clHeader = ['เลขใบงาน', 'ลูกค้า', 'อาคาร', 'ชั้น', 'ห้อง', 'เลขเครื่อง', 'ประเภทงาน', 'ระบบไฟ', 'ลำดับ', 'หมวด', 'รายการ', 'ชนิดค่า', ...ATOMIC_KEYS];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clRows, { header: clHeader }), 'Checklist');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data, { header }), 'ใบงาน');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
