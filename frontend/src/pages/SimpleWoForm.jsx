@@ -748,7 +748,8 @@ function NumPair({ value, onChange, unit, unitOptions }) {
       />
       {unitOptions ? (
         <select
-          className="input w-24 shrink-0"
+          className="input shrink-0"
+          style={{ width: '6rem' }}
           value={value.unit || unitOptions[0]}
           onChange={(e) => onChange({ unit: e.target.value })}
         >
@@ -799,7 +800,8 @@ function ChecklistField({ field, value, onChange }) {
       const airflow = (unit_label || '').toLowerCase() === 'ft/m'
       return (
         <div>
-          {labelEl}
+          {/* airflow already shows its unit in the select + item_label, skip the duplicate */}
+          {airflow ? <label className="label">{item_label}</label> : labelEl}
           <NumPair
             value={value}
             onChange={onChange}
