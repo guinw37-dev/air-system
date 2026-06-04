@@ -283,7 +283,7 @@ function styleBlock(brand) {
     /* the minor / cover / fan reports are unaffected.                        */
     /* ===================================================================== */
     @page { size: A4 portrait; }
-    .major-c { font-size: 7.5pt; line-height: 1.25; color: var(--navy); }
+    .major-c { font-size: 7.5pt; line-height: 1.2; color: var(--navy); }
     .major-c .lmt-head {
       display: flex; align-items: center; gap: 8px;
       border-bottom: 2px solid var(--teal); padding-bottom: 5px; margin-bottom: 6px;
@@ -314,7 +314,7 @@ function styleBlock(brand) {
     /* the one full-width checklist table */
     .major-c table.lmt { width: 100%; border-collapse: collapse; font-size: 7pt; table-layout: fixed; }
     .major-c table.lmt th, .major-c table.lmt td {
-      border: 1px solid #b9c8ca; padding: 2px 4px; vertical-align: middle; text-align: left;
+      border: 1px solid #b9c8ca; padding: 1px 4px; vertical-align: middle; text-align: left;
     }
     .major-c table.lmt thead th {
       background: var(--navy); color: #fff; font-weight: 600; text-align: center; font-size: 7pt; padding: 3px 4px;
@@ -342,7 +342,7 @@ function styleBlock(brand) {
     .major-c .subbox .lbl { color: #0B3A47; font-weight: 700; }
 
     /* condition + result strip */
-    .major-c .strip { display: flex; gap: 8px; margin-top: 6px; }
+    .major-c .strip { display: flex; gap: 8px; margin-top: 4px; }
     .major-c .strip .col {
       flex: 1; border: 1px solid #cdd9db; border-radius: 5px; padding: 5px 7px; background: #fff;
     }
@@ -358,7 +358,7 @@ function styleBlock(brand) {
     }
     .major-c .cond-opt .det { color: #5a6e73; font-size: 6.5pt; }
     .major-c .strip .times { margin-top: 5px; color: #5a6e73; }
-    .major-c .sign-row { display: flex; gap: 12px; margin-top: 8px; }
+    .major-c .sign-row { display: flex; gap: 12px; margin-top: 5px; }
     .major-c .sign-box .pad { height: 40px; }
     .major-c .sign-box .role { font-size: 7.5pt; margin-top: 3px; }
     .major-c .sign-box .nm { font-size: 7.5pt; }
