@@ -79,6 +79,30 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/export/excel — all (filter date range) ───────────────
 const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
+const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่น ๆ' };
+
+const s = (x) => (x === null || x === undefined || x === '' ? '' : String(x));
+
+// Explode one stored checklist value into atomic, machine-reusable columns.
+// Every sub-field gets its own key so the data can be imported / pivoted later.
+function checklistAtomicFields(v) {
+  v = v || {};
+  return {
+    'ก่อน': s(v.value_before),
+    'หลัง': s(v.value_after),
+    'หน่วย': s(v.unit),
+    'R ก่อน': s(v.val_r_before), 'S ก่อน': s(v.val_s_before), 'T ก่อน': s(v.val_t_before),
+    'R หลัง': s(v.val_r_after), 'S หลัง': s(v.val_s_after), 'T หลัง': s(v.val_t_after),
+    'LN ก่อน': s(v.val_ln_before), 'L ก่อน': s(v.val_l_before),
+    'LN หลัง': s(v.val_ln_after), 'L หลัง': s(v.val_l_after),
+    'Suction': s(v.val_suction), 'Discharge': s(v.val_discharge),
+    'ติ๊ก': (v.checked === true || v.checked === 'true') ? '1' : '',
+    'ข้อความ': s(v.val_text),
+    'น้ำยา': s(v.refrigerant_type),
+    'หมายเหตุ': s(v.note),
+  };
+}
+
 router.get('/export/excel', authMiddleware, async (req, res) => {
   const { date_from, date_to } = req.query;
   const where = ['1=1']; const params = []; let i = 1;
@@ -90,25 +114,84 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       LEFT JOIN users u ON s.created_by = u.id
       WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
     `, params);
-    const data = rows.map((r) => ({
-      'เลขใบงาน': r.wo_number,
-      'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
-      'ช่าง': r.tech_name || r.created_by_name || '',
-      'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
-      'ลูกค้า': r.client_name || '',
-      'อาคาร': r.building || '',
-      'ชั้น': r.floor || '',
-      'ห้อง': r.room || '',
-      'เลขเครื่อง': r.asset_code || '',
-      'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
-      'ระบบไฟ': r.power_system || '',
-      'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
-      'เวลาเริ่ม': r.start_time || '',
-      'เวลาเสร็จ': r.end_time || '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
+    // Simple-WO uses ONE checklist (the full AC/major set).
+    const { rows: items } = await pool.query(`
+      SELECT id, category, item_label, value_type, unit_label, sort_order
+      FROM inspection_template_items
+      WHERE equipment_type = 'ac' AND applies_major = true
+      ORDER BY sort_order, id
+    `);
+
+    // ── Sheet 1 "ใบงาน": one row per WO, every header datum in its own column ──
+    const woRows = rows.map((r) => {
+      const tc = r.team_comment || {};
+      const ac = r.ac_info || {};
+      return {
+        'เลขใบงาน': r.wo_number,
+        'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
+        'ช่าง': r.tech_name || r.created_by_name || '',
+        'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+        'ลูกค้า': r.client_name || '',
+        'อาคาร': r.building || '',
+        'ชั้น': r.floor || '',
+        'ห้อง': r.room || '',
+        'เลขเครื่อง': r.asset_code || '',
+        'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+        'ระบบไฟ': r.power_system || '',
+        'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
+        'เวลาเริ่ม': r.start_time || '',
+        'เวลาเสร็จ': r.end_time || '',
+        'แอร์: รายละเอียด': ac.detail || '',
+        'แอร์: ตำแหน่ง': ac.location || '',
+        'แอร์: ชนิด': AC_KIND_LABEL[ac.kind] || ac.kind || '',
+        'แอร์: ยี่ห้อ': ac.brand || '',
+        'แอร์: รุ่น': ac.model || '',
+        'แอร์: ขนาดทำความเย็น': ac.cooling_size || '',
+        'สภาพ: แอร์เสื่อม': tc.ac_degraded ? '1' : '',
+        'สภาพ: แอร์เก่า 5-7 ปี': tc.ac_old_5_7yr ? '1' : '',
+        'สภาพ: ภายนอกเสื่อม': tc.external_degraded ? '1' : '',
+        'สภาพ: ภายนอก รายละเอียด': tc.external_detail || '',
+        'สภาพ: ภายในเสื่อม': tc.internal_degraded ? '1' : '',
+        'สภาพ: ภายใน รายละเอียด': tc.internal_detail || '',
+        'เซ็น: ทีมช่าง': r.sig_team_name || '',
+        'เซ็น: หน่วยงาน': r.sig_department_name || '',
+        'เซ็น: วิศวกรรม': r.sig_engineer_name || '',
+      };
+    });
+
+    // ── Sheet 2 "Checklist": long/normalized — one row per filled checklist value ──
+    const ATOMIC_KEYS = Object.keys(checklistAtomicFields({}));
+    const clRows = [];
+    for (const r of rows) {
+      const cv = r.checklist_values || {};
+      items.forEach((it, idx) => {
+        const v = cv[it.id] || cv[String(it.id)] || {};
+        const atomic = checklistAtomicFields(v);
+        // Skip items the tech left entirely blank to keep the sheet clean.
+        if (!ATOMIC_KEYS.some((k) => atomic[k] !== '')) return;
+        clRows.push({
+          'เลขใบงาน': r.wo_number,
+          'ลูกค้า': r.client_name || '',
+          'อาคาร': r.building || '',
+          'ชั้น': r.floor || '',
+          'ห้อง': r.room || '',
+          'เลขเครื่อง': r.asset_code || '',
+          'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+          'ระบบไฟ': r.power_system || '',
+          'ลำดับ': idx + 1,
+          'หมวด': CAT_LABEL[it.category] || it.category,
+          'รายการ': it.item_label,
+          'ชนิดค่า': it.value_type,
+          ...atomic,
+        });
+      });
+    }
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'ใบงาน');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(woRows), 'ใบงาน');
+    // Force a stable header order even when every row is sparse.
+    const clHeader = ['เลขใบงาน', 'ลูกค้า', 'อาคาร', 'ชั้น', 'ห้อง', 'เลขเครื่อง', 'ประเภทงาน', 'ระบบไฟ', 'ลำดับ', 'หมวด', 'รายการ', 'ชนิดค่า', ...ATOMIC_KEYS];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clRows, { header: clHeader }), 'Checklist');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
