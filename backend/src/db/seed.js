@@ -61,6 +61,9 @@ async function seed() {
       // หมวด 1: ใช้งานทั้ง 3 ประเภท (all3) — major + minor
       { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์ Blower (380V/220V)', type: 'rst_amp', minor: true },
       { cat: 'all3', sort: 20, label: 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', type: 'number', unit: 'Ft/m', minor: true },
+      { cat: 'all3', sort: 21, label: 'ตรวจวัดฝุ่น PM2.5 (µg/m³)', type: 'number', unit: 'µg/m³', minor: true },
+      { cat: 'all3', sort: 22, label: 'ตรวจวัดก๊าซ CO₂ (ppm)', type: 'number', unit: 'ppm', minor: true },
+      { cat: 'all3', sort: 23, label: 'ตรวจวัดระดับเสียง (dB)', type: 'number', unit: 'dB', minor: true },
       { cat: 'all3', sort: 30, label: 'ตรวจวัดอุณหภูมิ °C', type: 'number', unit: '°C', minor: true },
       { cat: 'all3', sort: 40, label: 'ฉีดล้างทำความสะอาด Fan coil โดยใช้สารเคมีทิ้งไว้ 15 นาที และใช้ Water High Pressure Jet ฉีดล้างทำความสะอาด', type: 'check', minor: true },
       { cat: 'all3', sort: 50, label: 'ตรวจสอบเสียง และการสั่นสะเทือนที่ผิดปกติของอุปกรณ์', type: 'check', minor: true },
