@@ -297,9 +297,10 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   if (!['admin', 'central_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'เฉพาะ admin ออกเอกสารชุดได้' });
   }
-  const { ids = [] } = req.body || {};
+  const { ids = [], cover = {} } = req.body || {};
   const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
+  const ov = cover && typeof cover === 'object' ? cover : {};
   try {
     const dataArray = [];
     for (const id of cleanIds) {
@@ -318,6 +319,11 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
       date_range: dates.length ? (fmt(dates[0]) === fmt(dates[dates.length - 1]) ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`) : '—',
       wo_count: dataArray.length,
     };
+    // editable cover overrides (only non-empty values win)
+    for (const k of ['client_name', 'doc_no', 'date_range', 'note']) {
+      if (ov[k] != null && String(ov[k]).trim() !== '') meta[k] = String(ov[k]).trim();
+    }
+    if (ov.issue_date != null && String(ov.issue_date).trim() !== '') meta.issue_date = ov.issue_date;
     const html = buildSimpleBatchHtml(dataArray, meta);
     try {
       const pdf = await htmlToPdf(html, { landscape: false });

@@ -46,6 +46,9 @@ export default function SimpleWoList() {
   const [pdfUrl, setPdfUrl] = useState(null)
   const [billing, setBilling] = useState(false)
   const iframeRef = useRef(null)
+  // Editable cover sheet
+  const [coverOpen, setCoverOpen] = useState(false)
+  const [cover, setCover] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -117,12 +120,33 @@ export default function SimpleWoList() {
   }
 
   // ── Batch bill (PDF) ───────────────────────────────────────────────
+  // Open the editable cover sheet, prefilling from the selected rows.
+  const openBillModal = () => {
+    const sel = rows.filter((r) => selected.has(r.id))
+    const clients = [...new Set(sel.map((r) => r.client_name).filter(Boolean))]
+    const fmt = (v) => (v ? new Date(v).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
+    const dates = sel.map((r) => r.work_date || r.created_at).filter(Boolean).sort()
+    const range = dates.length
+      ? (fmt(dates[0]) === fmt(dates[dates.length - 1]) ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`)
+      : ''
+    const today = new Date().toISOString().slice(0, 10)
+    setCover({
+      client_name: clients.length === 1 ? clients[0] : `${clients.length} โรงพยาบาล`,
+      doc_no: '',
+      issue_date: today,
+      date_range: range,
+      note: '',
+    })
+    setCoverOpen(true)
+  }
+
   const handleBatchPdf = async () => {
     setBilling(true)
     try {
-      const res = await api.post('/simple-wo/batch-pdf', { ids: [...selected] }, { responseType: 'blob' })
+      const res = await api.post('/simple-wo/batch-pdf', { ids: [...selected], cover: cover || {} }, { responseType: 'blob' })
       const url = URL.createObjectURL(res.data)
       setPdfUrl(url)
+      setCoverOpen(false)
     } catch (err) {
       alert(err.response?.data?.error || 'ออกเอกสารไม่สำเร็จ')
     } finally {
@@ -134,6 +158,8 @@ export default function SimpleWoList() {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl)
     setPdfUrl(null)
   }
+
+  const setCoverField = (k, v) => setCover((c) => ({ ...(c || {}), [k]: v }))
 
   // ── Batch sign ─────────────────────────────────────────────────────
   const openSign = () => {
@@ -328,7 +354,7 @@ export default function SimpleWoList() {
             </button>
             {canBill ? (
               <button
-                onClick={handleBatchPdf}
+                onClick={openBillModal}
                 disabled={billing}
                 className="btn-primary flex items-center gap-1.5"
               >
@@ -346,6 +372,38 @@ export default function SimpleWoList() {
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* Editable cover sheet modal */}
+      {coverOpen && cover && (
+        <Modal title="ใบปะหน้า — วางบิล" onClose={() => setCoverOpen(false)}>
+          <div className="space-y-3">
+            <div>
+              <label className="label">ลูกค้า</label>
+              <input className="input" value={cover.client_name} onChange={(e) => setCoverField('client_name', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">เลขที่เอกสาร</label>
+              <input className="input" placeholder="เว้นว่าง = สร้างอัตโนมัติ" value={cover.doc_no} onChange={(e) => setCoverField('doc_no', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">วันที่ออกเอกสาร</label>
+              <input type="date" className="input" value={cover.issue_date} onChange={(e) => setCoverField('issue_date', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">ช่วงปฏิบัติงาน</label>
+              <input className="input" value={cover.date_range} onChange={(e) => setCoverField('date_range', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">หมายเหตุ</label>
+              <textarea className="input" rows={3} placeholder="เว้นว่างได้" value={cover.note} onChange={(e) => setCoverField('note', e.target.value)} />
+            </div>
+            <button onClick={handleBatchPdf} disabled={billing} className="btn-primary w-full flex items-center justify-center gap-1.5">
+              <FileText className="h-4 w-4" />
+              {billing ? 'กำลังสร้าง...' : 'แสดงตัวอย่าง'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Signature modal */}
@@ -395,6 +453,12 @@ export default function SimpleWoList() {
               >
                 <Download className="h-4 w-4" /> ดาวน์โหลด
               </a>
+              <button
+                onClick={() => { closePdf(); setCoverOpen(true) }}
+                className="btn-secondary flex items-center gap-1.5"
+              >
+                แก้ไขใบปะหน้า
+              </button>
               <button onClick={closePdf} className="btn-secondary ml-auto">ปิด</button>
             </div>
           </div>
