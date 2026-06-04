@@ -131,6 +131,7 @@ export default function SimpleWoDetail() {
 
         {/* Header info */}
         <div className="card">
+          <h2 className="section-header mb-3">ข้อมูลทั่วไป</h2>
           <InfoRow label="ช่าง" value={wo.tech_name} />
           <InfoRow label="วันที่" value={dateVal ? dayjs(dateVal).format('DD/MM/YYYY') : '-'} />
           <InfoRow label="ลูกค้า" value={wo.client_name} />
@@ -240,7 +241,7 @@ export default function SimpleWoDetail() {
             <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
           </button>
           <button onClick={exportExcel} disabled={busy} className="btn-secondary flex-1 flex items-center justify-center gap-2">
-            <Download className="h-4 w-4" /> Export Excel แถวนี้
+            <Download className="h-4 w-4" /> ส่งออก Excel ใบนี้
           </button>
         </div>
 
@@ -319,9 +320,9 @@ function PhotoGroup({ title, tone, items }) {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex justify-between py-1.5 border-b border-line last:border-0">
-      <span className="text-xs text-ink-muted">{label}</span>
-      <span className="text-xs text-ink font-medium text-right max-w-[60%] truncate">{value || '-'}</span>
+    <div className="flex justify-between gap-3 py-1.5 border-b border-line last:border-0">
+      <span className="text-xs text-ink-muted shrink-0">{label}</span>
+      <span className="text-xs text-ink font-medium text-right max-w-[65%] break-words">{value || '-'}</span>
     </div>
   )
 }
