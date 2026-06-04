@@ -283,7 +283,7 @@ function styleBlock(brand) {
     /* the minor / cover / fan reports are unaffected.                        */
     /* ===================================================================== */
     @page { size: A4 portrait; }
-    .major-c { font-size: 7.5pt; line-height: 1.2; color: var(--navy); }
+    .major-c { font-size: 7.5pt; line-height: 1.2; color: var(--navy); display: flex; flex-direction: column; min-height: 258mm; }
     .major-c .lmt-head {
       display: flex; align-items: center; gap: 8px;
       border-bottom: 2px solid var(--teal); padding-bottom: 5px; margin-bottom: 6px;
@@ -358,7 +358,8 @@ function styleBlock(brand) {
     }
     .major-c .cond-opt .det { color: #5a6e73; font-size: 6.5pt; }
     .major-c .strip .times { margin-top: 5px; color: #5a6e73; }
-    .major-c .sign-row { display: flex; gap: 12px; margin-top: 5px; }
+    /* margin-top:auto pushes signatures to the bottom of the page (major-c is a flex column) */
+    .major-c .sign-row { display: flex; gap: 12px; margin-top: auto; padding-top: 8px; }
     .major-c .sign-box .pad { height: 40px; }
     .major-c .sign-box .role { font-size: 7.5pt; margin-top: 3px; }
     .major-c .sign-box .nm { font-size: 7.5pt; }
