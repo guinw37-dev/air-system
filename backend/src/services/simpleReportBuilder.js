@@ -81,6 +81,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
   const tc = r.team_comment || {};
   const wo = {
     order_no: r.wo_number,
+    work_type: r.work_type,
     client_name: r.client_name,
     site_name: r.building,
     tech_name: r.tech_name,
