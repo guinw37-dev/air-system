@@ -1207,6 +1207,7 @@ function simpleBatchCover(data, items, meta) {
       <tbody>${rows}</tbody>
     </table>
     <div style="margin-top:10px;text-align:right;font-weight:700;color:${navy}">รวมทั้งสิ้น ${items.length} เครื่อง · ${meta.wo_count} ใบงาน</div>
+    ${meta.note && String(meta.note).trim() ? `<div style="margin-top:10px;padding:8px 10px;background:#f4f8f9;border-left:3px solid ${teal};font-size:12px;color:${navy};white-space:pre-wrap"><span style="color:#5a6e73;font-weight:600">หมายเหตุ:</span> ${escapeHtml(String(meta.note))}</div>` : ''}
     <div style="display:flex;justify-content:space-around;margin-top:54px;text-align:center">
       <div><div style="border-top:1px solid ${navy};width:200px;margin:0 auto;padding-top:6px">ผู้วางบิล (TW)</div><div style="font-size:11px;color:#5a6e73;margin-top:28px">วันที่ ___/___/____</div></div>
       <div><div style="border-top:1px solid ${navy};width:200px;margin:0 auto;padding-top:6px">ผู้รับวางบิล (โรงพยาบาล)</div><div style="font-size:11px;color:#5a6e73;margin-top:28px">วันที่ ___/___/____</div></div>
