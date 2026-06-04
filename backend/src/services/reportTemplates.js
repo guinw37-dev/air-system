@@ -1156,6 +1156,7 @@ function simpleReportPages(data) {
       ${signatureBox('ลงชื่อทีมช่าง', sigs.team)}
       ${signatureBox('ลงชื่อหน่วยงาน', sigs.department)}
       ${signatureBox('ลงชื่อวิศวกรรม', sigs.engineer)}
+      ${signatureBox('ลงชื่อช่างอาคาร', sigs.building)}
     </div>
   </div>`;
 

@@ -84,8 +84,9 @@ export default function SimpleWoForm() {
     engineer:   { name: '', data: '' },
     department: { name: '', data: '' },
     team:       { name: '', data: '' },
+    building:   { name: '', data: '' },
   })
-  const [sigPad, setSigPad] = useState(null) // 'engineer' | 'department' | 'team' | null
+  const [sigPad, setSigPad] = useState(null) // 'engineer' | 'department' | 'team' | 'building' | null
 
   const [submitting, setSubmitting] = useState(false)
   const [loadingWo, setLoadingWo] = useState(false)
@@ -134,6 +135,7 @@ export default function SimpleWoForm() {
             engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
             department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
             team:       { name: w.sig_team_name || '',        data: w.sig_team || '' },
+            building:   { name: w.sig_building_name || '',     data: w.sig_building || '' },
           })
         })
         .catch((e) => setError(e.response?.data?.error || 'โหลดใบงานไม่สำเร็จ'))
@@ -294,6 +296,7 @@ export default function SimpleWoForm() {
       engineer:   { name: '', data: '' },
       department: { name: '', data: '' },
       team:       { name: '', data: '' },
+      building:   { name: '', data: '' },
     })
     setError('')
     localStorage.removeItem(DRAFT_KEY)
@@ -328,6 +331,8 @@ export default function SimpleWoForm() {
         sig_department_name: signatures.department.name,
         sig_team: signatures.team.data,
         sig_team_name: signatures.team.name,
+        sig_building: signatures.building.data,
+        sig_building_name: signatures.building.name,
       }
       const res = isEdit
         ? await api.put(`/simple-wo/${id}`, body)
@@ -624,6 +629,7 @@ export default function SimpleWoForm() {
             { role: 'engineer',   label: 'วิศวกรรม' },
             { role: 'department', label: 'หน่วยงาน' },
             { role: 'team',       label: 'ทีมช่าง' },
+            { role: 'building',   label: 'ช่างอาคาร' },
           ].map(({ role, label }) => (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
               <label className="label">{label}</label>

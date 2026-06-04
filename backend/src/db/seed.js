@@ -24,7 +24,8 @@ async function seed() {
         ('Central Admin',   'cadmin',  $1, 'central_admin', ''),
         ('Approver',        'approver',$1, 'approver',      ''),
         ('ช่างทดสอบ 1',     'tech1',   $1, 'technician',    ''),
-        ('ช่างทดสอบ 2',     'tech2',   $1, 'technician',    '')
+        ('ช่างทดสอบ 2',     'tech2',   $1, 'technician',    ''),
+        ('ช่างอาคาร',       'building',$1, 'building',      '')
       ON CONFLICT (username) DO NOTHING
     `, [passwordHash]);
 

@@ -111,6 +111,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
     engineer:   { signer_name: r.sig_engineer_name,   signature_data: r.sig_engineer,   signed_at: r.created_at },
     department: { signer_name: r.sig_department_name, signature_data: r.sig_department, signed_at: r.created_at },
     team:       { signer_name: r.sig_team_name,       signature_data: r.sig_team,       signed_at: r.created_at },
+    building:   { signer_name: r.sig_building_name,    signature_data: r.sig_building,   signed_at: r.created_at },
   };
 
   const woUrl = `${publicBaseUrl}/simple-wo/${id}`;
