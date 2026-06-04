@@ -173,7 +173,18 @@ export default function SimpleWoList() {
       setPdfUrl(url)
       setCoverOpen(false)
     } catch (err) {
-      alert(err.response?.data?.error || 'ออกเอกสารไม่สำเร็จ')
+      // responseType:'blob' means an error body arrives as a Blob, so the real
+      // server message is hidden — read it back out for a useful alert.
+      let msg = 'ออกเอกสารไม่สำเร็จ'
+      const data = err.response?.data
+      if (data instanceof Blob) {
+        try { msg = JSON.parse(await data.text()).error || msg } catch { /* not JSON */ }
+      } else if (data?.error) {
+        msg = data.error
+      } else if (err.message) {
+        msg = `ออกเอกสารไม่สำเร็จ (${err.message})`
+      }
+      alert(msg) // modal stays open so the user can retry without re-entering
     } finally {
       setBilling(false)
     }
