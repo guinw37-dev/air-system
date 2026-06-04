@@ -211,7 +211,7 @@ export default function SimpleWoDetail() {
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {gallery.map((p, i) => (
                 <a key={i} href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
-                  <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
+                  <img src={photoSrc(p.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
                 </a>
               ))}
             </div>
@@ -310,7 +310,7 @@ function PhotoGroup({ title, tone, items }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {items.map((p, i) => (
           <a key={i} href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
-            <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-xl border border-line" />
+            <img src={photoSrc(p.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-xl border border-line" />
           </a>
         ))}
       </div>

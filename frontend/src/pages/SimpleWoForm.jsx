@@ -486,7 +486,7 @@ export default function SimpleWoForm() {
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {photoUrls.map((p, i) => (
                 <div key={i} className="relative">
-                  <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
+                  <img src={photoSrc(p.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
                   <span className="absolute top-1 left-1 badge badge-primary text-[10px] px-1.5 py-0">{p.label}</span>
                   <button
                     type="button"
@@ -523,7 +523,7 @@ export default function SimpleWoForm() {
               {galleryUrls.map((p, i) => (
                 <div key={i} className="relative">
                   <a href={photoSrc(p.url)} target="_blank" rel="noreferrer" className="block">
-                    <img src={photoSrc(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
+                    <img src={photoSrc(p.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
                   </a>
                   <button
                     type="button"
@@ -733,14 +733,14 @@ function NumPair({ value, onChange, unit, unitOptions }) {
   return (
     <div className="flex items-center gap-2">
       <input
-        className="input"
+        className="input flex-1 min-w-0"
         inputMode="decimal"
         placeholder="ก่อน"
         value={value.value_before || ''}
         onChange={(e) => onChange({ value_before: e.target.value })}
       />
       <input
-        className="input"
+        className="input flex-1 min-w-0"
         inputMode="decimal"
         placeholder="หลัง"
         value={value.value_after || ''}
