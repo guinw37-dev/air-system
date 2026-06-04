@@ -105,7 +105,7 @@ function atomicValue(v, key) {
     case 'น้ำยา': return s(v.refrigerant_type);
     case 'ข้อความ': return s(v.val_text);
     case 'หมายเหตุ': return s(v.note);
-    case 'ติ๊ก': return (v.checked === true || v.checked === 'true') ? '1' : '';
+    case 'ติ๊ก': return (v.checked === true || v.checked === 'true') ? '1' : '-';
     default: return '';
   }
 }
