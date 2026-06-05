@@ -210,26 +210,24 @@ export default function SimpleWoForm() {
   const getPointPhoto = (point_no, phase) =>
     photoUrls.find((p) => p.point_no === point_no && p.phase === phase)
 
-  // Upload one file into a labeled point slot, replacing any existing photo there.
-  const handlePointPhoto = async (file, point, phase) => {
-    if (!file) return
-    setUploading(true)
-    try {
-      const compressed = await compressImage(file)
-      const fd = new FormData()
-      fd.append('photo', compressed)
-      // Do NOT set Content-Type manually — the browser adds the multipart boundary.
-      const res = await api.post('/simple-wo/upload', fd)
-      setPhotoUrls((prev) => [
-        ...prev.filter((p) => !(p.point_no === point.no && p.phase === phase)),
-        { url: res.data.url, phase, point_no: point.no, label: point.label },
-      ])
-    } catch (err) {
-      alert('อัปโหลดรูปไม่สำเร็จ: ' + (err?.response?.data?.error || err?.message || 'unknown'))
-    } finally {
-      setUploading(false)
-    }
+  // Compress + upload one file → returns the stored url. Holds NO component
+  // state, so each PhotoSlot owns its own busy/preview/error locally and an
+  // upload re-renders only that slot, not the whole (large) form.
+  const uploadOne = async (file) => {
+    const compressed = await compressImage(file)
+    const fd = new FormData()
+    fd.append('photo', compressed)
+    // Do NOT set Content-Type manually — the browser adds the multipart boundary.
+    const res = await api.post('/simple-wo/upload', fd)
+    return res.data.url
   }
+
+  // Store/replace the photo for a point + phase (only mutates on success).
+  const setPointPhoto = (point, phase, url) =>
+    setPhotoUrls((prev) => [
+      ...prev.filter((p) => !(p.point_no === point.no && p.phase === phase)),
+      { url, phase, point_no: point.no, label: point.label },
+    ])
 
   const removePointPhoto = (point_no, phase) =>
     setPhotoUrls((prev) => prev.filter((p) => !(p.point_no === point_no && p.phase === phase)))
@@ -496,22 +494,19 @@ export default function SimpleWoForm() {
                   <PhotoSlot
                     label="ก่อน"
                     photo={getPointPhoto(pt.no, 'before')}
-                    disabled={uploading}
-                    onPick={(file) => handlePointPhoto(file, pt, 'before')}
+                    onUpload={async (file) => setPointPhoto(pt, 'before', await uploadOne(file))}
                     onRemove={() => removePointPhoto(pt.no, 'before')}
                   />
                   <PhotoSlot
                     label="หลัง"
                     photo={getPointPhoto(pt.no, 'after')}
-                    disabled={uploading}
-                    onPick={(file) => handlePointPhoto(file, pt, 'after')}
+                    onUpload={async (file) => setPointPhoto(pt, 'after', await uploadOne(file))}
                     onRemove={() => removePointPhoto(pt.no, 'after')}
                   />
                 </div>
               </div>
             ))}
           </div>
-          {uploading && <p className="text-xs text-ink-muted">กำลังอัปโหลด...</p>}
           {missingRequiredPhotos.length > 0 && (
             <p className="text-xs text-danger">
               ยังขาดรูปบังคับ: {missingRequiredPhotos.map((pt) => pt.label).join(', ')}
@@ -944,10 +939,34 @@ function ChecklistField({ field, value, onChange }) {
   }
 }
 
-// One photo slot (ก่อน or หลัง) for a point: empty → upload tile (camera OR
-// gallery, no `capture` so the OS picker offers both); filled → thumbnail + ลบ.
-function PhotoSlot({ label, photo, onPick, onRemove, disabled }) {
-  if (photo) {
+// One photo slot (ก่อน or หลัง) for a point. Owns its OWN busy/preview/error
+// state so an in-flight upload re-renders only this slot — not the whole form —
+// and shows an instant local preview while the file uploads in the background.
+// Empty tile = camera OR gallery (no `capture`, so the OS picker offers both).
+function PhotoSlot({ label, photo, onUpload, onRemove }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [preview, setPreview] = useState('')
+
+  const pick = async (file) => {
+    if (!file || busy) return
+    setErr('')
+    const localUrl = URL.createObjectURL(file)
+    setPreview(localUrl)
+    setBusy(true)
+    try {
+      await onUpload(file) // compress + POST + lift result into parent state
+    } catch (e) {
+      setErr(e?.response?.data?.error || e?.message || 'อัปไม่สำเร็จ')
+    } finally {
+      setBusy(false)
+      setPreview('')
+      URL.revokeObjectURL(localUrl)
+    }
+  }
+
+  // Saved server photo (and not mid-replace) → thumbnail + remove.
+  if (photo && !busy && !preview) {
     return (
       <div className="relative">
         <img src={photoSrc(photo.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
@@ -963,15 +982,35 @@ function PhotoSlot({ label, photo, onPick, onRemove, disabled }) {
       </div>
     )
   }
+
+  // Empty / uploading / error → tappable tile (taps re-trigger after an error).
   return (
-    <label className={`flex flex-col items-center justify-center gap-1 aspect-square border-2 border-dashed border-line rounded-lg cursor-pointer text-ink-muted hover:border-primary transition-colors ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-      <Camera className="h-5 w-5" />
-      <span className="text-xs font-medium">{label}</span>
+    <label className={`relative flex flex-col items-center justify-center gap-1 aspect-square border-2 border-dashed rounded-lg cursor-pointer overflow-hidden transition-colors ${err ? 'border-danger text-danger' : 'border-line text-ink-muted hover:border-primary'} ${busy ? 'pointer-events-none' : ''}`}>
+      {preview && <img src={preview} alt="" className="absolute inset-0 w-full h-full object-cover opacity-70" />}
+      <span className="relative z-10 flex flex-col items-center gap-1 text-center px-1">
+        {busy ? (
+          <>
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-xs">กำลังอัป...</span>
+          </>
+        ) : err ? (
+          <>
+            <Camera className="h-5 w-5" />
+            <span className="text-[11px] font-medium">อัปไม่สำเร็จ · แตะลองใหม่</span>
+          </>
+        ) : (
+          <>
+            <Camera className="h-5 w-5" />
+            <span className="text-xs font-medium">{label}</span>
+          </>
+        )}
+      </span>
       <input
         type="file"
         accept="image/*"
         className="sr-only"
-        onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = '' }}
+        disabled={busy}
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }}
       />
     </label>
   )
