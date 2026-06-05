@@ -714,7 +714,9 @@ function measurementSubBox(it) {
   }
   if (vt === 'ln_vi') {
     if (String(it.power_system) === '380') {
-      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">3 เฟส</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A · LN=${rawOrUnderscore(it.val_ln_after)} V</div>`;
+      const ph = (lbl, v, a) => `${lbl}=${rawOrUnderscore(v)}V/${rawOrUnderscore(a)}A`;
+      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">3 เฟส</span> `
+        + `${ph('R', it.val_r_v_after, it.val_r_after)} · ${ph('S', it.val_s_v_after, it.val_s_after)} · ${ph('T', it.val_t_v_after, it.val_t_after)}</div>`;
     }
     return `<div class="subbox"><span class="lbl" style="color:var(--teal)">1 เฟส</span> LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;
   }

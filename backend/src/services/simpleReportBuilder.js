@@ -61,6 +61,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
       val_text: v.val_text ?? null,
       val_r_before: v.val_r_before ?? null, val_s_before: v.val_s_before ?? null, val_t_before: v.val_t_before ?? null,
       val_r_after: v.val_r_after ?? null, val_s_after: v.val_s_after ?? null, val_t_after: v.val_t_after ?? null,
+      val_r_v_after: v.val_r_v_after ?? null, val_s_v_after: v.val_s_v_after ?? null, val_t_v_after: v.val_t_v_after ?? null,
       val_ln_before: v.val_ln_before ?? null, val_l_before: v.val_l_before ?? null,
       val_ln_after: v.val_ln_after ?? null, val_l_after: v.val_l_after ?? null,
       val_suction: v.val_suction ?? null, val_discharge: v.val_discharge ?? null,

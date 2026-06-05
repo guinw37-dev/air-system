@@ -888,14 +888,18 @@ function ChecklistField({ field, value, onChange }) {
           {labelEl}
           <PowerToggle value={lnPs} onChange={(v) => onChange({ power_system: v })} labels={{ '380': '3 เฟส', '220': '1 เฟส' }} />
           {lnPs === '380' ? (
-            <>
-              <div className="grid grid-cols-3 gap-2">
-                <input className="input" inputMode="decimal" placeholder="R (A)" value={value.val_r_after || ''} onChange={(e) => onChange({ val_r_after: e.target.value })} />
-                <input className="input" inputMode="decimal" placeholder="S (A)" value={value.val_s_after || ''} onChange={(e) => onChange({ val_s_after: e.target.value })} />
-                <input className="input" inputMode="decimal" placeholder="T (A)" value={value.val_t_after || ''} onChange={(e) => onChange({ val_t_after: e.target.value })} />
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-[20px_1fr_1fr] items-center gap-2 text-xs text-ink-muted">
+                <span></span><span className="text-center">แรงดัน (V)</span><span className="text-center">กระแส (A)</span>
               </div>
-              <input className="input" inputMode="decimal" placeholder="แรงดัน LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
-            </>
+              {['r', 's', 't'].map((ph) => (
+                <div key={ph} className="grid grid-cols-[20px_1fr_1fr] items-center gap-2">
+                  <span className="text-sm font-semibold text-ink-muted uppercase">{ph}</span>
+                  <input className="input" inputMode="decimal" placeholder="V" value={value[`val_${ph}_v_after`] || ''} onChange={(e) => onChange({ [`val_${ph}_v_after`]: e.target.value })} />
+                  <input className="input" inputMode="decimal" placeholder="A" value={value[`val_${ph}_after`] || ''} onChange={(e) => onChange({ [`val_${ph}_after`]: e.target.value })} />
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
               <input className="input" inputMode="decimal" placeholder="LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />

@@ -100,6 +100,12 @@ function atomicValue(v, key) {
     case 'L ก่อน': return s(v.val_l_before);
     case 'LN หลัง': return s(v.val_ln_after);
     case 'L หลัง': return s(v.val_l_after);
+    case 'R(V)': return s(v.val_r_v_after);
+    case 'S(V)': return s(v.val_s_v_after);
+    case 'T(V)': return s(v.val_t_v_after);
+    case 'R(A)': return s(v.val_r_after);
+    case 'S(A)': return s(v.val_s_after);
+    case 'T(A)': return s(v.val_t_after);
     case 'Suction': return s(v.val_suction);
     case 'Discharge': return s(v.val_discharge);
     case 'น้ำยา': return s(v.refrigerant_type);
@@ -117,7 +123,7 @@ function relevantKeys(valueType) {
     case 'number':
     case 'before_after': return ['ก่อน', 'หลัง', 'หน่วย'];
     case 'rst_amp': return ['R ก่อน', 'S ก่อน', 'T ก่อน', 'R หลัง', 'S หลัง', 'T หลัง', 'LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
-    case 'ln_vi': return ['LN หลัง', 'L หลัง', 'R หลัง', 'S หลัง', 'T หลัง'];
+    case 'ln_vi': return ['LN หลัง', 'L หลัง', 'R(V)', 'R(A)', 'S(V)', 'S(A)', 'T(V)', 'T(A)'];
     case 'pressure_pair': return ['Suction', 'Discharge', 'น้ำยา'];
     case 'check': return ['ติ๊ก'];
     case 'text': return ['ข้อความ'];
