@@ -815,7 +815,7 @@ function ChecklistField({ field, value, onChange }) {
 
     case 'number':
     case 'before_after': {
-      // ความเร็วลม (Ft/m) → ให้เลือกหน่วย ft/m หรือ CFM
+      // ความเร็วลม (Ft/m) → ให้เลือกหน่วย ft/m, CFM หรือ m/s
       const airflow = (unit_label || '').toLowerCase() === 'ft/m'
       return (
         <div>
@@ -825,7 +825,7 @@ function ChecklistField({ field, value, onChange }) {
             value={value}
             onChange={onChange}
             unit={unit_label}
-            unitOptions={airflow ? ['ft/m', 'CFM'] : undefined}
+            unitOptions={airflow ? ['ft/m', 'CFM', 'm/s'] : undefined}
           />
         </div>
       )
