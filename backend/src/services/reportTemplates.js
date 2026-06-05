@@ -713,7 +713,10 @@ function measurementSubBox(it) {
     return `<div class="subbox">${tag}${line1}<br>${line2}</div>`;
   }
   if (vt === 'ln_vi') {
-    return `<div class="subbox">LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;
+    if (String(it.power_system) === '380') {
+      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">3 เฟส</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A · LN=${rawOrUnderscore(it.val_ln_after)} V</div>`;
+    }
+    return `<div class="subbox"><span class="lbl" style="color:var(--teal)">1 เฟส</span> LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;
   }
   if (vt === 'pressure_pair') {
     return `<div class="subbox">สาร: ${rawOrUnderscore(it.refrigerant_type)} · `

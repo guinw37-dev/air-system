@@ -280,7 +280,9 @@ function formatFieldValue(field, val) {
       return `380V 3φ · ${rst} · ${ln}`
     }
     case 'ln_vi':
-      return `LN ${g(v.val_ln_after)}V · L ${g(v.val_l_after)}A`
+      if (String(v.power_system) === '380')
+        return `3 เฟส · R/S/T ${g(v.val_r_after)}/${g(v.val_s_after)}/${g(v.val_t_after)} A · LN ${g(v.val_ln_after)}V`
+      return `1 เฟส · LN ${g(v.val_ln_after)}V · L ${g(v.val_l_after)}A`
     case 'pressure_pair':
       return `น้ำยา ${g(v.refrigerant_type)} · Suction ${g(v.val_suction)} · Discharge ${g(v.val_discharge)} PSI`
     default:
