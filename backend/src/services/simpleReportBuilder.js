@@ -1,6 +1,26 @@
+const fs = require('fs');
+const path = require('path');
 const pool = require('../db/pool');
 const QRCode = require('qrcode');
 const { BRAND } = require('./reportBuilder');
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+
+// Inline a stored photo as a base64 data URI so Puppeteer doesn't have to fetch
+// each image over HTTP (with networkidle0) — for a WO with ~16 photos that
+// network wait can exceed the proxy timeout and fail the whole PDF. Falls back
+// to the HTTP URL if the file can't be read.
+function inlinePhoto(url, httpBase) {
+  if (!url || /^https?:|^data:/.test(url)) return url || '';
+  try {
+    const buf = fs.readFileSync(path.join(UPLOAD_DIR, url.replace(/^\/uploads\//, '')));
+    const ext = path.extname(url).slice(1).toLowerCase();
+    const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch {
+    return `${httpBase}${url}`;
+  }
+}
 
 // Map work_type → which template items apply.
 // Simple-WO uses ONE checklist for every work type (the full AC/major set);
@@ -125,10 +145,16 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
   };
 
   const woUrl = `${publicBaseUrl}/simple-wo/${id}`;
-  const imageBase = `http://localhost:${process.env.PORT || 3001}`;
+  const httpBase = `http://localhost:${process.env.PORT || 3001}`;
+
+  // Inline every report photo as base64 → PDF render needs no image network
+  // round-trips (fast + reliable). src = p.url directly, so imageBase is ''.
+  for (const k of Object.keys(photos)) {
+    for (const p of photos[k]) p.url = inlinePhoto(p.url, httpBase);
+  }
 
   // No QR badge on the simple-wo report (qr omitted → qrBadge() renders nothing).
-  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase };
+  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '' };
 }
 
 module.exports = { getSimpleReportData };
