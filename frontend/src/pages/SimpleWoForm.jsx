@@ -631,10 +631,10 @@ export default function SimpleWoForm() {
         <div className="card flex flex-col gap-4">
           <h2 className="section-header">ลายเซ็น</h2>
           {[
-            { role: 'supervisor', label: 'หัวหน้าช่าง' },
-            { role: 'department', label: 'เจ้าหน้าที่ในแผนก' },
-            { role: 'engineer',   label: 'วิศวกรรม' },
-            { role: 'building',   label: 'ช่างอาคาร' },
+            { role: 'team',       label: 'ช่างแอร์' },
+            { role: 'supervisor', label: 'หัวหน้าช่างแอร์' },
+            { role: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
+            { role: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
           ].map(({ role, label }) => (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
               <label className="label">{label}</label>
