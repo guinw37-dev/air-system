@@ -375,7 +375,7 @@ router.get('/users', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
-const VALID_ROLES = ['technician', 'central_admin', 'approver', 'admin'];
+const VALID_ROLES = ['technician', 'central_admin', 'approver', 'admin', 'checker', 'building', 'supervisor'];
 
 router.post('/users', authMiddleware, requireRole('admin'), async (req, res) => {
   const { name, username, password, role, phone } = req.body;

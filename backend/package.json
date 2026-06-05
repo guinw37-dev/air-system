@@ -16,6 +16,7 @@
     "migrate:simple-wo-gallery": "node src/db/migrate_simple_wo_gallery.js",
     "migrate:simple-wo-acinfo": "node src/db/migrate_simple_wo_acinfo.js",
     "migrate:air-quality": "node src/db/migrate_air_quality.js",
+    "migrate:building-sig": "node src/db/migrate_simple_wo_building_sig.js",
     "seed": "node src/db/seed.js",
     "test": "node test/tenant.test.js && node test/woStateMachine.test.js && node test/pmPlanner.test.js"
   },

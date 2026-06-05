@@ -221,10 +221,11 @@ export default function SimpleWoDetail() {
         {/* Signatures */}
         <div className="card">
           <h2 className="section-header mb-3">ลายเซ็น</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <SigBox label="หัวหน้าช่าง" name={wo.sig_supervisor_name} data={wo.sig_supervisor} />
+            <SigBox label="เจ้าหน้าที่ในแผนก" name={wo.sig_department_name} data={wo.sig_department} />
             <SigBox label="วิศวกรรม" name={wo.sig_engineer_name} data={wo.sig_engineer} />
-            <SigBox label="หน่วยงาน" name={wo.sig_department_name} data={wo.sig_department} />
-            <SigBox label="ทีมช่าง" name={wo.sig_team_name} data={wo.sig_team} />
+            <SigBox label="ช่างอาคาร" name={wo.sig_building_name} data={wo.sig_building} />
           </div>
         </div>
 
