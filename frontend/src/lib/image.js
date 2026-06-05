@@ -6,12 +6,19 @@ export async function compressImage(file, { maxDim = 1600, quality = 0.7 } = {})
   try {
     if (!file || !file.type?.startsWith('image/')) return file;
 
-    // Decode (respect EXIF orientation where supported).
+    // Decode DOWNSCALED so a huge phone photo (e.g. 48MP / HEIC) never produces
+    // a full-resolution bitmap — that can freeze the main thread or OOM-crash the
+    // tab to a blank screen. resizeWidth alone keeps aspect ratio (per spec); the
+    // canvas pass below caps the long side to maxDim.
     let bitmap;
     try {
-      bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      bitmap = await createImageBitmap(file, { imageOrientation: 'from-image', resizeWidth: maxDim, resizeQuality: 'high' });
     } catch {
-      bitmap = await createImageBitmap(file);
+      try {
+        bitmap = await createImageBitmap(file, { resizeWidth: maxDim });
+      } catch {
+        bitmap = await createImageBitmap(file);
+      }
     }
 
     const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
