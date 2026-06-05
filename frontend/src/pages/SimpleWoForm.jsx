@@ -720,7 +720,7 @@ function Text({ label, value, onChange }) {
   )
 }
 
-function PowerToggle({ value, onChange }) {
+function PowerToggle({ value, onChange, labels }) {
   return (
     <div className="flex gap-2">
       {['380', '220'].map((p) => (
@@ -732,7 +732,7 @@ function PowerToggle({ value, onChange }) {
             value === p ? 'bg-primary text-white border-primary' : 'bg-white text-ink-muted border-line'
           }`}
         >
-          {p}V
+          {labels ? labels[p] : `${p}V`}
         </button>
       ))}
     </div>
@@ -880,16 +880,31 @@ function ChecklistField({ field, value, onChange }) {
       )
     }
 
-    case 'ln_vi':
+    case 'ln_vi': {
+      // เฟส: 3 เฟส (380) → R/S/T + LN ; 1 เฟส (220) → LN/L
+      const lnPs = value.power_system || (value.val_l_after ? '220' : '380')
       return (
-        <div>
+        <div className="flex flex-col gap-2">
           {labelEl}
-          <div className="grid grid-cols-2 gap-2">
-            <input className="input" inputMode="decimal" placeholder="LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
-            <input className="input" inputMode="decimal" placeholder="L (A)" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
-          </div>
+          <PowerToggle value={lnPs} onChange={(v) => onChange({ power_system: v })} labels={{ '380': '3 เฟส', '220': '1 เฟส' }} />
+          {lnPs === '380' ? (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <input className="input" inputMode="decimal" placeholder="R (A)" value={value.val_r_after || ''} onChange={(e) => onChange({ val_r_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="S (A)" value={value.val_s_after || ''} onChange={(e) => onChange({ val_s_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="T (A)" value={value.val_t_after || ''} onChange={(e) => onChange({ val_t_after: e.target.value })} />
+              </div>
+              <input className="input" inputMode="decimal" placeholder="แรงดัน LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" inputMode="decimal" placeholder="LN (V)" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
+              <input className="input" inputMode="decimal" placeholder="L (A)" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
+            </div>
+          )}
         </div>
       )
+    }
 
     case 'pressure_pair':
       return (

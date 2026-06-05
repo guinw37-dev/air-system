@@ -117,7 +117,7 @@ function relevantKeys(valueType) {
     case 'number':
     case 'before_after': return ['ก่อน', 'หลัง', 'หน่วย'];
     case 'rst_amp': return ['R ก่อน', 'S ก่อน', 'T ก่อน', 'R หลัง', 'S หลัง', 'T หลัง', 'LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
-    case 'ln_vi': return ['LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
+    case 'ln_vi': return ['LN หลัง', 'L หลัง', 'R หลัง', 'S หลัง', 'T หลัง'];
     case 'pressure_pair': return ['Suction', 'Discharge', 'น้ำยา'];
     case 'check': return ['ติ๊ก'];
     case 'text': return ['ข้อความ'];
