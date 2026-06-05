@@ -860,17 +860,21 @@ function ChecklistField({ field, value, onChange }) {
               </div>
             </div>
           )}
-          {/* LN / L always shown */}
-          <p className="text-xs text-ink-muted">LN / L (ก่อน)</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_before || ''} onChange={(e) => onChange({ val_ln_before: e.target.value })} />
-            <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_before || ''} onChange={(e) => onChange({ val_l_before: e.target.value })} />
-          </div>
-          <p className="text-xs text-ink-muted">LN / L (หลัง)</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
-            <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
-          </div>
+          {/* 220V (1φ) → LN/L only; 380V already shows R/S/T above */}
+          {ps === '220' && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-ink-muted">LN / L (ก่อน)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_before || ''} onChange={(e) => onChange({ val_ln_before: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_before || ''} onChange={(e) => onChange({ val_l_before: e.target.value })} />
+              </div>
+              <p className="text-xs text-ink-muted">LN / L (หลัง)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="input" inputMode="decimal" placeholder="LN" value={value.val_ln_after || ''} onChange={(e) => onChange({ val_ln_after: e.target.value })} />
+                <input className="input" inputMode="decimal" placeholder="L" value={value.val_l_after || ''} onChange={(e) => onChange({ val_l_after: e.target.value })} />
+              </div>
+            </div>
+          )}
         </div>
       )
     }
