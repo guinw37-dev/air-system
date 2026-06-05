@@ -52,8 +52,13 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
       value_type: it.value_type,
       unit_label: v.unit || it.unit_label,
       sort_order: it.sort_order,
-      // power preference: per-field override else the WO-level power_system
-      power_system: v.power_system || r.power_system || null,
+      // power preference: per-field override; rst_amp (Blower) falls back to the
+      // WO-level power_system, but ln_vi (Compressor) is independent — never
+      // borrow the Blower's 380V. When unset, mirror the form's default (has an
+      // L/A reading → 1 เฟส, else 3 เฟส) so the PDF matches what was entered.
+      power_system: v.power_system
+        || (it.value_type === 'ln_vi' ? (v.val_l_after ? '220' : '380') : r.power_system)
+        || null,
       checked: v.checked === true || v.checked === 'true',
       value_before: v.value_before ?? null,
       value_after: v.value_after ?? null,
