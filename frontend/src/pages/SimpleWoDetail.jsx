@@ -274,10 +274,9 @@ function formatFieldValue(field, val) {
       return g(v.val_text)
     case 'rst_amp': {
       const ps = v.power_system || '380'
-      const ln = `LN/L — ก่อน ${g(v.val_ln_before)}V/${g(v.val_l_before)}A · หลัง ${g(v.val_ln_after)}V/${g(v.val_l_after)}A`
-      if (String(ps) === '220') return `220V 1φ · ${ln}`
-      const rst = `R/S/T — ก่อน ${g(v.val_r_before)}/${g(v.val_s_before)}/${g(v.val_t_before)} · หลัง ${g(v.val_r_after)}/${g(v.val_s_after)}/${g(v.val_t_after)} A`
-      return `380V 3φ · ${rst} · ${ln}`
+      if (String(ps) === '220')
+        return `220V 1φ · LN/L — ก่อน ${g(v.val_ln_before)}V/${g(v.val_l_before)}A · หลัง ${g(v.val_ln_after)}V/${g(v.val_l_after)}A`
+      return `380V 3φ · R/S/T — ก่อน ${g(v.val_r_before)}/${g(v.val_s_before)}/${g(v.val_t_before)} · หลัง ${g(v.val_r_after)}/${g(v.val_s_after)}/${g(v.val_t_after)} A`
     }
     case 'ln_vi':
       if (String(v.power_system) === '380')
