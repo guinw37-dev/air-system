@@ -224,8 +224,8 @@ export default function SimpleWoForm() {
         ...prev.filter((p) => !(p.point_no === point.no && p.phase === phase)),
         { url: res.data.url, phase, point_no: point.no, label: point.label },
       ])
-    } catch {
-      alert('อัปโหลดรูปไม่สำเร็จ')
+    } catch (err) {
+      alert('อัปโหลดรูปไม่สำเร็จ: ' + (err?.response?.data?.error || err?.message || 'unknown'))
     } finally {
       setUploading(false)
     }
