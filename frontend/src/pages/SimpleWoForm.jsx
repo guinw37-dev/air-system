@@ -631,7 +631,6 @@ export default function SimpleWoForm() {
         <div className="card flex flex-col gap-4">
           <h2 className="section-header">ลายเซ็น</h2>
           {[
-            { role: 'team',       label: 'ช่าง' },
             { role: 'supervisor', label: 'หัวหน้าช่าง' },
             { role: 'department', label: 'เจ้าหน้าที่ในแผนก' },
             { role: 'engineer',   label: 'วิศวกรรม' },

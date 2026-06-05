@@ -1153,7 +1153,6 @@ function simpleReportPages(data) {
     </div>
 
     <div class="sign-row">
-      ${signatureBox('ลงชื่อช่าง', sigs.team)}
       ${signatureBox('ลงชื่อหัวหน้าช่าง', sigs.supervisor)}
       ${signatureBox('ลงชื่อเจ้าหน้าที่ในแผนก', sigs.department)}
       ${signatureBox('ลงชื่อวิศวกรรม', sigs.engineer)}

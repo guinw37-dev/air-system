@@ -186,7 +186,6 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         'สภาพ: ภายนอก รายละเอียด': tc.external_detail || '',
         'สภาพ: ภายในเสื่อม': tc.internal_degraded ? '1' : '',
         'สภาพ: ภายใน รายละเอียด': tc.internal_detail || '',
-        'เซ็น: ช่าง': r.sig_team_name || '',
         'เซ็น: หัวหน้าช่าง': r.sig_supervisor_name || '',
         'เซ็น: เจ้าหน้าที่ในแผนก': r.sig_department_name || '',
         'เซ็น: วิศวกรรม': r.sig_engineer_name || '',
@@ -373,7 +372,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
 // role → which signature slot: approver=วิศวกรรม, checker=หน่วยงาน, technician=ทีมช่าง
-const ROLE_SLOT = { approver: 'engineer', checker: 'department', technician: 'team', supervisor: 'supervisor', building: 'building' };
+// technician (ช่าง) creates WOs but does NOT sign — no slot.
+const ROLE_SLOT = { approver: 'engineer', checker: 'department', supervisor: 'supervisor', building: 'building' };
 router.post('/batch-sign', authMiddleware, async (req, res) => {
   const slot = ROLE_SLOT[req.user.role];
   if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });
