@@ -1049,22 +1049,22 @@ function fanReport(data) {
 //                    floor_name, has_repair, inspections:[], photos:{} },
 //            sigs: { engineer, department, team }   // each {signer_name,signature_data,signed_at}
 //          }
-// Simple-WO photo pages (portrait): ก่อน 3×2 + หลัง 3×2 per A4 page, large
-// ~195px frames. Only ก่อน/หลัง (the report set) — the album gallery is excluded.
+// Simple-WO photo pages (portrait): ก่อน 4×2 + หลัง 4×2 per A4 page,
+// ~160px frames. Only ก่อน/หลัง (the report set) — the album gallery is excluded.
 function simplePhotoPages(unit, data) {
   const ph = (unit && unit.photos) || {};
   const before = ph.before || [];
   const after = ph.after || [];
   if (!before.length && !after.length) return [];
   const base = data.imageBase || '';
-  const PER = 6;
+  const PER = 8; // 4 cols × 2 rows per group
 
   const cell = (p) => {
     const src = `${base}${p.url || ''}`;
     const cap = [p.label, fmtDate(p.taken_at) !== '—' ? fmtDate(p.taken_at) : '']
       .filter(Boolean).map((x) => escapeHtml(x)).join(' · ');
     return `<div style="border:1px solid #d9e2e4;border-radius:8px;overflow:hidden;background:#fff;break-inside:avoid;">
-      <div style="height:195px;background:#eef3f4;"><img src="${escapeHtml(src)}" alt="photo" style="width:100%;height:195px;object-fit:cover;display:block;"></div>
+      <div style="height:160px;background:#eef3f4;"><img src="${escapeHtml(src)}" alt="photo" style="width:100%;height:160px;object-fit:cover;display:block;"></div>
       <div style="padding:2px 7px;font-size:9px;color:#5a6e73;">${cap || '&nbsp;'}</div>
     </div>`;
   };
@@ -1072,7 +1072,7 @@ function simplePhotoPages(unit, data) {
     if (!items.length) return '';
     const part = total > PER ? ` — หน้า ${pg + 1}` : '';
     return `<div style="font-weight:700;color:${color};font-size:12px;margin:7px 0 6px;border-left:4px solid ${color};padding-left:7px;">${escapeHtml(title)} (${total})${part}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">${items.map(cell).join('')}</div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">${items.map(cell).join('')}</div>`;
   };
 
   const npages = Math.max(Math.ceil(before.length / PER), Math.ceil(after.length / PER), 1);
