@@ -31,6 +31,18 @@ const WORK_TYPES = [
 
 const REFRIGERANTS = ['R32', 'R410', 'R22']
 
+// Photo points (ก่อน + หลัง each). 1-5 required, 6-8 optional.
+const PHOTO_POINTS = [
+  { no: 1, label: 'Location',     required: true },
+  { no: 2, label: 'วัดไฟ',        required: true },
+  { no: 3, label: 'วัดลม',        required: true },
+  { no: 4, label: 'คอยล์ FCU',    required: true },
+  { no: 5, label: 'Strainer',     required: true },
+  { no: 6, label: 'รูปเพิ่มเติม 1', required: false },
+  { no: 7, label: 'รูปเพิ่มเติม 2', required: false },
+  { no: 8, label: 'รูปเพิ่มเติม 3', required: false },
+]
+
 const DRAFT_KEY = 'simple-wo-draft'
 
 // Resolve a stored photo URL for thumbnail display (handles relative paths)
@@ -194,49 +206,38 @@ export default function SimpleWoForm() {
 
   const setAc = (patch) => setAcInfo((p) => ({ ...p, ...patch }))
 
-  const handlePhotos = async (files, phase) => {
-    if (!files || files.length === 0) return
-    const existing = photoUrls.filter((p) => p.phase === phase).length
-    const room = 6 - existing
-    if (room <= 0) {
-      alert(`รูป${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
-      if (beforeInputRef.current) beforeInputRef.current.value = ''
-      if (afterInputRef.current)  afterInputRef.current.value = ''
-      return
-    }
-    // Cap at 6 per phase: only upload the first N that fit.
-    const picked = Array.from(files)
-    const toUpload = picked.slice(0, room)
-    if (picked.length > room) {
-      alert(`รูป${phase === 'before' ? 'ก่อน' : 'หลัง'} เก็บได้สูงสุด 6 รูป (สำหรับ PDF)`)
-    }
+  // The single photo stored for a given point + phase (or undefined).
+  const getPointPhoto = (point_no, phase) =>
+    photoUrls.find((p) => p.point_no === point_no && p.phase === phase)
+
+  // Upload one file into a labeled point slot, replacing any existing photo there.
+  const handlePointPhoto = async (file, point, phase) => {
+    if (!file) return
     setUploading(true)
     try {
-      let idx = existing
-      for (const file of toUpload) {
-        const compressed = await compressImage(file)
-        const fd = new FormData()
-        fd.append('photo', compressed)
-        // Do NOT set Content-Type manually — the browser must add the multipart
-        // boundary. Setting 'multipart/form-data' without a boundary makes multer
-        // fail to parse → 500 on every upload.
-        const res = await api.post('/simple-wo/upload', fd)
-        idx += 1
-        setPhotoUrls((prev) => [
-          ...prev,
-          { url: res.data.url, phase, point_no: idx, label: phase === 'before' ? 'ก่อน' : 'หลัง' },
-        ])
-      }
+      const compressed = await compressImage(file)
+      const fd = new FormData()
+      fd.append('photo', compressed)
+      // Do NOT set Content-Type manually — the browser adds the multipart boundary.
+      const res = await api.post('/simple-wo/upload', fd)
+      setPhotoUrls((prev) => [
+        ...prev.filter((p) => !(p.point_no === point.no && p.phase === phase)),
+        { url: res.data.url, phase, point_no: point.no, label: point.label },
+      ])
     } catch {
       alert('อัปโหลดรูปไม่สำเร็จ')
     } finally {
       setUploading(false)
-      if (beforeInputRef.current) beforeInputRef.current.value = ''
-      if (afterInputRef.current)  afterInputRef.current.value = ''
     }
   }
 
-  const removePhoto = (i) => setPhotoUrls((prev) => prev.filter((_, idx) => idx !== i))
+  const removePointPhoto = (point_no, phase) =>
+    setPhotoUrls((prev) => prev.filter((p) => !(p.point_no === point_no && p.phase === phase)))
+
+  // Required points missing either ก่อน or หลัง → blocks submit.
+  const missingRequiredPhotos = PHOTO_POINTS.filter(
+    (pt) => pt.required && (!getPointPhoto(pt.no, 'before') || !getPointPhoto(pt.no, 'after'))
+  )
 
   // Gallery (คลังรูป): unlimited extra album photos, not in the PDF.
   const handleGallery = async (files) => {
@@ -307,6 +308,11 @@ export default function SimpleWoForm() {
 
   const submit = async () => {
     if (submitting) return
+    if (missingRequiredPhotos.length > 0) {
+      setError(`กรุณาอัปรูปบังคับให้ครบ (ก่อน+หลัง): ${missingRequiredPhotos.map((pt) => pt.label).join(', ')}`)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     setError('')
     setSubmitting(true)
     try {
@@ -472,42 +478,44 @@ export default function SimpleWoForm() {
           ))}
         </div>
 
-        {/* ── Photos ── */}
+        {/* ── Photos (8 จุด, ก่อน/หลัง) ── */}
         <div className="card flex flex-col gap-3">
-          <h2 className="section-header">รูปภาพ</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <PhotoPicker
-              label={`รูปก่อน (${photoUrls.filter((p) => p.phase === 'before').length}/6)`}
-              phase="before"
-              inputRef={beforeInputRef}
-              onPick={(files) => handlePhotos(files, 'before')}
-              disabled={uploading || photoUrls.filter((p) => p.phase === 'before').length >= 6}
-            />
-            <PhotoPicker
-              label={`รูปหลัง (${photoUrls.filter((p) => p.phase === 'after').length}/6)`}
-              phase="after"
-              inputRef={afterInputRef}
-              onPick={(files) => handlePhotos(files, 'after')}
-              disabled={uploading || photoUrls.filter((p) => p.phase === 'after').length >= 6}
-            />
+          <div className="flex items-center justify-between">
+            <h2 className="section-header">รูปภาพ (ก่อน / หลัง)</h2>
+            <span className="text-xs text-ink-muted">จุด 1-5 บังคับ · <span className="text-danger">*</span></span>
+          </div>
+          <p className="text-xs text-ink-muted">แตะช่องเพื่อถ่ายรูป หรือเลือกจากอัลบั้มในเครื่อง</p>
+          <div className="flex flex-col gap-3">
+            {PHOTO_POINTS.map((pt) => (
+              <div key={pt.no} className="rounded-xl border border-line p-3">
+                <div className="text-sm font-medium text-ink mb-2">
+                  {pt.no}. {pt.label}
+                  {pt.required && <span className="text-danger ml-1">*</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <PhotoSlot
+                    label="ก่อน"
+                    photo={getPointPhoto(pt.no, 'before')}
+                    disabled={uploading}
+                    onPick={(file) => handlePointPhoto(file, pt, 'before')}
+                    onRemove={() => removePointPhoto(pt.no, 'before')}
+                  />
+                  <PhotoSlot
+                    label="หลัง"
+                    photo={getPointPhoto(pt.no, 'after')}
+                    disabled={uploading}
+                    onPick={(file) => handlePointPhoto(file, pt, 'after')}
+                    onRemove={() => removePointPhoto(pt.no, 'after')}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
           {uploading && <p className="text-xs text-ink-muted">กำลังอัปโหลด...</p>}
-          {photoUrls.length > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {photoUrls.map((p, i) => (
-                <div key={i} className="relative">
-                  <img src={photoSrc(p.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
-                  <span className="absolute top-1 left-1 badge badge-primary text-[10px] px-1.5 py-0">{p.label}</span>
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(i)}
-                    className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
+          {missingRequiredPhotos.length > 0 && (
+            <p className="text-xs text-danger">
+              ยังขาดรูปบังคับ: {missingRequiredPhotos.map((pt) => pt.label).join(', ')}
+            </p>
           )}
         </div>
 
@@ -917,18 +925,34 @@ function ChecklistField({ field, value, onChange }) {
   }
 }
 
-function PhotoPicker({ label, phase, inputRef, onPick, disabled }) {
+// One photo slot (ก่อน or หลัง) for a point: empty → upload tile (camera OR
+// gallery, no `capture` so the OS picker offers both); filled → thumbnail + ลบ.
+function PhotoSlot({ label, photo, onPick, onRemove, disabled }) {
+  if (photo) {
+    return (
+      <div className="relative">
+        <img src={photoSrc(photo.url)} alt="" loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-lg border border-line" />
+        <span className="absolute top-1 left-1 badge badge-primary text-[10px] px-1.5 py-0">{label}</span>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5"
+          aria-label={`ลบรูป${label}`}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    )
+  }
   return (
-    <label className={`flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-line rounded-xl py-6 cursor-pointer text-ink-muted hover:border-primary transition-colors ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-      <Camera className="h-6 w-6" />
+    <label className={`flex flex-col items-center justify-center gap-1 aspect-square border-2 border-dashed border-line rounded-lg cursor-pointer text-ink-muted hover:border-primary transition-colors ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+      <Camera className="h-5 w-5" />
       <span className="text-xs font-medium">{label}</span>
       <input
-        ref={inputRef}
         type="file"
         accept="image/*"
-        multiple
         className="sr-only"
-        onChange={(e) => onPick(e.target.files)}
+        onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = '' }}
       />
     </label>
   )

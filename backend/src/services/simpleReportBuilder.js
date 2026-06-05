@@ -68,7 +68,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
     };
   });
 
-  // Photos → grouped by phase.
+  // Photos → grouped by phase, ordered by point_no (Location, วัดไฟ, …).
   const photos = { before: [], after: [], measurement: [] };
   for (const p of (r.photo_urls || [])) {
     const phase = ['before', 'after', 'measurement'].includes(p.phase) ? p.phase : 'before';
@@ -76,6 +76,9 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
       url: p.url, label: p.label || '', point_no: p.point_no ?? null,
       taken_at: r.created_at, uploaded_by_name: r.created_by_name,
     });
+  }
+  for (const k of Object.keys(photos)) {
+    photos[k].sort((a, b) => (a.point_no ?? 99) - (b.point_no ?? 99));
   }
 
   const tc = r.team_comment || {};
