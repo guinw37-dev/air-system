@@ -48,6 +48,8 @@ async function migrate() {
         sig_building        TEXT, sig_building_name    VARCHAR(150),
         grid_rows           JSONB DEFAULT '[]'::jsonb,
         recommendation      TEXT,
+        updated_at          TIMESTAMPTZ,
+        deleted_at          TIMESTAMPTZ,
 
         status     VARCHAR(20) DEFAULT 'submitted'
       )
