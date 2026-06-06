@@ -228,6 +228,44 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
     const header = [...baseHeader, ...itemCols.map((c) => c.header)];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data, { header }), 'ใบงาน');
+
+    // ── Grid sheet: ล้างย่อย / พัดลม — one row per unit in each grid WO ──
+    const GRID_COLS_X = {
+      minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
+      fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
+    };
+    const allCheckCols = [...new Set([...GRID_COLS_X.minor, ...GRID_COLS_X.fan])];
+    const gridSheet = [];
+    for (const r of rows) {
+      if (r.work_type !== 'minor' && r.work_type !== 'fan') continue;
+      const cols = GRID_COLS_X[r.work_type] || [];
+      const grows = Array.isArray(r.grid_rows) ? r.grid_rows : [];
+      grows.forEach((g, idx) => {
+        const out = {
+          'เลขใบงาน': r.wo_number,
+          'วันที่': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+          'ลูกค้า': r.client_name || '',
+          'อาคาร': r.building || '',
+          'ชั้น': r.floor || '',
+          'ช่าง': r.tech_name || r.created_by_name || '',
+          'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+          'ลำดับ': idx + 1,
+          'ชื่อ/เลขเครื่อง': g.name || '',
+        };
+        for (const c of allCheckCols) {
+          const ci = cols.indexOf(c);
+          out[c] = ci === -1 ? '' : ((g.checks || [])[ci] ? '1' : '-');
+        }
+        out['ชำรุดเนื่องจาก'] = g.broken || '';
+        out['ข้อแนะนำ'] = r.recommendation || '';
+        gridSheet.push(out);
+      });
+    }
+    if (gridSheet.length) {
+      const gh = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'อาคาร', 'ชั้น', 'ช่าง', 'ประเภทงาน', 'ลำดับ', 'ชื่อ/เลขเครื่อง', ...allCheckCols, 'ชำรุดเนื่องจาก', 'ข้อแนะนำ'];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gridSheet, { header: gh }), 'Grid (ย่อย-พัดลม)');
+    }
+
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
