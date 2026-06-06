@@ -81,6 +81,26 @@ const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เ�
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
 const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่น ๆ' };
 
+// Validate a create/update body. Returns an error message string, or null if ok.
+// Enum fields are whitelisted; JSON fields must be the right container type so a
+// bad payload can't poison the stored JSONB. Empty/missing values are allowed
+// (the routes coalesce them).
+const WORK_TYPES_OK = ['major', 'minor', 'fan'];
+const RESULTS_OK = ['ok', 'not_ok'];
+const POWER_OK = ['380', '220'];
+function validateBody(b) {
+  if (b.work_type && !WORK_TYPES_OK.includes(b.work_type)) return 'work_type ไม่ถูกต้อง';
+  if (b.result && !RESULTS_OK.includes(b.result)) return 'result ไม่ถูกต้อง';
+  if (b.power_system && !POWER_OK.includes(String(b.power_system))) return 'power_system ไม่ถูกต้อง';
+  if (b.grid_rows != null && !Array.isArray(b.grid_rows)) return 'grid_rows ต้องเป็น array';
+  if (b.photo_urls != null && !Array.isArray(b.photo_urls)) return 'photo_urls ต้องเป็น array';
+  if (b.gallery_urls != null && !Array.isArray(b.gallery_urls)) return 'gallery_urls ต้องเป็น array';
+  if (b.checklist_values != null && (typeof b.checklist_values !== 'object' || Array.isArray(b.checklist_values))) return 'checklist_values ต้องเป็น object';
+  if (b.ac_info != null && (typeof b.ac_info !== 'object' || Array.isArray(b.ac_info))) return 'ac_info ต้องเป็น object';
+  if (b.team_comment != null && (typeof b.team_comment !== 'object' || Array.isArray(b.team_comment))) return 'team_comment ต้องเป็น object';
+  return null;
+}
+
 const s = (x) => (x === null || x === undefined || x === '' ? '' : String(x));
 
 // Extract one atomic sub-field of a stored checklist value by column key.
@@ -218,6 +238,8 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
 // ── POST /api/simple-wo — create + submit ───────────────────────────────────
 router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
+  const verr = validateBody(b);
+  if (verr) return res.status(400).json({ error: verr });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -317,6 +339,8 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
 // Allowed: the creator, or admin / central_admin. wo_number/created_by frozen.
 router.put('/:id', authMiddleware, async (req, res) => {
   const b = req.body || {};
+  const verr = validateBody(b);
+  if (verr) return res.status(400).json({ error: verr });
   try {
     const { rows } = await pool.query(
       'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
