@@ -1167,7 +1167,7 @@ function simpleGridPage(data) {
 
   const head = `<thead><tr>
     <th style="width:24px">ลำดับ</th>
-    <th style="width:${fan ? 22 : 30}%">${fan ? 'หมายเลขเครื่อง' : 'รายการเครื่อง'}</th>
+    <th style="width:${fan ? 22 : 32}%">${fan ? 'หมายเลขเครื่อง' : 'รายการเครื่องที่ล้างย่อย'}</th>
     ${cols.map((c) => `<th style="width:${checkW}">${escapeHtml(c)}</th>`).join('')}
     ${fan ? '<th>ชำรุดเนื่องจาก</th>' : ''}
   </tr></thead>`;
@@ -1178,20 +1178,25 @@ function simpleGridPage(data) {
     ${fan ? `<td>${escapeHtml(r.broken || '')}</td>` : ''}
   </tr>`).join('') || `<tr><td colspan="${nCols}" class="center muted">ไม่มีรายการ</td></tr>`;
 
+  const secbar = (t) => `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:9px 0 5px;border-radius:2px">${t}</div>`;
+  const fld = (label, val) => `<div style="border-bottom:1px dotted #b9c8ca;padding:2px 0"><span style="color:#5a6e73;font-weight:700;margin-right:5px">${label}</span>${dash(val)}</div>`;
   const meta = `
-    <div class="uhead">
-      <div class="row"><span class="k">ลูกค้า:</span><span class="v">${dash(wo.client_name)}</span></div>
-      <div class="row"><span class="k">อาคาร:</span><span class="v">${dash(u.building_name)}</span></div>
-      <div class="row"><span class="k">ชั้น:</span><span class="v">${dash(u.floor_name)}</span></div>
-      <div class="row"><span class="k">ช่าง:</span><span class="v">${dash(wo.tech_name)}</span></div>
-      <div class="row"><span class="k">วันที่:</span><span class="v">${fmtDate(wo.work_date || wo.created_at)}</span></div>
-      <div class="row"><span class="k">ประเภทงาน:</span><span class="v">${fan ? 'พัดลมดูดอากาศ' : 'ล้างแอร์ · ล้างย่อย'}</span></div>
+    ${secbar('ข้อมูลลูกค้า')}
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:2px 14px;font-size:8pt">
+      ${fld('นามลูกค้า', wo.client_name)}
+      ${fld('อาคาร', u.building_name)}
+      ${fld('ชั้น', u.floor_name)}
+      ${fld('ประเภทงาน', fan ? 'พัดลมดูดอากาศ' : 'ล้างแอร์ แบบล้างย่อย (FCU)')}
+      ${fld('วันที่', fmtDate(wo.work_date || wo.created_at))}
+      ${fld('เวลาเริ่มงาน', fmtTime(wo.started_at))}
+      ${fld('ช่างผู้ให้บริการ', wo.tech_name)}
     </div>`;
 
   const inner = `<div class="major-c">
     ${gridLetterhead(fan)}
     ${meta}
-    <table class="lmt" style="table-layout:fixed;margin-top:6px">${head}<tbody>${body}</tbody></table>
+    ${secbar('สำหรับพนักงานผู้ให้บริการ')}
+    <table class="lmt" style="table-layout:fixed">${head}<tbody>${body}</tbody></table>
     <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
     <div class="sign-row">
       ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
