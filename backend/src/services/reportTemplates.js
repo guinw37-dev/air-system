@@ -1125,6 +1125,34 @@ const GRID_COLS_PDF = {
   fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
 };
 
+// Full company letterhead for the grid forms (matches the paper documents).
+const COMPANY = {
+  th: 'บริษัท เทคนิคอล วอเตอร์ จำกัด',
+  en: 'TECHNICAL WATER CO.,LTD',
+  addr: '301/856 ซอยรามคำแหง 68 ถนนรามคำแหง แขวงหัวหมาก เขตบางกะปิ กรุงเทพ 10240',
+  contact: 'โทร (Tel) 02-735-3022 · E-mail: Technicalwater2015@gmail.com',
+};
+function gridLetterhead(fan) {
+  const titleMain = fan ? 'ใบบันทึกการบำรุงรักษาระบบปรับอากาศ' : 'CUSTOMER SERVICE REPORT AIR';
+  const titleSub = fan ? 'สำหรับ พัดลมดูดอากาศ (ขนาดเล็ก)' : 'PREVENTIVE MAINTENANCE WORKING · ล้างแอร์ แบบล้างย่อย (FCU)';
+  return `
+    <div style="border-bottom:2px solid var(--teal);padding-bottom:6px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="tw-badge sm">TW</div>
+        <div style="line-height:1.3;">
+          <div style="font-weight:700;font-size:10pt;color:var(--navy);">${COMPANY.th}</div>
+          <div style="font-weight:700;font-size:7.5pt;color:var(--navy);letter-spacing:.3px;">${COMPANY.en}</div>
+          <div style="font-size:6.5pt;color:#5a6e73;">${COMPANY.addr}</div>
+          <div style="font-size:6.5pt;color:#5a6e73;">${COMPANY.contact}</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:6px;">
+        <div style="font-weight:700;font-size:11pt;color:var(--navy);letter-spacing:.5px;">${titleMain}</div>
+        <div style="font-size:7pt;color:var(--teal);margin-top:1px;">${titleSub}</div>
+      </div>
+    </div>`;
+}
+
 // ล้างย่อย / พัดลม → multi-unit checkbox grid page (one A4, no photo pages).
 function simpleGridPage(data) {
   const d = data || {};
@@ -1161,7 +1189,7 @@ function simpleGridPage(data) {
     </div>`;
 
   const inner = `<div class="major-c">
-    ${lmtHeader(d, `CUSTOMER SERVICE REPORT AIR<small>${fan ? 'พัดลมดูดอากาศ (ขนาดเล็ก)' : 'ล้างย่อย · FCU'}</small>`)}
+    ${gridLetterhead(fan)}
     ${meta}
     <table class="lmt" style="table-layout:fixed;margin-top:6px">${head}<tbody>${body}</tbody></table>
     <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
