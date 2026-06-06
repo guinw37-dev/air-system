@@ -154,7 +154,8 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
   }
 
   // No QR badge on the simple-wo report (qr omitted → qrBadge() renders nothing).
-  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '' };
+  const gridRows = Array.isArray(r.grid_rows) ? r.grid_rows : [];
+  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '', gridRows, recommendation: r.recommendation || '' };
 }
 
 module.exports = { getSimpleReportData };

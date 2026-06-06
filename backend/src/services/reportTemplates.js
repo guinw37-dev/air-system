@@ -1119,11 +1119,70 @@ function acDetailBlock(ac, wo, unit) {
   </div>`;
 }
 
+// Grid columns per grid work_type (must match the form/detail GRID_COLS).
+const GRID_COLS_PDF = {
+  minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
+  fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
+};
+
+// ล้างย่อย / พัดลม → multi-unit checkbox grid page (one A4, no photo pages).
+function simpleGridPage(data) {
+  const d = data || {};
+  const wo = d.wo || {};
+  const u = d.unit || {};
+  const sigs = d.sigs || {};
+  const fan = wo.work_type === 'fan';
+  const cols = GRID_COLS_PDF[wo.work_type] || GRID_COLS_PDF.minor;
+  const rows = Array.isArray(d.gridRows) ? d.gridRows : [];
+  const nCols = 2 + cols.length + (fan ? 1 : 0);
+  const checkW = `${Math.floor(55 / cols.length)}%`;
+
+  const head = `<thead><tr>
+    <th style="width:24px">ลำดับ</th>
+    <th style="width:${fan ? 22 : 30}%">${fan ? 'หมายเลขเครื่อง' : 'รายการเครื่อง'}</th>
+    ${cols.map((c) => `<th style="width:${checkW}">${escapeHtml(c)}</th>`).join('')}
+    ${fan ? '<th>ชำรุดเนื่องจาก</th>' : ''}
+  </tr></thead>`;
+  const body = rows.map((r, i) => `<tr>
+    <td class="center">${i + 1}</td>
+    <td>${escapeHtml(r.name || '')}</td>
+    ${cols.map((_, ci) => `<td class="tk ${(r.checks || [])[ci] ? 'on' : ''}">${(r.checks || [])[ci] ? TICK : ''}</td>`).join('')}
+    ${fan ? `<td>${escapeHtml(r.broken || '')}</td>` : ''}
+  </tr>`).join('') || `<tr><td colspan="${nCols}" class="center muted">ไม่มีรายการ</td></tr>`;
+
+  const meta = `
+    <div class="uhead">
+      <div class="row"><span class="k">ลูกค้า:</span><span class="v">${dash(wo.client_name)}</span></div>
+      <div class="row"><span class="k">อาคาร:</span><span class="v">${dash(u.building_name)}</span></div>
+      <div class="row"><span class="k">ชั้น:</span><span class="v">${dash(u.floor_name)}</span></div>
+      <div class="row"><span class="k">ช่าง:</span><span class="v">${dash(wo.tech_name)}</span></div>
+      <div class="row"><span class="k">วันที่:</span><span class="v">${fmtDate(wo.work_date || wo.created_at)}</span></div>
+      <div class="row"><span class="k">ประเภทงาน:</span><span class="v">${fan ? 'พัดลมดูดอากาศ' : 'ล้างแอร์ · ล้างย่อย'}</span></div>
+    </div>`;
+
+  const inner = `<div class="major-c">
+    ${lmtHeader(d, `CUSTOMER SERVICE REPORT AIR<small>${fan ? 'พัดลมดูดอากาศ (ขนาดเล็ก)' : 'ล้างย่อย · FCU'}</small>`)}
+    ${meta}
+    <table class="lmt" style="table-layout:fixed;margin-top:6px">${head}<tbody>${body}</tbody></table>
+    <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
+    <div class="sign-row">
+      ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
+      ${signatureBox('ลงชื่อหัวหน้าช่างแอร์', sigs.supervisor)}
+      ${signatureBox('ลงชื่อเจ้าหน้าที่ช่างอาคาร', sigs.building)}
+      ${signatureBox('ลงชื่อเจ้าหน้าวิศวกรรม', sigs.engineer)}
+    </div>
+  </div>`;
+  return [page(d, inner)];
+}
+
 function simpleReportPages(data) {
   const d = data || {};
   const wo = d.wo || {};
   const u = d.unit || {};
   const sigs = d.sigs || {};
+
+  // ล้างย่อย / พัดลม use the multi-unit grid layout instead.
+  if (wo.work_type === 'minor' || wo.work_type === 'fan') return simpleGridPage(d);
 
   const meta = `
     <div class="uhead">
