@@ -43,6 +43,12 @@ const PHOTO_POINTS = [
   { no: 8, label: 'รูปเพิ่มเติม 3', required: false },
 ]
 
+// Grid columns per grid work_type (ล้างย่อย / พัดลม) — multi-unit checkbox grid.
+const GRID_COLS = {
+  minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
+  fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
+}
+
 const DRAFT_KEY = 'simple-wo-draft'
 
 // Resolve a stored photo URL for thumbnail display (handles relative paths)
@@ -78,6 +84,11 @@ export default function SimpleWoForm() {
   const [schema, setSchema] = useState({ sections: [] })
   const [schemaLoading, setSchemaLoading] = useState(false)
   const [checklistValues, setChecklistValues] = useState({})
+
+  // ล้างย่อย / พัดลม use a multi-unit checkbox grid instead of the major checklist.
+  const [gridRows, setGridRows] = useState([]) // [{ name, checks:[bool], broken }]
+  const [recommendation, setRecommendation] = useState('')
+  const isGrid = header.work_type === 'minor' || header.work_type === 'fan'
 
   const [photoUrls, setPhotoUrls] = useState([]) // { url, phase, point_no, label }
   const [galleryUrls, setGalleryUrls] = useState([]) // { url }
@@ -134,6 +145,8 @@ export default function SimpleWoForm() {
           })
           setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '', ...(w.ac_info || {}) })
           setChecklistValues(w.checklist_values || {})
+          setGridRows(Array.isArray(w.grid_rows) ? w.grid_rows : [])
+          setRecommendation(w.recommendation || '')
           setPhotoUrls(Array.isArray(w.photo_urls) ? w.photo_urls : [])
           setGalleryUrls(Array.isArray(w.gallery_urls) ? w.gallery_urls : [])
           setTeamComment({
@@ -165,6 +178,8 @@ export default function SimpleWoForm() {
       else setHeader((h) => ({ ...h, tech_name: techName }))
       if (d?.acInfo) setAcInfo(d.acInfo)
       if (d?.checklistValues) setChecklistValues(d.checklistValues)
+      if (Array.isArray(d?.gridRows)) setGridRows(d.gridRows)
+      if (d?.recommendation) setRecommendation(d.recommendation)
       if (Array.isArray(d?.photoUrls)) setPhotoUrls(d.photoUrls)
       if (Array.isArray(d?.galleryUrls)) setGalleryUrls(d.galleryUrls)
       if (d?.teamComment) setTeamComment(d.teamComment)
@@ -183,12 +198,12 @@ export default function SimpleWoForm() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ header, acInfo, checklistValues, photoUrls, galleryUrls, teamComment, signatures })
+        JSON.stringify({ header, acInfo, checklistValues, gridRows, recommendation, photoUrls, galleryUrls, teamComment, signatures })
       )
     } catch {
       // storage full / unavailable — ignore
     }
-  }, [header, acInfo, checklistValues, photoUrls, galleryUrls, teamComment, signatures])
+  }, [header, acInfo, checklistValues, gridRows, recommendation, photoUrls, galleryUrls, teamComment, signatures])
 
   // ONE checklist for all work types (full AC set) — load once on mount.
   // ประเภทงาน is stored/printed but does NOT change the checklist.
@@ -283,6 +298,8 @@ export default function SimpleWoForm() {
     })
     setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '' })
     setChecklistValues({})
+    setGridRows([])
+    setRecommendation('')
     setPhotoUrls([])
     setGalleryUrls([])
     setTeamComment({
@@ -306,7 +323,7 @@ export default function SimpleWoForm() {
 
   const submit = async () => {
     if (submitting) return
-    if (missingRequiredPhotos.length > 0) {
+    if (!isGrid && missingRequiredPhotos.length > 0) {
       setError(`กรุณาอัปรูปบังคับให้ครบ (ก่อน+หลัง): ${missingRequiredPhotos.map((pt) => pt.label).join(', ')}`)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
@@ -326,6 +343,8 @@ export default function SimpleWoForm() {
         power_system: header.power_system,
         ac_info: acInfo,
         checklist_values: checklistValues,
+        grid_rows: gridRows,
+        recommendation,
         result: header.result,
         start_time: header.start_time,
         end_time: header.end_time,
@@ -412,7 +431,19 @@ export default function SimpleWoForm() {
           </div>
         </div>
 
-        {/* ── AC info (รายละเอียดเครื่องปรับอากาศ) ── */}
+        {/* ── Grid form (ล้างย่อย / พัดลม) ── */}
+        {isGrid && (
+          <>
+            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} />
+            <div className="card flex flex-col gap-3">
+              <h2 className="section-header">ข้อแนะนำ</h2>
+              <textarea className="input" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} placeholder="ข้อแนะนำ / หมายเหตุ" />
+            </div>
+          </>
+        )}
+
+        {/* ── AC info (รายละเอียดเครื่องปรับอากาศ) — major only ── */}
+        {!isGrid && (
         <div className="card flex flex-col gap-3">
           <h2 className="section-header">รายละเอียดเครื่องปรับอากาศ</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -451,8 +482,10 @@ export default function SimpleWoForm() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* ── Checklist sections ── */}
+        {/* ── Checklist sections — major only ── */}
+        {!isGrid && (
         <div className="flex flex-col gap-4">
           {schemaLoading && (
             <div className="flex justify-center py-8">
@@ -475,8 +508,10 @@ export default function SimpleWoForm() {
             </div>
           ))}
         </div>
+        )}
 
-        {/* ── Photos (8 จุด, ก่อน/หลัง) ── */}
+        {/* ── Photos (8 จุด, ก่อน/หลัง) — major only ── */}
+        {!isGrid && (
         <div className="card flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="section-header">รูปภาพ (ก่อน / หลัง)</h2>
@@ -513,6 +548,7 @@ export default function SimpleWoForm() {
             </p>
           )}
         </div>
+        )}
 
         {/* ── Gallery (คลังรูป) — extra album photos, not in PDF ── */}
         <div className="card flex flex-col gap-3">
@@ -551,7 +587,8 @@ export default function SimpleWoForm() {
           )}
         </div>
 
-        {/* ── Team comment ── */}
+        {/* ── Team comment — major only ── */}
+        {!isGrid && (
         <div className="card flex flex-col gap-3">
           <h2 className="section-header">ความเห็นทีมช่าง</h2>
           <CheckRow
@@ -595,6 +632,7 @@ export default function SimpleWoForm() {
             )}
           </div>
         </div>
+        )}
 
         {/* ── Result + end time ── */}
         <div className="card flex flex-col gap-3">
@@ -941,6 +979,43 @@ function ChecklistField({ field, value, onChange }) {
         </div>
       )
   }
+}
+
+// Multi-unit checkbox grid for ล้างย่อย / พัดลม. Each row: typed name + the
+// work_type's checkbox columns (+ ชำรุด text for fan). Rows added/removed freely.
+function GridEditor({ workType, rows, onChange }) {
+  const cols = GRID_COLS[workType] || []
+  const addRow = () => onChange([...rows, { name: '', checks: cols.map(() => false), broken: '' }])
+  const setRow = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  const toggle = (i, c) => setRow(i, { checks: cols.map((_, idx) => (idx === c ? !(rows[i].checks || [])[c] : !!(rows[i].checks || [])[idx])) })
+  const removeRow = (i) => onChange(rows.filter((_, idx) => idx !== i))
+  return (
+    <div className="card flex flex-col gap-3">
+      <h2 className="section-header">รายการเครื่อง ({rows.length})</h2>
+      {rows.length === 0 && <p className="text-xs text-ink-muted">ยังไม่มีเครื่อง · กด “เพิ่มเครื่อง” ด้านล่าง</p>}
+      {rows.map((r, i) => (
+        <div key={i} className="rounded-xl border border-line p-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-ink-muted w-6 shrink-0">{i + 1}.</span>
+            <input className="input flex-1 min-w-0" placeholder="ชื่อ / เลขเครื่อง" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} />
+            <button type="button" onClick={() => removeRow(i)} className="text-danger px-1 shrink-0" aria-label="ลบแถว"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {cols.map((c, ci) => (
+              <label key={ci} className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                <input type="checkbox" className="accent-primary h-4 w-4" checked={!!(r.checks || [])[ci]} onChange={() => toggle(i, ci)} />
+                <span>{c}</span>
+              </label>
+            ))}
+          </div>
+          {workType === 'fan' && (
+            <input className="input" placeholder="ชำรุดเนื่องจาก (ถ้ามี)" value={r.broken || ''} onChange={(e) => setRow(i, { broken: e.target.value })} />
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={addRow} className="btn-secondary self-start">+ เพิ่มเครื่อง</button>
+    </div>
+  )
 }
 
 // One photo slot (ก่อน or หลัง) for a point. Owns its OWN busy/preview/error

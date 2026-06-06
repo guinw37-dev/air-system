@@ -46,6 +46,8 @@ async function migrate() {
         sig_team            TEXT, sig_team_name        VARCHAR(150),
         sig_supervisor      TEXT, sig_supervisor_name VARCHAR(150),
         sig_building        TEXT, sig_building_name    VARCHAR(150),
+        grid_rows           JSONB DEFAULT '[]'::jsonb,
+        recommendation      TEXT,
 
         status     VARCHAR(20) DEFAULT 'submitted'
       )
