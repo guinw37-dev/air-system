@@ -17,6 +17,12 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
+// Grid columns for ล้างย่อย / พัดลม (must match SimpleWoForm GRID_COLS).
+const GRID_COLS = {
+  minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
+  fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
+}
+
 function photoSrc(url) {
   if (!url) return ''
   if (/^https?:|^data:/.test(url)) return url
@@ -110,6 +116,9 @@ export default function SimpleWoDetail() {
   const gallery = Array.isArray(wo.gallery_urls) ? wo.gallery_urls : []
   const result = RESULT_LABEL[wo.result]
   const dateVal = wo.work_date || wo.created_at
+  const isGrid = wo.work_type === 'minor' || wo.work_type === 'fan'
+  const gridRows = Array.isArray(wo.grid_rows) ? wo.grid_rows : []
+  const gridCols = GRID_COLS[wo.work_type] || []
 
   return (
     <Layout
@@ -145,7 +154,35 @@ export default function SimpleWoDetail() {
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
         </div>
 
-        {/* AC info (รายละเอียดเครื่องปรับอากาศ) */}
+        {/* Grid form (ล้างย่อย / พัดลม) — list of units + checks */}
+        {isGrid && (
+          <div className="card flex flex-col gap-3">
+            <h2 className="section-header">รายการเครื่อง ({gridRows.length})</h2>
+            {gridRows.length === 0 && <p className="text-sm text-ink-muted">ไม่มีรายการ</p>}
+            {gridRows.map((r, i) => (
+              <div key={i} className="rounded-xl border border-line p-3">
+                <p className="font-medium text-ink mb-1.5">{i + 1}. {r.name || '-'}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                  {gridCols.map((c, ci) => (
+                    <span key={ci} className={(r.checks || [])[ci] ? 'text-primary' : 'text-ink-muted line-through'}>
+                      {(r.checks || [])[ci] ? '✓' : '✗'} {c}
+                    </span>
+                  ))}
+                </div>
+                {wo.work_type === 'fan' && r.broken && <p className="text-sm text-danger mt-1.5">ชำรุด: {r.broken}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        {isGrid && wo.recommendation && (
+          <div className="card">
+            <h2 className="section-header mb-2">ข้อแนะนำ</h2>
+            <p className="text-sm text-ink whitespace-pre-wrap">{wo.recommendation}</p>
+          </div>
+        )}
+
+        {/* AC info (รายละเอียดเครื่องปรับอากาศ) — major only */}
+        {!isGrid && (
         <div className="card">
           <h2 className="section-header mb-3">รายละเอียดเครื่องปรับอากาศ</h2>
           <InfoRow label="รายละเอียดเครื่อง" value={ac.detail} />
@@ -155,9 +192,10 @@ export default function SimpleWoDetail() {
           <InfoRow label="รุ่น" value={ac.model} />
           <InfoRow label="ขนาดทำความเย็น (BTU)" value={ac.cooling_size} />
         </div>
+        )}
 
-        {/* Checklist values — grouped by section, with item labels */}
-        {schema.sections.map((section) => (
+        {/* Checklist values — grouped by section, with item labels — major only */}
+        {!isGrid && schema.sections.map((section) => (
           <div key={section.key} className="card">
             <h2 className="section-header mb-3">{section.label}</h2>
             <div className="flex flex-col gap-2">
@@ -170,7 +208,7 @@ export default function SimpleWoDetail() {
             </div>
           </div>
         ))}
-        {schema.sections.length === 0 && Object.keys(cv).length > 0 && (
+        {!isGrid && schema.sections.length === 0 && Object.keys(cv).length > 0 && (
           <div className="card">
             <h2 className="section-header mb-3">รายการตรวจ</h2>
             <div className="flex flex-col gap-2">
@@ -183,7 +221,8 @@ export default function SimpleWoDetail() {
           </div>
         )}
 
-        {/* Team comment */}
+        {/* Team comment — major only */}
+        {!isGrid && (
         <div className="card">
           <h2 className="section-header mb-3">ความเห็นทีมช่าง</h2>
           <div className="flex flex-col gap-1.5 text-sm">
@@ -193,6 +232,7 @@ export default function SimpleWoDetail() {
             <Flag on={tc.internal_degraded} label={`คอยล์เย็นเสื่อม${tc.internal_detail ? ` — ${tc.internal_detail}` : ''}`} />
           </div>
         </div>
+        )}
 
         {/* Photos — grouped ก่อน / หลัง */}
         {photos.length > 0 && (
