@@ -49,7 +49,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
     SELECT s.*, u.name AS created_by_name
     FROM simple_work_orders s
     LEFT JOIN users u ON s.created_by = u.id
-    WHERE s.id = $1
+    WHERE s.id = $1 AND s.deleted_at IS NULL
   `, [id]);
   if (!rows.length) return null;
   const r = rows[0];

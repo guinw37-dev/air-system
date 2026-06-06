@@ -133,7 +133,7 @@ function relevantKeys(valueType) {
 
 router.get('/export/excel', authMiddleware, async (req, res) => {
   const { date_from, date_to } = req.query;
-  const where = ['1=1']; const params = []; let i = 1;
+  const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
   if (date_from) { where.push(`created_at >= $${i++}`); params.push(date_from); }
   if (date_to)   { where.push(`created_at < ($${i++}::date + 1)`); params.push(date_to); }
   try {
@@ -229,8 +229,8 @@ router.post('/', authMiddleware, async (req, res) => {
         team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
         sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
-        grid_rows, recommendation
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+        grid_rows, recommendation, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
@@ -258,7 +258,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo — list (filter date range / created_by) ──────────────
 router.get('/', authMiddleware, async (req, res) => {
   const { date_from, date_to, created_by, limit = 100, offset = 0 } = req.query;
-  const where = ['1=1']; const params = []; let i = 1;
+  const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
   if (date_from)  { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
   if (date_to)    { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
   if (created_by) { where.push(`s.created_by = $${i++}`); params.push(created_by); }
@@ -284,7 +284,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
-      LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1
+      LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL
     `, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     res.json(rows[0]);
@@ -334,7 +334,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
-        grid_rows=$29, recommendation=$30
+        grid_rows=$29, recommendation=$30, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -356,26 +356,20 @@ router.put('/:id', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── DELETE /api/simple-wo/:id ───────────────────────────────────────────────
-// Allowed: the creator, or admin / central_admin. Best-effort unlink of photos.
+// ── DELETE /api/simple-wo/:id — soft delete (recoverable) ───────────────────
+// Allowed: the creator, or admin / central_admin. Sets deleted_at; photo files
+// are kept so the WO can be restored.
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT created_by, photo_urls, gallery_urls FROM simple_work_orders WHERE id = $1', [req.params.id]
+      'SELECT created_by FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const row = rows[0];
     const privileged = ['admin', 'central_admin'].includes(req.user.role);
-    if (!privileged && row.created_by !== req.user.id) {
+    if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
     }
-    await pool.query('DELETE FROM simple_work_orders WHERE id = $1', [req.params.id]);
-    // best-effort: remove photo + gallery files (ignore errors)
-    for (const p of [...(row.photo_urls || []), ...(row.gallery_urls || [])]) {
-      if (p && typeof p.url === 'string' && p.url.startsWith('/uploads/')) {
-        fs.unlink(path.join(UPLOAD_DIR, p.url.replace('/uploads/', '')), () => {});
-      }
-    }
+    await pool.query('UPDATE simple_work_orders SET deleted_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
