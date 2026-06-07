@@ -22,6 +22,10 @@ async function migratePublic(client) {
     // Backfill schema_name from slug (dash→underscore) where missing.
     await c.query(`UPDATE clients SET schema_name = lower(replace(slug,'-','_')) WHERE schema_name IS NULL AND slug IS NOT NULL`);
     await c.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
+    // Per-branch user binding: branch_slug NULL = global super-admin (cross-branch),
+    // else the user is local to that branch.
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
     // Widen the users.role CHECK to admit super_admin / field_tech.
     await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (

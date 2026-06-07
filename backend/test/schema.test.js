@@ -38,4 +38,33 @@ ok('leftmostLabel ignores raw IPv4');
 assert.strictEqual(leftmostLabel('localhost'), null);
 ok('leftmostLabel ignores localhost');
 
+// enforceBranch inside authMiddleware: a branch-scoped token can't be used on
+// another branch; super-admins + apex pass. (signs a real JWT, no DB.)
+const jwt = require('jsonwebtoken');
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const { authMiddleware } = require('../src/middleware/auth');
+function runAuth(req) {
+  let status = 200, body = null, nexted = false;
+  const res = { status(s) { status = s; return this; }, json(b) { body = b; return this; } };
+  authMiddleware(req, res, () => { nexted = true; });
+  return { status, body, nexted };
+}
+const sign = (p) => jwt.sign(p, process.env.JWT_SECRET, { expiresIn: '5m' });
+
+let r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: 'pts1', isSuper: false })}` }, query: {}, branch: { slug: 'pts2' } });
+assert.strictEqual(r2.status, 403);
+ok('authMiddleware blocks a pts1 token on branch pts2');
+
+r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: 'pts1', isSuper: false })}` }, query: {}, branch: { slug: 'pts1' } });
+assert.strictEqual(r2.nexted, true);
+ok('authMiddleware allows a pts1 token on branch pts1');
+
+r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: null, isSuper: true })}` }, query: {}, branch: { slug: 'pts2' } });
+assert.strictEqual(r2.nexted, true);
+ok('authMiddleware lets a super-admin onto any branch');
+
+r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: 'pts1', isSuper: false })}` }, query: {}, branch: null });
+assert.strictEqual(r2.nexted, true);
+ok('authMiddleware passes through on apex (no branch)');
+
 console.log(`\n${passed} passed`);
