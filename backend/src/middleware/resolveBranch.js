@@ -57,9 +57,14 @@ function attachPublicDb(req) {
 
 async function resolveBranch(req, res, next) {
   try {
+    // Branch comes ONLY from the X-Branch header. air-system's frontend and
+    // backend are SEPARATE origins, so the backend's own host (e.g. the Coolify
+    // *.sslip.io container domain) is NEVER a branch — deriving a branch from
+    // req.hostname would wrongly turn the container hash into an unknown branch
+    // and 404 every request (incl. /api/auth/login). The SPA resolves its branch
+    // from its own hostname via /api/resolve-host and forwards it as X-Branch.
     const hdr = req.headers['x-branch'];
-    const label = (hdr && SLUG_RE.test(String(hdr).toLowerCase()) ? String(hdr).toLowerCase() : null)
-      || leftmostLabel(req.hostname || req.headers['x-forwarded-host'] || req.headers.host);
+    const label = hdr && SLUG_RE.test(String(hdr).toLowerCase()) ? String(hdr).toLowerCase() : null;
     if (!label) { attachPublicDb(req); return next(); }
     const b = await lookupBranch(label);
     if (!b) return res.status(404).json({ error: 'unknown branch' });
