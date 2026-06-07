@@ -36,10 +36,12 @@ CREATE TABLE IF NOT EXISTS users (
                   'technician','checker','central_admin','approver','admin',
                   'building','supervisor','super_admin','field_tech'
                 )),
+  branch_slug   VARCHAR(63),                 -- NULL = global super-admin; else local to that branch
   phone         VARCHAR(20),
   active        BOOLEAN DEFAULT true,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug);
 
 -- ── Inspection template (shared checklist defs) ─────────────
 CREATE TABLE IF NOT EXISTS inspection_template_items (

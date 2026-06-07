@@ -321,10 +321,15 @@ router.get('/photo-points', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
-// ── Users (GLOBAL super-admins, public) ─────────────────────────────────────
+// ── Users (public; branch-scoped by branch_slug) ────────────────────────────
+// On a branch subdomain, list that branch's users + global super-admins (the
+// assignee picker needs branch staff). On apex, list everyone.
 router.get('/users', authMiddleware, async (req, res) => {
-  const { rows } = await pool.query(
-    'SELECT id, name, username, role, phone, active FROM users ORDER BY name');
+  const { rows } = req.branch
+    ? await pool.query(
+        'SELECT id, name, username, role, phone, active, branch_slug FROM users WHERE branch_slug = $1 OR branch_slug IS NULL ORDER BY name',
+        [req.branch.slug])
+    : await pool.query('SELECT id, name, username, role, phone, active, branch_slug FROM users ORDER BY name');
   res.json(rows);
 });
 
@@ -340,9 +345,12 @@ router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async
   }
   try {
     const hash = await bcrypt.hash(password, 10);
+    // On a branch the new user is local to that branch; on apex a super-admin
+    // may set branch_slug explicitly (null = another global super-admin).
+    const branch_slug = req.branch ? req.branch.slug : (req.body.branch_slug || null);
     const { rows } = await pool.query(
-      'INSERT INTO users (name, username, password_hash, role, phone) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, username, role, phone',
-      [name, username, hash, role, phone || null]);
+      'INSERT INTO users (name, username, password_hash, role, phone, branch_slug) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, username, role, phone, branch_slug',
+      [name, username, hash, role, phone || null, branch_slug]);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
