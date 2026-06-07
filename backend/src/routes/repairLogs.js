@@ -1,27 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const dayjs = require('dayjs');
 
-// GET /api/repair-logs?client_id=&status=&unit_id=
-// OLD: hospital_id, ac_unit_id, ac_units, departments → NEW: client_id, unit_id, units, rooms
+// Schema-per-tenant: req.db scopes every row to the current branch — no client_id.
+
+// GET /api/repair-logs?status=&unit_id=
 router.get('/', authMiddleware, async (req, res) => {
-  // Accept client_id; also accept old hospital_id param for compatibility
-  const { client_id, hospital_id, status, unit_id, ac_unit_id } = req.query;
-  const effectiveClientId = client_id || hospital_id;
-  const effectiveUnitId   = unit_id   || ac_unit_id;
+  const { status, unit_id, ac_unit_id } = req.query;
+  const effectiveUnitId = unit_id || ac_unit_id;
 
   let where = ['1=1'];
   let params = [];
   let i = 1;
-
-  if (effectiveUnitId)   { where.push(`r.unit_id = $${i++}`);    params.push(effectiveUnitId); }
-  if (status)            { where.push(`r.status = $${i++}`);      params.push(status); }
-  if (effectiveClientId) { where.push(`r.client_id = $${i++}`);  params.push(effectiveClientId); }
+  if (effectiveUnitId) { where.push(`r.unit_id = $${i++}`); params.push(effectiveUnitId); }
+  if (status)          { where.push(`r.status = $${i++}`);  params.push(status); }
 
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       SELECT r.*,
         u.asset_code, u.name unit_name, u.family,
         ro.name room_name, f.name floor_name, b.name building_name,
@@ -45,7 +41,6 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // POST /api/repair-logs — manual create (no work order)
-// OLD: ac_unit_id → NEW: unit_id; repair_logs now needs client_id directly
 router.post('/', authMiddleware, async (req, res) => {
   const unit_id = req.body.unit_id || req.body.ac_unit_id;
   const { problem, cleaning_type } = req.body;
@@ -56,12 +51,13 @@ router.post('/', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'cleaning_type must be major, minor, or fan' });
   }
   try {
-    const { rows } = await pool.query(`
-      INSERT INTO repair_logs (client_id, unit_id, problem, cleaning_type, status, reported_by)
-      SELECT u.client_id, $1, $2, $3, 'open', $4
-      FROM units u WHERE u.id = $1
+    const { rows } = await req.db(`
+      INSERT INTO repair_logs (unit_id, problem, cleaning_type, status, reported_by)
+      SELECT $1, $2, $3, 'open', $4
+      WHERE EXISTS (SELECT 1 FROM units u WHERE u.id = $1)
       RETURNING *
     `, [unit_id, problem, cleaning_type || null, req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบ unit' });
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -71,7 +67,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // GET /api/repair-logs/:id
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       SELECT r.*, u.asset_code, u.name unit_name, usr.name reporter_name, w.order_no
       FROM repair_logs r
       JOIN units u ON r.unit_id = u.id
@@ -95,7 +91,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
   }
 
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       UPDATE repair_logs
       SET cause         = COALESCE($1, cause),
           solution      = COALESCE($2, solution),
@@ -112,22 +108,17 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     // If resolved + cleaning_type → advance PM cycle on the unit
     if (status === 'done' && cleaning_type) {
       const log = rows[0];
-      const { rows: u } = await pool.query(
-        'SELECT pm_cycle_pos FROM units WHERE id = $1',
-        [log.unit_id]
-      );
+      const { rows: u } = await req.db('SELECT pm_cycle_pos FROM units WHERE id = $1', [log.unit_id]);
       if (u.length) {
         const newPos = ((u[0].pm_cycle_pos ?? 0) + 1) % 3;
         const nextDate = dayjs().add(2, 'month').format('YYYY-MM-DD');
 
-        await pool.query(
-          'UPDATE units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
-          [nextDate, newPos, log.unit_id]
-        );
+        await req.db('UPDATE units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
+          [nextDate, newPos, log.unit_id]);
 
-        await pool.query(`
-          INSERT INTO pm_plan (client_id, unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
-          SELECT u.client_id, u.id, $1, $2, NOW(), NULL, 'done'
+        await req.db(`
+          INSERT INTO pm_plan (unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
+          SELECT u.id, $1, $2, NOW(), NULL, 'done'
           FROM units u WHERE u.id = $3
           ON CONFLICT DO NOTHING
         `, [cleaning_type, nextDate, log.unit_id]);

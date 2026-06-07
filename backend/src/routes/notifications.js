@@ -3,11 +3,12 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 
-// GET /api/notifications — current user's notifications, unread first
+// GET /api/notifications — current user's notifications, unread first.
+// notifications stays GLOBAL (public, user-scoped) — no req.db. work_order_id is
+// a plain int (the work order lives in a branch schema), so no cross-schema JOIN.
 router.get('/', authMiddleware, async (req, res) => {
   const { rows } = await pool.query(`
-    SELECT n.*, w.order_no FROM notifications n
-    LEFT JOIN work_orders w ON n.work_order_id = w.id
+    SELECT n.* FROM notifications n
     WHERE n.user_id = $1
     ORDER BY (n.read_at IS NOT NULL), n.created_at DESC
     LIMIT 100
