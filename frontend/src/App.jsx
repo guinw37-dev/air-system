@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
+import { useTenantStore } from './store/tenant'
 import { initOfflineSync } from './lib/offline/sync'
 import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
@@ -38,7 +39,20 @@ function RequireRole({ children, roles }) {
 }
 
 export default function App() {
-  useEffect(() => { initOfflineSync() }, [])
+  const resolved = useTenantStore((s) => s.resolved)
+  useEffect(() => {
+    initOfflineSync()
+    useTenantStore.getState().resolve()
+  }, [])
+  // Block render until the branch is resolved so the first API calls (and login)
+  // carry the correct X-Branch.
+  if (!resolved) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#64748b' }}>
+        กำลังโหลด…
+      </div>
+    )
+  }
   return (
     <BrowserRouter>
       <ErrorBoundary>
