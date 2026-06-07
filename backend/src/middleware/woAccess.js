@@ -1,7 +1,6 @@
-const pool = require('../db/pool');
-
 // Composable work-order access guard: checks role AND current status, and
-// (for non-admins) that the user is an assignee of the WO.
+// (for non-admins) that the user is an assignee of the WO. Schema-per-tenant —
+// reads via req.db so the WO is looked up in the request's branch schema.
 //
 //   router.post('/:id/submit',
 //     authMiddleware,
@@ -12,7 +11,7 @@ const pool = require('../db/pool');
 function requireWoRole({ roles = [], statuses = null, assigneeOnly = false } = {}) {
   return async (req, res, next) => {
     try {
-      const { rows } = await pool.query('SELECT * FROM work_orders WHERE id = $1', [req.params.id]);
+      const { rows } = await req.db('SELECT * FROM work_orders WHERE id = $1', [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Not found' });
       const wo = rows[0];
 
@@ -22,9 +21,9 @@ function requireWoRole({ roles = [], statuses = null, assigneeOnly = false } = {
       if (statuses && !statuses.includes(wo.status)) {
         return res.status(409).json({ error: `ทำขั้นตอนนี้ไม่ได้ในสถานะ ${wo.status}` });
       }
-      // assignee restriction — admins bypass
-      if (assigneeOnly && req.user.role !== 'admin') {
-        const { rows: a } = await pool.query(
+      // assignee restriction — admins / super-admins bypass
+      if (assigneeOnly && !['admin', 'super_admin'].includes(req.user.role)) {
+        const { rows: a } = await req.db(
           'SELECT 1 FROM work_order_assignees WHERE work_order_id = $1 AND user_id = $2',
           [req.params.id, req.user.id]
         );

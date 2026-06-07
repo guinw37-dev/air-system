@@ -2,18 +2,21 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const pool = require('../db/pool');
+const { pool, query, txClient } = require('../db');
+const { slugToSchema } = require('../utils/schema');
 const rateLimit = require('../middleware/rateLimit');
 
 // PUBLIC area_owner signing — NO Authorization header. The bearer of the link
-// can view minimal WO info and sign once. Security:
+// can view minimal WO info and sign once. Schema-per-tenant: the token carries a
+// `branch` claim (the schema the WO + sign_tokens live in), since the area owner
+// hits this without an X-Branch header.
 //  - token is a JWT (exp 30m, scope=area_owner_sign) signed with JWT_SECRET
-//  - a SHA-256 hash is stored in sign_tokens; single-use (used_at) blocks replay
+//  - a SHA-256 hash is stored in <branch>.sign_tokens; single-use blocks replay
 //  - rate-limited per IP (5/min)
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-// Verify JWT + the DB token row. Returns { wo_id } or throws {status,msg}.
-async function verifyToken(token, { forUpdateClient } = {}) {
+// Decode + validate the JWT (no DB). Returns { woId, branch } or throws {status}.
+function decodeToken(token) {
   let payload;
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -23,32 +26,49 @@ async function verifyToken(token, { forUpdateClient } = {}) {
   if (payload.scope !== 'area_owner_sign') {
     const e = new Error('token ไม่ถูกต้อง'); e.status = 400; throw e;
   }
-  const hash = sha256(token);
-  const q = forUpdateClient
-    ? forUpdateClient.query('SELECT * FROM sign_tokens WHERE token_hash=$1 FOR UPDATE', [hash])
-    : pool.query('SELECT * FROM sign_tokens WHERE token_hash=$1', [hash]);
-  const { rows } = await q;
+  let branch = null;
+  if (payload.branch) {
+    try { branch = slugToSchema(payload.branch); }
+    catch { const e = new Error('token ไม่ถูกต้อง'); e.status = 400; throw e; }
+  }
+  return { woId: payload.work_order_id, branch };
+}
+
+// Check the DB token row (in the branch schema) via a runner (req-less). Throws
+// on missing/used/expired.
+async function checkTokenRow(runner, token) {
+  const { rows } = await runner('SELECT * FROM sign_tokens WHERE token_hash=$1 FOR UPDATE', [sha256(token)]);
   if (!rows.length) { const e = new Error('ลิงก์ไม่ถูกต้อง'); e.status = 404; throw e; }
   const row = rows[0];
   if (row.used_at) { const e = new Error('ลิงก์นี้ถูกใช้ไปแล้ว'); e.status = 410; throw e; }
   if (new Date(row.expires_at) < new Date()) { const e = new Error('ลิงก์นี้หมดอายุแล้ว'); e.status = 410; throw e; }
-  return { woId: row.work_order_id, row };
+  return row;
+}
+
+// Build a schema-scoped runner for the token's branch (public fallback).
+function runnerFor(branch) {
+  return branch ? ((sql, params) => query(branch, sql, params)) : ((sql, params) => pool.query(sql, params));
 }
 
 // GET /api/sign/:token — minimal WO info for the sign screen
 router.get('/:token', rateLimit({ windowMs: 60000, max: 5 }), async (req, res) => {
   try {
-    const { woId } = await verifyToken(req.params.token);
-    const { rows: woRows } = await pool.query(`
-      SELECT w.id, w.order_no, w.type, w.created_at,
-             c.name client_name, s.name site_name
+    const { woId, branch } = decodeToken(req.params.token);
+    const run = runnerFor(branch);
+    // FOR UPDATE is harmless outside a tx here; reuse the same check.
+    const { rows: tok } = await run('SELECT used_at, expires_at FROM sign_tokens WHERE token_hash=$1', [sha256(req.params.token)]);
+    if (!tok.length) return res.status(404).json({ error: 'ลิงก์ไม่ถูกต้อง' });
+    if (tok[0].used_at) return res.status(410).json({ error: 'ลิงก์นี้ถูกใช้ไปแล้ว' });
+    if (new Date(tok[0].expires_at) < new Date()) return res.status(410).json({ error: 'ลิงก์นี้หมดอายุแล้ว' });
+
+    const { rows: woRows } = await run(`
+      SELECT w.id, w.order_no, w.type, w.created_at, s.name site_name
       FROM work_orders w
-      LEFT JOIN clients c ON w.client_id = c.id
       LEFT JOIN sites s   ON w.site_id = s.id
       WHERE w.id = $1
     `, [woId]);
     if (!woRows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const { rows: units } = await pool.query(`
+    const { rows: units } = await run(`
       SELECT u.asset_code, u.name unit_name, r.name room_name,
              f.name floor_name, b.name building_name
       FROM work_order_units wou
@@ -70,11 +90,14 @@ router.post('/:token', rateLimit({ windowMs: 60000, max: 5 }), async (req, res) 
   if (!signer_name?.trim() || !signature_data) {
     return res.status(400).json({ error: 'กรุณากรอกชื่อและลงลายเซ็น' });
   }
-  const client = await pool.connect();
+  let woId, branch;
+  try { ({ woId, branch } = decodeToken(req.params.token)); }
+  catch (err) { return res.status(err.status || 500).json({ error: err.message }); }
+
+  const client = branch ? await txClient(branch) : await pool.connect();
   try {
     await client.query('BEGIN');
-    // lock the token row so concurrent posts can't both succeed
-    const { woId } = await verifyToken(req.params.token, { forUpdateClient: client });
+    await checkTokenRow((sql, params) => client.query(sql, params), req.params.token); // locks the row
     await client.query(`
       INSERT INTO signatures (work_order_id, role, signer_name, user_id, signature_data)
       VALUES ($1, 'area_owner', $2, NULL, $3)
