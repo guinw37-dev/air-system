@@ -11,6 +11,25 @@
 -- migration applied to every active branch on boot.
 -- ============================================================
 
+-- ── Branch-local users (เชื่อมโยงเฉพาะภายในสาขานี้) ──────────
+-- Each branch keeps its OWN users — fully decoupled from other branches and
+-- from the public super-admins. With search_path "<branch>", public this table
+-- shadows public.users, so every `JOIN users` in branch queries resolves here.
+-- Cross-branch super-admins live in public.users (login on apex, switch in).
+CREATE TABLE IF NOT EXISTS users (
+  id            SERIAL PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL,
+  username      VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role          VARCHAR(20) NOT NULL CHECK (role IN (
+                  'technician','checker','central_admin','approver','admin',
+                  'building','supervisor'
+                )),
+  phone         VARCHAR(20),
+  active        BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Tenant hierarchy (site → building → floor → room) ────────
 CREATE TABLE IF NOT EXISTS sites (
   id         SERIAL PRIMARY KEY,
