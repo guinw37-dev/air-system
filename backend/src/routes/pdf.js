@@ -16,15 +16,12 @@ function resolveType(queryType, wo) {
 // Shared loader: fetch data + enforce tenant + status. Returns { data, type } or
 // sends an error response and returns null.
 async function loadReport(req, res) {
-  const data = await getReportData(req.params.id, { publicBaseUrl: PUBLIC_BASE });
+  // Schema-per-tenant: read from the request's branch schema (req.db).
+  const data = await getReportData(req.params.id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
   if (!data) { res.status(404).json({ error: 'ไม่พบใบงาน' }); return null; }
 
-  // tenant isolation — if a client_id is supplied it must match the WO's
-  if (req.query.client_id && String(data.wo.client_id) !== String(req.query.client_id)) {
-    res.status(403).json({ error: 'ใบงานไม่ได้อยู่ใน client นี้' }); return null;
-  }
   // approved WOs are open to all staff; earlier states only for admin/central_admin
-  const previewRoles = ['admin', 'central_admin', 'approver'];
+  const previewRoles = ['admin', 'central_admin', 'approver', 'super_admin'];
   if (data.wo.status !== 'approved' && !previewRoles.includes(req.user.role)) {
     res.status(403).json({ error: 'ออกรายงานได้เมื่อใบงานอนุมัติแล้วเท่านั้น' }); return null;
   }

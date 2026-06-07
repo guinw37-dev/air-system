@@ -10,13 +10,14 @@ const BRAND = {
 };
 
 // Assemble everything a report template needs for one work order.
-// Returns null if the WO does not exist. Caller enforces tenant + status rules.
-async function getReportData(woId, { publicBaseUrl = '' } = {}) {
-  const { rows: woRows } = await pool.query(`
-    SELECT w.*, c.name client_name, c.code client_code, s.name site_name,
-           ap.name approver_name
+// Returns null if the WO does not exist. Schema-per-tenant: pass the caller's
+// `db` (req.db, or query(schema,...) for the token-based sign flow) so the WO is
+// read from the right branch schema. Falls back to pool (public) when omitted.
+async function getReportData(woId, { db, publicBaseUrl = '' } = {}) {
+  const run = db || ((sql, params) => pool.query(sql, params));
+  const { rows: woRows } = await run(`
+    SELECT w.*, s.name site_name, ap.name approver_name
     FROM work_orders w
-    LEFT JOIN clients c ON w.client_id = c.id
     LEFT JOIN sites s   ON w.site_id = s.id
     LEFT JOIN users ap  ON w.approver_id = ap.id
     WHERE w.id = $1
@@ -25,7 +26,7 @@ async function getReportData(woId, { publicBaseUrl = '' } = {}) {
   const wo = woRows[0];
 
   // units in the WO + their location
-  const { rows: units } = await pool.query(`
+  const { rows: units } = await run(`
     SELECT wou.id AS wou_id, u.id AS unit_id, u.asset_code, u.name AS unit_name,
            u.family, u.capacity_btu, u.refrigerant, u.equipment_type,
            wou.has_repair, wou.repair_notes,
@@ -44,7 +45,7 @@ async function getReportData(woId, { publicBaseUrl = '' } = {}) {
   // inspection values joined with template metadata (category/label/type/unit)
   const inspByWou = {};
   if (wouIds.length) {
-    const { rows: insp } = await pool.query(`
+    const { rows: insp } = await run(`
       SELECT iv.work_order_unit_id, iv.value_before, iv.value_after, iv.checked, iv.note,
              iv.val_r_before, iv.val_s_before, iv.val_t_before,
              iv.val_r_after, iv.val_s_after, iv.val_t_after,
@@ -63,7 +64,7 @@ async function getReportData(woId, { publicBaseUrl = '' } = {}) {
   // photos grouped by wou + phase, with uploader name
   const photosByWou = {};
   if (wouIds.length) {
-    const { rows: photos } = await pool.query(`
+    const { rows: photos } = await run(`
       SELECT p.work_order_unit_id, p.phase, p.point_no, p.label, p.url, p.taken_at,
              us.name AS uploaded_by_name
       FROM work_order_photos p
@@ -83,14 +84,14 @@ async function getReportData(woId, { publicBaseUrl = '' } = {}) {
   }
 
   // signatures keyed by role
-  const { rows: sigRows } = await pool.query(`
+  const { rows: sigRows } = await run(`
     SELECT role, signer_name, signature_data, signed_at FROM signatures WHERE work_order_id = $1
   `, [woId]);
   const signatures = {};
   for (const s of sigRows) signatures[s.role] = s;
 
   // assignees
-  const { rows: assignees } = await pool.query(`
+  const { rows: assignees } = await run(`
     SELECT u.name, u.role FROM work_order_assignees wa
     JOIN users u ON wa.user_id = u.id WHERE wa.work_order_id = $1
   `, [woId]);
