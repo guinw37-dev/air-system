@@ -22,8 +22,11 @@
     "migrate:views": "node src/db/migrate_simple_wo_views.js",
     "migrate:clients": "node src/db/migrate_wo_clients.js",
     "migrate:all": "node src/db/migrate_all.js",
+    "migrate:public": "node src/db/migrate_public.js",
+    "migrate:schemas": "node src/db/migrate_branch_schemas.js",
+    "add-branch": "node src/db/add_branch.js",
     "seed": "node src/db/seed.js",
-    "test": "node test/tenant.test.js && node test/woStateMachine.test.js && node test/pmPlanner.test.js && node test/simpleReport.test.js"
+    "test": "node test/tenant.test.js && node test/schema.test.js && node test/woStateMachine.test.js && node test/pmPlanner.test.js && node test/simpleReport.test.js"
   },
   "keywords": [],
   "author": "",
