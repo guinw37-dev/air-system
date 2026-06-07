@@ -20,6 +20,7 @@
     "migrate:grid": "node src/db/migrate_simple_wo_grid.js",
     "migrate:soft-delete": "node src/db/migrate_soft_delete.js",
     "migrate:views": "node src/db/migrate_simple_wo_views.js",
+    "migrate:clients": "node src/db/migrate_wo_clients.js",
     "migrate:all": "node src/db/migrate_all.js",
     "seed": "node src/db/seed.js",
     "test": "node test/tenant.test.js && node test/woStateMachine.test.js && node test/pmPlanner.test.js && node test/simpleReport.test.js"

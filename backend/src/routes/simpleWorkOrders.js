@@ -76,6 +76,33 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Customer (hospital) list — editable + persistent (wo_clients) ───────────
+// Defined before '/:id' so the literal path wins.
+router.get('/clients', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, name FROM wo_clients ORDER BY name');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/clients', authMiddleware, async (req, res) => {
+  const name = (req.body && req.body.name ? String(req.body.name) : '').trim();
+  if (!name) return res.status(400).json({ error: 'ต้องระบุชื่อ' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO wo_clients (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name`, [name]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/clients/:id', authMiddleware, async (req, res) => {
+  if (!['admin', 'central_admin'].includes(req.user.role)) return res.status(403).json({ error: 'เฉพาะ admin ลบได้' });
+  try {
+    await pool.query('DELETE FROM wo_clients WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── GET /api/simple-wo/export/excel — all (filter date range) ───────────────
 const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
