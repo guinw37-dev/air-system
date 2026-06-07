@@ -7,6 +7,12 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Behind Coolify/Traefik — honor X-Forwarded-Host so req.hostname is the
+// original branch host (acme-co.<domain>), not the internal container host.
+app.set('trust proxy', true);
+
+const { resolveBranch } = require('./middleware/resolveBranch');
+
 // No boot-time migrations — schema.sql is the single source of truth.
 // Apply / update the schema with:  npm run migrate   (idempotent CREATE TABLE IF NOT EXISTS)
 // Seed roles + template + clients with:  npm run seed
@@ -19,6 +25,11 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
 fs.mkdirSync(path.join(UPLOAD_DIR, 'photos'), { recursive: true });
 console.log(`[upload] serving from ${UPLOAD_DIR}`);
 app.use('/uploads', express.static(UPLOAD_DIR));
+
+// Branch resolution (schema-per-tenant): sets req.branch/req.schema/req.db/req.tx
+// from the X-Branch header / subdomain. No branch (apex) → public fallback, so
+// not-yet-converted routes that still use `pool` directly are unaffected.
+app.use(resolveBranch);
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
