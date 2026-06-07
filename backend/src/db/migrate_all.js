@@ -13,6 +13,7 @@ const STEPS = [
   'migrate:building-sig',       // sig_supervisor + sig_building + role CHECK
   'migrate:grid',               // grid_rows + recommendation
   'migrate:soft-delete',        // deleted_at + updated_at
+  'migrate:views',              // per-work_type read-only views (needs cols above)
 ];
 
 for (const step of STEPS) {
