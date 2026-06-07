@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS clients (
   active      BOOLEAN DEFAULT true,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_slug        ON clients(slug)        WHERE slug        IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_subdomain   ON clients(subdomain)   WHERE subdomain   IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_schema_name ON clients(schema_name) WHERE schema_name IS NOT NULL;
+-- NOTE: indexes on slug/subdomain/schema_name/branch_slug are created by
+-- migratePublic() in provision.js AFTER the idempotent ALTER ... ADD COLUMN, so
+-- they don't fail on an existing pre-schema-per-tenant `clients`/`users` table.
 
 -- ── Super-admin / global users ──────────────────────────────
 -- Cross-schema staff (TW central + field techs who serve many branches) live
@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS users (
   active        BOOLEAN DEFAULT true,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug);
 
 -- ── Inspection template (shared checklist defs) ─────────────
 CREATE TABLE IF NOT EXISTS inspection_template_items (
