@@ -26,6 +26,7 @@ import Deductions from './pages/Deductions'
 import SimpleWoList from './pages/SimpleWoList'
 import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
+import Branches from './pages/Branches'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -89,7 +90,10 @@ export default function App() {
           <RequireAuth><RequireRole roles={['admin', 'central_admin']}><MasterData /></RequireRole></RequireAuth>
         } />
         <Route path="/users" element={
-          <RequireAuth><RequireRole roles={['admin']}><Users /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Users /></RequireRole></RequireAuth>
+        } />
+        <Route path="/branches" element={
+          <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Branches /></RequireRole></RequireAuth>
         } />
         <Route path="/parts" element={<RequireAuth><Parts /></RequireAuth>} />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />

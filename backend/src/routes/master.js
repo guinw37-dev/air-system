@@ -321,58 +321,55 @@ router.get('/photo-points', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
-// ── Users (public; branch-scoped by branch_slug) ────────────────────────────
-// On a branch subdomain, list that branch's users + global super-admins (the
-// assignee picker needs branch staff). On apex, list everyone.
+// ── Users (per-branch on a subdomain via req.db → <schema>.users; super-admins
+// on apex via public.users). A branch's users never interconnect with another's.
+const userDb = (req) => (req.branch ? req.db : ((sql, p) => pool.query(sql, p)));
+// Branch users get the operational roles; apex (super-admin) gets the global ones.
+const BRANCH_ROLES = ['technician', 'central_admin', 'approver', 'admin', 'checker', 'building', 'supervisor'];
+const SUPER_ROLES  = ['super_admin', 'field_tech', 'admin'];
+const validRolesFor = (req) => (req.branch ? BRANCH_ROLES : SUPER_ROLES);
+
 router.get('/users', authMiddleware, async (req, res) => {
-  const { rows } = req.branch
-    ? await pool.query(
-        'SELECT id, name, username, role, phone, active, branch_slug FROM users WHERE branch_slug = $1 OR branch_slug IS NULL ORDER BY name',
-        [req.branch.slug])
-    : await pool.query('SELECT id, name, username, role, phone, active, branch_slug FROM users ORDER BY name');
+  const { rows } = await userDb(req)(
+    'SELECT id, name, username, role, phone, active FROM users ORDER BY name');
   res.json(rows);
 });
-
-const VALID_ROLES = ['technician', 'central_admin', 'approver', 'admin', 'checker', 'building', 'supervisor', 'super_admin', 'field_tech'];
 
 router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
   const { name, username, password, role, phone } = req.body;
   if (!name || !username || !password || !role) {
     return res.status(400).json({ error: 'name, username, password, role required' });
   }
-  if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: `role must be one of ${VALID_ROLES.join(', ')}` });
+  const valid = validRolesFor(req);
+  if (!valid.includes(role)) {
+    return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
   }
   try {
     const hash = await bcrypt.hash(password, 10);
-    // On a branch the new user is local to that branch; on apex a super-admin
-    // may set branch_slug explicitly (null = another global super-admin).
-    const branch_slug = req.branch ? req.branch.slug : (req.body.branch_slug || null);
-    const { rows } = await pool.query(
-      'INSERT INTO users (name, username, password_hash, role, phone, branch_slug) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, username, role, phone, branch_slug',
-      [name, username, hash, role, phone || null, branch_slug]);
+    const { rows } = await userDb(req)(
+      'INSERT INTO users (name, username, password_hash, role, phone) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, username, role, phone',
+      [name, username, hash, role, phone || null]);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
   const { name, role, phone, active, password } = req.body;
-  if (role && !VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: `role must be one of ${VALID_ROLES.join(', ')}` });
+  const valid = validRolesFor(req);
+  if (role && !valid.includes(role)) {
+    return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
   }
+  const db = userDb(req);
   try {
     if (password) {
       const hash = await bcrypt.hash(password, 10);
-      await pool.query(
-        'UPDATE users SET name=$1, role=$2, phone=$3, active=$4, password_hash=$5 WHERE id=$6',
+      await db('UPDATE users SET name=$1, role=$2, phone=$3, active=$4, password_hash=$5 WHERE id=$6',
         [name, role, phone || null, active !== false, hash, req.params.id]);
     } else {
-      await pool.query(
-        'UPDATE users SET name=$1, role=$2, phone=$3, active=$4 WHERE id=$5',
+      await db('UPDATE users SET name=$1, role=$2, phone=$3, active=$4 WHERE id=$5',
         [name, role, phone || null, active !== false, req.params.id]);
     }
-    const { rows } = await pool.query(
-      'SELECT id, name, username, role, phone, active FROM users WHERE id=$1', [req.params.id]);
+    const { rows } = await db('SELECT id, name, username, role, phone, active FROM users WHERE id=$1', [req.params.id]);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

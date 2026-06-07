@@ -37,6 +37,7 @@ app.use(resolveBranch);
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/branches', require('./routes/branches'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/simple-wo',   require('./routes/simpleWorkOrders'));

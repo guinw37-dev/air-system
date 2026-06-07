@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, LogOut, Menu, X, Snowflake, CalendarCheck, Activity, FileUp,
-  AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2,
+  AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -25,7 +25,8 @@ const NAV = [
   { path: '/deductions',   icon: BadgeDollarSign,  label: 'หักเงิน',        roles: ['admin', 'central_admin', 'approver'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin'] },
-  { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin'] },
+  { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin', 'super_admin'] },
+  { path: '/branches',     icon: Building2,        label: 'จัดการสาขา',     superOnly: true },
 ]
 
 export default function Layout({ children, title, back, actions }) {
@@ -58,7 +59,10 @@ export default function Layout({ children, title, back, actions }) {
     return () => clearInterval(notifPollRef.current)
   }, [])
 
-  const visibleNav = NAV.filter((n) => !n.roles || n.roles.includes(user?.role))
+  const visibleNav = NAV.filter((n) => {
+    if (n.superOnly) return user?.isSuper || user?.role === 'super_admin'
+    return !n.roles || n.roles.includes(user?.role)
+  })
 
   const isActive = (path) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
