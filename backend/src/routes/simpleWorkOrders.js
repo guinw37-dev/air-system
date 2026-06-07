@@ -11,6 +11,10 @@ const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml } = require('../services/reportTemplates');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
 
+// Schema-per-tenant: simple_work_orders lives in the current branch schema, so
+// req.db scopes every read/write. The "customer" is the branch itself (no
+// wo_clients table) — client_name on the WO is just denormalized display text.
+
 const PUBLIC_BASE = process.env.FRONTEND_URL || '';
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 
@@ -28,7 +32,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
 
-// ── WO number: WO-{พ.ศ.}-{MM}-{running4} ────────────────────────────────────
+// ── WO number: WO-{พ.ศ.}-{MM}-{running4} — unique within the branch schema ───
 async function genWoNumber(client) {
   const be = dayjs().year() + 543;
   const mm = dayjs().format('MM');
@@ -59,7 +63,9 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
   else if (wt === 'minor') where = `equipment_type = 'ac' AND applies_minor = true`;
   else where = `equipment_type = 'ac' AND applies_major = true`;
   try {
-    const { rows } = await pool.query(`
+    // inspection_template_items is GLOBAL (public) — req.db resolves it via the
+    // public fallback on the search_path.
+    const { rows } = await req.db(`
       SELECT id, category, item_label, value_type, unit_label, sort_order
       FROM inspection_template_items WHERE ${where}
       ORDER BY sort_order, id
@@ -76,42 +82,31 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Customer (hospital) list — editable + persistent (wo_clients) ───────────
-// Defined before '/:id' so the literal path wins.
+// ── Customer list — the branch IS the customer. On a branch return just it; on
+// apex (super-admin) return the active registry. POST/DELETE are no-ops kept for
+// frontend compatibility (customer name is free text on the WO).
 router.get('/clients', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name FROM wo_clients ORDER BY name');
+    if (req.branch) return res.json([{ id: req.branch.id, name: req.branch.name }]);
+    const { rows } = await pool.query('SELECT id, name FROM clients WHERE active = true ORDER BY name');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 router.post('/clients', authMiddleware, async (req, res) => {
   const name = (req.body && req.body.name ? String(req.body.name) : '').trim();
   if (!name) return res.status(400).json({ error: 'ต้องระบุชื่อ' });
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO wo_clients (name) VALUES ($1)
-       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name`, [name]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  // Not persisted — the customer is the branch; the WO stores client_name as text.
+  res.status(201).json({ id: req.branch ? req.branch.id : 0, name });
 });
 router.delete('/clients/:id', authMiddleware, async (req, res) => {
-  if (!['admin', 'central_admin'].includes(req.user.role)) return res.status(403).json({ error: 'เฉพาะ admin ลบได้' });
-  try {
-    await pool.query('DELETE FROM wo_clients WHERE id = $1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  res.json({ ok: true });
 });
 
-// ── GET /api/simple-wo/export/excel — all (filter date range) ───────────────
+// ── GET /api/simple-wo/export/excel — branch's WOs (filter date range) ──────
 const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
 const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่น ๆ' };
 
-// Validate a create/update body. Returns an error message string, or null if ok.
-// Enum fields are whitelisted; JSON fields must be the right container type so a
-// bad payload can't poison the stored JSONB. Empty/missing values are allowed
-// (the routes coalesce them).
 const WORK_TYPES_OK = ['major', 'minor', 'fan'];
 const RESULTS_OK = ['ok', 'not_ok'];
 const POWER_OK = ['380', '220'];
@@ -130,7 +125,6 @@ function validateBody(b) {
 
 const s = (x) => (x === null || x === undefined || x === '' ? '' : String(x));
 
-// Extract one atomic sub-field of a stored checklist value by column key.
 function atomicValue(v, key) {
   v = v || {};
   switch (key) {
@@ -163,8 +157,6 @@ function atomicValue(v, key) {
   }
 }
 
-// Which atomic sub-columns to expose for each value_type (keeps the sheet
-// narrow — only the fields that type can actually hold). 'หมายเหตุ' appended.
 function relevantKeys(valueType) {
   switch (valueType) {
     case 'number':
@@ -181,24 +173,21 @@ function relevantKeys(valueType) {
 router.get('/export/excel', authMiddleware, async (req, res) => {
   const { date_from, date_to } = req.query;
   const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
-  if (date_from) { where.push(`created_at >= $${i++}`); params.push(date_from); }
-  if (date_to)   { where.push(`created_at < ($${i++}::date + 1)`); params.push(date_to); }
+  if (date_from) { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
+  if (date_to)   { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
       LEFT JOIN users u ON s.created_by = u.id
       WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
     `, params);
-    // Simple-WO uses ONE checklist (the full AC/major set).
-    const { rows: items } = await pool.query(`
+    const { rows: items } = await req.db(`
       SELECT id, category, item_label, value_type, unit_label, sort_order
       FROM inspection_template_items
       WHERE equipment_type = 'ac' AND applies_major = true
       ORDER BY sort_order, id
     `);
 
-    // Build the checklist columns once — each item expands rightward into its
-    // relevant atomic sub-columns, number-prefixed so headers stay unique/ordered.
     const itemCols = [];
     items.forEach((it, idx) => {
       const nn = String(idx + 1).padStart(2, '0');
@@ -207,7 +196,6 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       }
     });
 
-    // ── Sheet "ล้างใหญ่": major WOs only, one row each, checklist to the right ──
     const data = rows.filter((r) => !r.work_type || r.work_type === 'major').map((r) => {
       const tc = r.team_comment || {};
       const ac = r.ac_info || {};
@@ -244,7 +232,6 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         'เซ็น: เจ้าหน้าที่ช่างอาคาร': r.sig_building_name || '',
         'เซ็น: เจ้าหน้าวิศวกรรม': r.sig_engineer_name || '',
       };
-      // Checklist columns to the right.
       for (const c of itemCols) {
         row[c.header] = atomicValue(cv[c.id] || cv[String(c.id)], c.key);
       }
@@ -256,7 +243,6 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data, { header }), 'ล้างใหญ่');
 
-    // ── One sheet per grid work_type (ล้างย่อย / พัดลม), one row per unit ──
     const GRID_COLS_X = {
       minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
       fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
@@ -303,7 +289,7 @@ router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
-  const client = await pool.connect();
+  const client = await req.tx();
   try {
     await client.query('BEGIN');
     const wo_number = await genWoNumber(client);
@@ -318,7 +304,8 @@ router.post('/', authMiddleware, async (req, res) => {
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
       RETURNING id, wo_number
     `, [
-      wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
+      wo_number, req.user.id, b.tech_name || null, b.work_date || null,
+      b.client_name || (req.branch ? req.branch.name : null),
       b.building || null, b.floor || null, b.room || null, b.asset_code || null,
       b.work_type || 'major', b.power_system || null,
       JSON.stringify(b.checklist_values || {}), b.result || null,
@@ -349,7 +336,7 @@ router.get('/', authMiddleware, async (req, res) => {
   if (created_by) { where.push(`s.created_by = $${i++}`); params.push(created_by); }
   params.push(limit, offset);
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
              s.building, s.asset_code, s.work_type, s.result, s.status,
              u.name AS created_by_name,
@@ -367,7 +354,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await req.db(`
       SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
       LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL
     `, [req.params.id]);
@@ -379,7 +366,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/:id/pdf ──────────────────────────────────────────────
 router.get('/:id/pdf', authMiddleware, async (req, res) => {
   try {
-    const data = await getSimpleReportData(req.params.id, { publicBaseUrl: PUBLIC_BASE });
+    const data = await getSimpleReportData(req.params.id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
     if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const html = buildSimpleReportHtml(data);
     try {
@@ -399,21 +386,20 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
 });
 
 // ── PUT /api/simple-wo/:id — edit ───────────────────────────────────────────
-// Allowed: the creator, or admin / central_admin. wo_number/created_by frozen.
 router.put('/:id', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
   try {
-    const { rows } = await pool.query(
+    const { rows } = await req.db(
       'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const privileged = ['admin', 'central_admin'].includes(req.user.role);
+    const privileged = ['admin', 'central_admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขใบงานนี้' });
     }
-    const { rows: upd } = await pool.query(`
+    const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
         asset_code=$8, work_type=$9, power_system=$10, checklist_values=$11, result=$12,
@@ -444,27 +430,22 @@ router.put('/:id', authMiddleware, async (req, res) => {
 });
 
 // ── DELETE /api/simple-wo/:id — soft delete (recoverable) ───────────────────
-// Allowed: the creator, or admin / central_admin. Sets deleted_at; photo files
-// are kept so the WO can be restored.
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await req.db(
       'SELECT created_by FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const privileged = ['admin', 'central_admin'].includes(req.user.role);
+    const privileged = ['admin', 'central_admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
     }
-    await pool.query('UPDATE simple_work_orders SET deleted_at = NOW() WHERE id = $1', [req.params.id]);
+    await req.db('UPDATE simple_work_orders SET deleted_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
-// role → which signature slot: approver=วิศวกรรม, checker=หน่วยงาน, technician=ทีมช่าง
-// Sign slots (left→right on the report): ช่างแอร์ / หัวหน้าช่างแอร์ /
-// เจ้าหน้าที่ช่างอาคาร / เจ้าหน้าวิศวกรรม. checker has no slot.
 const ROLE_SLOT = { technician: 'team', supervisor: 'supervisor', building: 'building', approver: 'engineer' };
 router.post('/batch-sign', authMiddleware, async (req, res) => {
   const slot = ROLE_SLOT[req.user.role];
@@ -476,7 +457,7 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
   const dataCol = `sig_${slot}`;
   const nameCol = `sig_${slot}_name`;
   try {
-    const { rowCount } = await pool.query(
+    const { rowCount } = await req.db(
       `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
       [signature_data, signer_name || '', cleanIds]
     );
@@ -486,7 +467,7 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
 
 // ── POST /api/simple-wo/batch-pdf — billing cover + each WO report ───────────
 router.post('/batch-pdf', authMiddleware, async (req, res) => {
-  if (!['admin', 'central_admin'].includes(req.user.role)) {
+  if (!['admin', 'central_admin', 'super_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'เฉพาะ admin ออกเอกสารชุดได้' });
   }
   const { ids = [], cover = {} } = req.body || {};
@@ -496,22 +477,20 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   try {
     const dataArray = [];
     for (const id of cleanIds) {
-      const d = await getSimpleReportData(id, { publicBaseUrl: PUBLIC_BASE });
+      const d = await getSimpleReportData(id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
       if (d) dataArray.push(d);
     }
     if (!dataArray.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    // billing cover meta
     const clients = [...new Set(dataArray.map((d) => d.wo.client_name).filter(Boolean))];
     const dates = dataArray.map((d) => d.wo.work_date || d.wo.created_at).filter(Boolean).sort();
     const fmt = (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '');
     const meta = {
-      client_name: clients.length === 1 ? clients[0] : `${clients.length} โรงพยาบาล`,
+      client_name: clients.length === 1 ? clients[0] : `${clients.length} ลูกค้า`,
       doc_no: `BILL-${dayjs().format('YYYYMM')}-${String(cleanIds[0]).padStart(4, '0')}`,
       issue_date: new Date(),
       date_range: dates.length ? (fmt(dates[0]) === fmt(dates[dates.length - 1]) ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`) : '—',
       wo_count: dataArray.length,
     };
-    // editable cover overrides (only non-empty values win)
     for (const k of ['client_name', 'doc_no', 'date_range', 'note']) {
       if (ov[k] != null && String(ov[k]).trim() !== '') meta[k] = String(ov[k]).trim();
     }
