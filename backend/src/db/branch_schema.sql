@@ -246,3 +246,87 @@ CREATE INDEX IF NOT EXISTS idx_pmplan_scheduled ON pm_plan(scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_deduction_month  ON deduction_notes(month);
 CREATE INDEX IF NOT EXISTS idx_wo_history_wo    ON work_order_status_history(work_order_id);
 CREATE INDEX IF NOT EXISTS idx_sign_tokens_wo   ON sign_tokens(work_order_id);
+
+-- ── Simple Work Orders (ใบงานย่อ — one-step form, no approval) ──────────────
+-- Consolidated from migrate_simple_wo*.js. created_by is a plain int (creator
+-- may be a per-schema user OR a public super-admin — no cross-schema FK).
+CREATE TABLE IF NOT EXISTS simple_work_orders (
+  id          SERIAL PRIMARY KEY,
+  wo_number   VARCHAR(30) UNIQUE NOT NULL,
+  created_by  INT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  tech_name    VARCHAR(150),
+  work_date    DATE,
+  client_name  VARCHAR(200),
+  building     VARCHAR(100),
+  floor        VARCHAR(50),
+  room         VARCHAR(100),
+  asset_code   VARCHAR(100),
+  work_type    VARCHAR(20),     -- major | minor | fan
+  power_system VARCHAR(5),      -- 380 | 220
+  checklist_values JSONB DEFAULT '{}'::jsonb,
+  result     VARCHAR(20),       -- ok | not_ok
+  start_time TIME,
+  end_time   TIME,
+  team_comment JSONB DEFAULT '{}'::jsonb,
+  photo_urls   JSONB DEFAULT '[]'::jsonb,
+  gallery_urls JSONB DEFAULT '[]'::jsonb,
+  ac_info      JSONB DEFAULT '{}'::jsonb,
+  sig_engineer        TEXT, sig_engineer_name   VARCHAR(150),
+  sig_department      TEXT, sig_department_name VARCHAR(150),
+  sig_team            TEXT, sig_team_name        VARCHAR(150),
+  sig_supervisor      TEXT, sig_supervisor_name VARCHAR(150),
+  sig_building        TEXT, sig_building_name    VARCHAR(150),
+  grid_rows           JSONB DEFAULT '[]'::jsonb,
+  recommendation      TEXT,
+  updated_at          TIMESTAMPTZ,
+  deleted_at          TIMESTAMPTZ,
+  status     VARCHAR(20) DEFAULT 'submitted'
+);
+CREATE INDEX IF NOT EXISTS idx_swo_created_at ON simple_work_orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_swo_created_by ON simple_work_orders(created_by);
+CREATE INDEX IF NOT EXISTS idx_swo_work_type  ON simple_work_orders(work_type);
+CREATE INDEX IF NOT EXISTS idx_swo_deleted_at ON simple_work_orders(deleted_at);
+
+-- Per-work_type read-only views (mirror the per-sheet Excel export).
+CREATE OR REPLACE VIEW vw_simple_wo_major AS
+  SELECT id, wo_number, created_at, updated_at, work_date,
+         tech_name, client_name, building, floor, room, asset_code,
+         power_system, result, start_time, end_time,
+         checklist_values, ac_info, team_comment,
+         sig_team_name       AS "เซ็น_ช่างแอร์",
+         sig_supervisor_name AS "เซ็น_หัวหน้าช่างแอร์",
+         sig_building_name   AS "เซ็น_เจ้าหน้าที่ช่างอาคาร",
+         sig_engineer_name   AS "เซ็น_เจ้าหน้าวิศวกรรม"
+  FROM simple_work_orders
+  WHERE deleted_at IS NULL AND (work_type = 'major' OR work_type IS NULL);
+
+CREATE OR REPLACE VIEW vw_simple_wo_minor AS
+  SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+         g.ord AS "ลำดับ",
+         g.row->>'name' AS "ชื่อเครื่อง",
+         (g.row->'checks'->>0)::boolean AS "ตรวจเช็คระบบการทำงาน",
+         (g.row->'checks'->>1)::boolean AS "ล้างหัวจ่าย",
+         (g.row->'checks'->>2)::boolean AS "ล้างช่องรีเทิร์น",
+         (g.row->'checks'->>3)::boolean AS "ล้างฟิลเตอร์",
+         s.recommendation AS "ข้อแนะนำ"
+  FROM simple_work_orders s
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.grid_rows, '[]'::jsonb))
+    WITH ORDINALITY AS g(row, ord)
+  WHERE s.deleted_at IS NULL AND s.work_type = 'minor';
+
+CREATE OR REPLACE VIEW vw_simple_wo_fan AS
+  SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+         g.ord AS "ลำดับ",
+         g.row->>'name' AS "หมายเลขเครื่อง",
+         (g.row->'checks'->>0)::boolean AS "ล้างหน้ากาก_มอเตอร์_ใบพัด",
+         (g.row->'checks'->>1)::boolean AS "ใส่น้ำมันหล่อลื่นมอเตอร์",
+         (g.row->'checks'->>2)::boolean AS "เช็คกระแสไฟฟ้า",
+         (g.row->'checks'->>3)::boolean AS "เช็คความดังเสียง",
+         (g.row->'checks'->>4)::boolean AS "ใช้งานได้ปกติ",
+         g.row->>'broken' AS "ชำรุดเนื่องจาก",
+         s.recommendation AS "ข้อแนะนำ"
+  FROM simple_work_orders s
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.grid_rows, '[]'::jsonb))
+    WITH ORDINALITY AS g(row, ord)
+  WHERE s.deleted_at IS NULL AND s.work_type = 'fan';
