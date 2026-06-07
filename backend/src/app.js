@@ -26,6 +26,10 @@ fs.mkdirSync(path.join(UPLOAD_DIR, 'photos'), { recursive: true });
 console.log(`[upload] serving from ${UPLOAD_DIR}`);
 app.use('/uploads', express.static(UPLOAD_DIR));
 
+// Subdomain → branch resolution (PUBLIC, must run BEFORE resolveBranch so an
+// unknown host doesn't 404 the SPA's own bootstrap call).
+app.use('/api/resolve-host', require('./routes/resolve'));
+
 // Branch resolution (schema-per-tenant): sets req.branch/req.schema/req.db/req.tx
 // from the X-Branch header / subdomain. No branch (apex) → public fallback, so
 // not-yet-converted routes that still use `pool` directly are unaffected.

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 
 // VITE_BACKEND_URL = https://your-backend.example.com (no trailing slash)
 // In dev: proxied via vite.config.js → localhost:3001
@@ -14,6 +15,9 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Schema-per-tenant: on a branch, tell the backend which schema to use.
+  const { isBranch, slug } = useTenantStore.getState()
+  if (isBranch && slug) config.headers['X-Branch'] = slug
   return config
 })
 

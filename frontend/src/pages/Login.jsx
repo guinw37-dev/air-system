@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { Snowflake } from 'lucide-react'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 
 export default function Login() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const tenant = useTenantStore()
   const [form, setForm] = useState({ username: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -35,6 +37,9 @@ export default function Login() {
         </div>
         <h1 className="text-2xl font-bold text-ink">Air System</h1>
         <p className="text-sm text-ink-muted mt-1">Technical Water Co.,Ltd</p>
+        {tenant.isBranch && (
+          <p className="text-sm font-medium text-primary mt-1">{tenant.name}</p>
+        )}
       </div>
 
       <div className="card w-full max-w-sm shadow-md">

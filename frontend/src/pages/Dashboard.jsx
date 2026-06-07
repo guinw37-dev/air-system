@@ -14,6 +14,7 @@ import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/config'
 
 // ── PM Widget (preserved from previous version) ───────────────────────────────
@@ -129,6 +130,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
 
+  const tenant = useTenantStore()
   const [clients, setClients] = useState([])
   const [clientId, setClientId] = useState('')
   const [overview, setOverview] = useState(null)
@@ -138,8 +140,11 @@ export default function Dashboard() {
   const [recentWos, setRecentWos] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Load clients once
+  // Load clients once. On a branch subdomain the data is scoped by X-Branch, so
+  // we don't need a client picker — use the branch slug as a truthy clientId
+  // (the backend ignores the value) and skip the dropdown.
   useEffect(() => {
+    if (tenant.isBranch) { setClientId(tenant.slug); setLoading(false); return }
     api.get('/master/clients')
       .then((r) => {
         const list = r.data || []
@@ -148,7 +153,7 @@ export default function Dashboard() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenant.isBranch, tenant.slug])
 
   // Fetch all stats when clientId changes
   const fetchStats = useCallback(() => {
@@ -235,16 +240,22 @@ export default function Dashboard() {
             <p className="text-sm text-ink-muted">{dayjs().format('dddd DD MMMM YYYY')}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select
-              className="input max-w-xs"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">-- ทุก Client --</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            {tenant.isBranch ? (
+              <span className="input max-w-xs flex items-center font-medium text-ink bg-surface-2 cursor-default">
+                {tenant.name}
+              </span>
+            ) : (
+              <select
+                className="input max-w-xs"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+              >
+                <option value="">-- ทุก Client --</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
             {!isOwnerAdmin && (
               <button
                 onClick={() => navigate('/work-orders/new')}
