@@ -14,6 +14,7 @@ import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/config'
 
 // ── PM Widget (preserved from previous version) ───────────────────────────────
@@ -128,6 +129,7 @@ function TypeBadge({ type }) {
 export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const tenant = useTenantStore()
 
   const [clients, setClients] = useState([])
   const [clientId, setClientId] = useState('')
@@ -144,11 +146,13 @@ export default function Dashboard() {
       .then((r) => {
         const list = r.data || []
         setClients(list)
-        if (list.length > 0) setClientId(String(list[0].id))
+        // On a branch subdomain lock to that branch; else pick the first client.
+        if (tenant.isBranch && tenant.clientId) setClientId(String(tenant.clientId))
+        else if (list.length > 0) setClientId(String(list[0].id))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenant.isBranch, tenant.clientId])
 
   // Fetch all stats when clientId changes
   const fetchStats = useCallback(() => {
@@ -235,16 +239,22 @@ export default function Dashboard() {
             <p className="text-sm text-ink-muted">{dayjs().format('dddd DD MMMM YYYY')}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select
-              className="input max-w-xs"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">-- ทุก Client --</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            {tenant.isBranch ? (
+              <span className="input max-w-xs flex items-center font-medium text-ink bg-surface-2 cursor-default">
+                {tenant.name}
+              </span>
+            ) : (
+              <select
+                className="input max-w-xs"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+              >
+                <option value="">-- ทุก Client --</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
             {!isOwnerAdmin && (
               <button
                 onClick={() => navigate('/work-orders/new')}

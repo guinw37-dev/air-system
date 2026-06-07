@@ -7,6 +7,7 @@ const dayjs = require('dayjs');
 const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const { getClientId } = require('../middleware/tenant');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml } = require('../services/reportTemplates');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -76,11 +77,15 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Customer (hospital) list — editable + persistent (wo_clients) ───────────
-// Defined before '/:id' so the literal path wins.
+// ── Customer (สาขา) list — now sourced from `clients` (single source of truth,
+// the same table that backs branch subdomains). Defined before '/:id'.
 router.get('/clients', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name FROM wo_clients ORDER BY name');
+    // On a branch subdomain only that branch is offered; on apex, all active.
+    const cid = getClientId(req);
+    const { rows } = cid
+      ? await pool.query('SELECT id, name FROM clients WHERE id = $1 AND active = true', [cid])
+      : await pool.query('SELECT id, name FROM clients WHERE active = true ORDER BY name');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -88,9 +93,15 @@ router.post('/clients', authMiddleware, async (req, res) => {
   const name = (req.body && req.body.name ? String(req.body.name) : '').trim();
   if (!name) return res.status(400).json({ error: 'ต้องระบุชื่อ' });
   try {
+    // Ad-hoc customer added from the dropdown: no slug → apex-only (not a
+    // subdomain branch until an admin provisions one via add-branch). code is
+    // auto-generated and unique.
+    const existing = await pool.query('SELECT id, name FROM clients WHERE name = $1', [name]);
+    if (existing.rows.length) return res.status(201).json(existing.rows[0]);
+    const code = ('C' + Date.now().toString(36)).toUpperCase().slice(0, 20);
     const { rows } = await pool.query(
-      `INSERT INTO wo_clients (name) VALUES ($1)
-       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name`, [name]
+      `INSERT INTO clients (code, name, active) VALUES ($1, $2, true) RETURNING id, name`,
+      [code, name]
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -98,7 +109,11 @@ router.post('/clients', authMiddleware, async (req, res) => {
 router.delete('/clients/:id', authMiddleware, async (req, res) => {
   if (!['admin', 'central_admin'].includes(req.user.role)) return res.status(403).json({ error: 'เฉพาะ admin ลบได้' });
   try {
-    await pool.query('DELETE FROM wo_clients WHERE id = $1', [req.params.id]);
+    // Never delete a provisioned branch (has a slug) or a client with data.
+    const { rowCount } = await pool.query(
+      'UPDATE clients SET active = false WHERE id = $1 AND slug IS NULL', [req.params.id]
+    );
+    if (!rowCount) return res.status(409).json({ error: 'ลบไม่ได้ (เป็นสาขาที่มี subdomain)' });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -181,8 +196,10 @@ function relevantKeys(valueType) {
 router.get('/export/excel', authMiddleware, async (req, res) => {
   const { date_from, date_to } = req.query;
   const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
-  if (date_from) { where.push(`created_at >= $${i++}`); params.push(date_from); }
-  if (date_to)   { where.push(`created_at < ($${i++}::date + 1)`); params.push(date_to); }
+  const cid = getClientId(req);
+  if (cid)       { where.push(`s.client_id = $${i++}`); params.push(cid); }
+  if (date_from) { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
+  if (date_to)   { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
   try {
     const { rows } = await pool.query(`
       SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
@@ -307,18 +324,24 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     await client.query('BEGIN');
     const wo_number = await genWoNumber(client);
+    // Tenant key: forced branch (subdomain) → explicit client_id → match by name.
+    let clientId = getClientId(req);
+    if (!clientId && b.client_name) {
+      const { rows: cr } = await client.query('SELECT id FROM clients WHERE name = $1 LIMIT 1', [String(b.client_name).trim()]);
+      if (cr.length) clientId = cr[0].id;
+    }
     const { rows } = await client.query(`
       INSERT INTO simple_work_orders (
-        wo_number, created_by, tech_name, work_date, client_name, building, floor, room,
+        wo_number, created_by, client_id, tech_name, work_date, client_name, building, floor, room,
         asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
         team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
         sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
         grid_rows, recommendation, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW())
       RETURNING id, wo_number
     `, [
-      wo_number, req.user.id, b.tech_name || null, b.work_date || null, b.client_name || null,
+      wo_number, req.user.id, clientId || null, b.tech_name || null, b.work_date || null, b.client_name || null,
       b.building || null, b.floor || null, b.room || null, b.asset_code || null,
       b.work_type || 'major', b.power_system || null,
       JSON.stringify(b.checklist_values || {}), b.result || null,
@@ -344,6 +367,8 @@ router.post('/', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
   const { date_from, date_to, created_by, limit = 100, offset = 0 } = req.query;
   const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
+  const cid = getClientId(req); // forced on a branch subdomain; optional on apex
+  if (cid)        { where.push(`s.client_id = $${i++}`); params.push(cid); }
   if (date_from)  { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
   if (date_to)    { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
   if (created_by) { where.push(`s.created_by = $${i++}`); params.push(created_by); }
@@ -367,10 +392,14 @@ router.get('/', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
+    const cid = getClientId(req);
+    const params = [req.params.id];
+    let clause = '';
+    if (cid) { params.push(cid); clause = ` AND s.client_id = $2`; } // no cross-branch peek
     const { rows } = await pool.query(`
       SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
-      LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL
-    `, [req.params.id]);
+      LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL${clause}
+    `, params);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -379,6 +408,11 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // ── GET /api/simple-wo/:id/pdf ──────────────────────────────────────────────
 router.get('/:id/pdf', authMiddleware, async (req, res) => {
   try {
+    const cid = getClientId(req);
+    if (cid) {
+      const { rows: g } = await pool.query('SELECT 1 FROM simple_work_orders WHERE id = $1 AND client_id = $2', [req.params.id, cid]);
+      if (!g.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    }
     const data = await getSimpleReportData(req.params.id, { publicBaseUrl: PUBLIC_BASE });
     if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const html = buildSimpleReportHtml(data);
@@ -406,12 +440,20 @@ router.put('/:id', authMiddleware, async (req, res) => {
   if (verr) return res.status(400).json({ error: verr });
   try {
     const { rows } = await pool.query(
-      'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
+      'SELECT created_by, client_id FROM simple_work_orders WHERE id = $1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    const cid = getClientId(req);
+    if (cid && rows[0].client_id !== cid) return res.status(404).json({ error: 'ไม่พบใบงาน' }); // no cross-branch edit
     const privileged = ['admin', 'central_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขใบงานนี้' });
+    }
+    // Resolve client_id: forced branch wins; else keep existing, else match name.
+    let newClientId = cid || rows[0].client_id || null;
+    if (!newClientId && b.client_name) {
+      const { rows: cr } = await pool.query('SELECT id FROM clients WHERE name = $1 LIMIT 1', [String(b.client_name).trim()]);
+      if (cr.length) newClientId = cr[0].id;
     }
     const { rows: upd } = await pool.query(`
       UPDATE simple_work_orders SET
@@ -421,7 +463,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
-        grid_rows=$29, recommendation=$30, updated_at=NOW()
+        grid_rows=$29, recommendation=$30, client_id=$31, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -438,6 +480,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.sig_building || null, b.sig_building_name || null,
       b.sig_supervisor || null, b.sig_supervisor_name || null,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
+      newClientId,
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -475,10 +518,14 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
   const dataCol = `sig_${slot}`;
   const nameCol = `sig_${slot}_name`;
+  const cid = getClientId(req);
   try {
+    const params = [signature_data, signer_name || '', cleanIds];
+    let clause = '';
+    if (cid) { params.push(cid); clause = ` AND client_id = $4`; } // only this branch's WOs
     const { rowCount } = await pool.query(
-      `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
-      [signature_data, signer_name || '', cleanIds]
+      `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)${clause}`,
+      params
     );
     res.json({ ok: true, signed: rowCount, slot });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -493,9 +540,16 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   const ov = cover && typeof cover === 'object' ? cover : {};
+  const cid = getClientId(req);
   try {
+    // On a branch subdomain, restrict to that branch's WOs only.
+    let allowed = cleanIds;
+    if (cid) {
+      const { rows: ar } = await pool.query('SELECT id FROM simple_work_orders WHERE id = ANY($1) AND client_id = $2', [cleanIds, cid]);
+      allowed = ar.map((r) => r.id);
+    }
     const dataArray = [];
-    for (const id of cleanIds) {
+    for (const id of allowed) {
       const d = await getSimpleReportData(id, { publicBaseUrl: PUBLIC_BASE });
       if (d) dataArray.push(d);
     }

@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/config'
 
 const STATUSES = [
@@ -28,6 +29,7 @@ export default function WorkOrderList() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const user = useAuthStore((s) => s.user)
+  const tenant = useTenantStore()
 
   const [clients, setClients] = useState([])
   const [clientId, setClientId] = useState('')
@@ -41,9 +43,10 @@ export default function WorkOrderList() {
   useEffect(() => {
     api.get('/master/clients').then((r) => {
       setClients(r.data)
-      if (r.data.length === 1) setClientId(String(r.data[0].id))
+      if (tenant.isBranch && tenant.clientId) setClientId(String(tenant.clientId))
+      else if (r.data.length === 1) setClientId(String(r.data[0].id))
     }).catch(() => {})
-  }, [])
+  }, [tenant.isBranch, tenant.clientId])
 
   // Load work orders whenever filter changes
   const load = useCallback(() => {
@@ -86,19 +89,25 @@ export default function WorkOrderList() {
     >
       <div className="p-4 flex flex-col gap-4">
 
-        {/* Client selector */}
+        {/* Client selector — locked to the branch on a subdomain */}
         <div>
           <label className="label">Client *</label>
-          <select
-            className="input max-w-xs"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          >
-            <option value="">-- เลือก Client --</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          {tenant.isBranch ? (
+            <span className="input max-w-xs flex items-center font-medium text-ink bg-surface-2 cursor-default">
+              {tenant.name}
+            </span>
+          ) : (
+            <select
+              className="input max-w-xs"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">-- เลือก Client --</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Filters */}

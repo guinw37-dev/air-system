@@ -17,9 +17,13 @@ CREATE TABLE IF NOT EXISTS clients (
   id         SERIAL PRIMARY KEY,
   code       VARCHAR(20) UNIQUE NOT NULL,      -- PTS1, PTS2, ...
   name       VARCHAR(150) NOT NULL,
+  slug       VARCHAR(63),                      -- per-branch URL key: phayathai-1 (migrate_client_subdomain.js)
+  subdomain  VARCHAR(63),                      -- host label resolved to this client
   active     BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_slug      ON clients(slug)      WHERE slug      IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_subdomain ON clients(subdomain) WHERE subdomain IS NOT NULL;
 
 -- Sites (สถานที่ภายใต้ลูกค้า) — e.g. รพ.หลัก / คลินิกบางพระ / หอพัก
 CREATE TABLE IF NOT EXISTS sites (

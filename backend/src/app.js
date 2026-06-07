@@ -7,6 +7,12 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Behind Coolify/Traefik — honor X-Forwarded-Host so req.hostname is the
+// original branch host (phayathai-1.<domain>), not the internal container host.
+app.set('trust proxy', true);
+
+const { resolveTenant } = require('./middleware/tenant');
+
 // No boot-time migrations — schema.sql is the single source of truth.
 // Apply / update the schema with:  npm run migrate   (idempotent CREATE TABLE IF NOT EXISTS)
 // Seed roles + template + clients with:  npm run seed
@@ -19,6 +25,13 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
 fs.mkdirSync(path.join(UPLOAD_DIR, 'photos'), { recursive: true });
 console.log(`[upload] serving from ${UPLOAD_DIR}`);
 app.use('/uploads', express.static(UPLOAD_DIR));
+
+// Subdomain → branch resolution (PUBLIC, must run BEFORE resolveTenant)
+app.use('/api/resolve-host', require('./routes/resolve'));
+
+// GLOBAL tenant guard: on a branch subdomain, forces req.clientId + rejects a
+// mismatched client_id. On apex/www/IP/localhost it is a no-op (req.tenant=null).
+app.use(resolveTenant);
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

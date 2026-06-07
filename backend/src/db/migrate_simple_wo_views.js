@@ -14,7 +14,7 @@ async function migrate() {
     await client.query(`
       CREATE OR REPLACE VIEW vw_simple_wo_major AS
       SELECT id, wo_number, created_at, updated_at, work_date,
-             tech_name, client_name, building, floor, room, asset_code,
+             client_id, tech_name, client_name, building, floor, room, asset_code,
              power_system, result, start_time, end_time,
              checklist_values, ac_info, team_comment,
              sig_team_name      AS "เซ็น_ช่างแอร์",
@@ -27,7 +27,7 @@ async function migrate() {
 
     await client.query(`
       CREATE OR REPLACE VIEW vw_simple_wo_minor AS
-      SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+      SELECT s.wo_number, s.work_date, s.client_id, s.client_name, s.building, s.floor, s.tech_name,
              g.ord AS "ลำดับ",
              g.row->>'name' AS "ชื่อเครื่อง",
              (g.row->'checks'->>0)::boolean AS "ตรวจเช็คระบบการทำงาน",
@@ -43,7 +43,7 @@ async function migrate() {
 
     await client.query(`
       CREATE OR REPLACE VIEW vw_simple_wo_fan AS
-      SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+      SELECT s.wo_number, s.work_date, s.client_id, s.client_name, s.building, s.floor, s.tech_name,
              g.ord AS "ลำดับ",
              g.row->>'name' AS "หมายเลขเครื่อง",
              (g.row->'checks'->>0)::boolean AS "ล้างหน้ากาก_มอเตอร์_ใบพัด",

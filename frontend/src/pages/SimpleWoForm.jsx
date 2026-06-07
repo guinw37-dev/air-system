@@ -6,6 +6,7 @@ import SignaturePad from '../components/SignaturePad'
 import api, { uploadsBase } from '../api/client'
 import { compressImage } from '../lib/image'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 
 
 const WORK_TYPES = [
@@ -966,11 +967,17 @@ function ChecklistField({ field, value, onChange }) {
 // Searchable + addable customer (hospital) picker, backed by /simple-wo/clients.
 // Type to filter; pick an option, or add a new name that persists server-side.
 function ClientCombobox({ value, onChange }) {
+  const tenant = useTenantStore()
   const [clients, setClients] = useState([])
   const [q, setQ] = useState(value || '')
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const ref = useRef(null)
+
+  // On a branch subdomain the customer is fixed to that branch — lock it.
+  useEffect(() => {
+    if (tenant.isBranch && tenant.name && value !== tenant.name) onChange(tenant.name)
+  }, [tenant.isBranch, tenant.name]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.get('/simple-wo/clients').then((r) => setClients((r.data || []).map((c) => c.name))).catch(() => {})
@@ -994,6 +1001,15 @@ function ClientCombobox({ value, onChange }) {
       setClients((prev) => (prev.includes(query) ? prev : [...prev, query].sort()))
       pick(query)
     } catch { alert('เพิ่มลูกค้าไม่สำเร็จ') } finally { setAdding(false) }
+  }
+
+  // Locked on a branch subdomain — show the branch name read-only.
+  if (tenant.isBranch) {
+    return (
+      <span className="input flex items-center font-medium text-ink bg-surface-2 cursor-default">
+        {tenant.name || value}
+      </span>
+    )
   }
 
   return (
