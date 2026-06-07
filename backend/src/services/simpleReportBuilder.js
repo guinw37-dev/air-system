@@ -44,8 +44,11 @@ function combineDateTime(dateVal, timeStr) {
 
 // Assemble the `data` object buildSimpleReportHtml() expects from a
 // simple_work_orders row. Returns null when the WO does not exist.
-async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
-  const { rows } = await pool.query(`
+// Schema-per-tenant: pass the request-scoped `db` (req.db) so the WO is read from
+// the caller's branch schema. Falls back to pool (public) when not supplied.
+async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
+  const run = db || ((sql, params) => pool.query(sql, params));
+  const { rows } = await run(`
     SELECT s.*, u.name AS created_by_name
     FROM simple_work_orders s
     LEFT JOIN users u ON s.created_by = u.id
@@ -56,7 +59,7 @@ async function getSimpleReportData(id, { publicBaseUrl = '' } = {}) {
 
   // Template items for this work_type → build inspection rows merged with values.
   const f = templateFilter(r.work_type);
-  const { rows: items } = await pool.query(`
+  const { rows: items } = await run(`
     SELECT id, category, item_label, value_type, unit_label, sort_order
     FROM inspection_template_items
     WHERE ${f.sql}
