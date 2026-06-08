@@ -13,7 +13,6 @@ import SyncIndicator from './SyncIndicator'
 // อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null },
-  { path: '/deductions',   icon: BadgeDollarSign,  label: 'หักเงิน',        roles: ['admin', 'central_admin', 'approver'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin', 'super_admin'] },
@@ -98,15 +97,6 @@ export default function Layout({ children, title, back, actions }) {
             <NavLink key={path} path={path} icon={Icon} label={label} />
           ))}
 
-          {/* Shortcut: งานตีกลับ — admin/technician only */}
-          {isTechAdmin && (
-            <NavLink
-              path="/work-orders?status=rejected"
-              icon={AlertCircle}
-              label="งานตีกลับ"
-              badge={rejectedCount}
-            />
-          )}
         </nav>
 
         <div className="px-2 py-3 border-t border-white/10">
