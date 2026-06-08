@@ -12,7 +12,17 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 // provision branches or seed their first admin.
 const superOnly = requireRole('super_admin', 'admin');
 
-// GET /api/branches — list the registry
+// GET /api/branches/public — PUBLIC minimal list for the apex landing page (the
+// branch cards). Only name + slug of active, provisioned branches; no auth.
+router.get('/public', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT slug, name FROM clients WHERE active = true AND slug IS NOT NULL AND schema_name IS NOT NULL ORDER BY name`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/branches — list the registry (super-admin)
 router.get('/', authMiddleware, superOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(

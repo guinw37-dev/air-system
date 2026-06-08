@@ -27,6 +27,7 @@ import SimpleWoList from './pages/SimpleWoList'
 import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
 import Branches from './pages/Branches'
+import Landing from './pages/Landing'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -37,6 +38,15 @@ function RequireRole({ children, roles }) {
   const user = useAuthStore((s) => s.user)
   if (!roles.includes(user?.role)) return <Navigate to="/" replace />
   return children
+}
+
+// Apex root shows the branch landing when no one is logged in; everywhere else
+// (a branch, or an authenticated session) goes to the dashboard.
+function Home() {
+  const token = useAuthStore((s) => s.token)
+  const isBranch = useTenantStore((s) => s.isBranch)
+  if (!isBranch && !token) return <Landing />
+  return <RequireAuth><Dashboard /></RequireAuth>
 }
 
 export default function App() {
@@ -62,7 +72,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/sign/:token" element={<SignPage />} />
 
-        <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+        <Route path="/" element={<Home />} />
 
         {/* Work Orders — phase-2 routes */}
         <Route path="/work-orders" element={<RequireAuth><WorkOrderList /></RequireAuth>} />
