@@ -17,8 +17,16 @@ const { resolveBranch } = require('./middleware/resolveBranch');
 // Apply / update the schema with:  npm run migrate   (idempotent CREATE TABLE IF NOT EXISTS)
 // Seed roles + template + clients with:  npm run seed
 
-// Middleware
-app.use(cors());
+// Middleware — CORS for a cross-origin SPA (frontend on tw-carework.online +
+// branch subdomains, backend on api.tw-carework.online). Reflect the request
+// origin and explicitly allow the custom X-Branch header so the preflight passes.
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Branch'],
+}));
+app.options('*', cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
