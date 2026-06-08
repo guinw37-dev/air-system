@@ -9,19 +9,10 @@ import { useAuthStore } from '../store/auth'
 import api from '../api/client'
 import SyncIndicator from './SyncIndicator'
 
+// Trimmed nav. Hidden entries (Dashboard, PM Schedule, PM Plan, ติดตามการล้าง,
+// อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null },
-  { path: '/',             icon: LayoutDashboard, label: 'Dashboard',     roles: null },
-  // 'แจ้งซ่อม' (RepairLogs) hidden from nav — repair reporting lives in the
-  // separate repair-report system. AC abnormalities are raised via "ขอเปิด".
-  // Route /repair-logs still resolves; just no nav entry.
-  { path: '/pm',             icon: CalendarCheck,   label: 'PM Schedule',  roles: null },
-  { path: '/pm-plan',        icon: TableProperties, label: 'PM Plan',      roles: null },
-  { path: '/cleaning-status',    icon: Activity,        label: 'ติดตามการล้าง', roles: null },
-  { path: '/cleaning-dashboard', icon: LayoutDashboard, label: 'สรุปยอดล้าง',    roles: ['admin', 'checker', 'central_admin', 'approver'] },
-  // '/work-orders' (ใบงาน เดิม) hidden from nav — superseded by Simple Work
-  // Order above. Route still resolves by typing the URL directly.
-  { path: '/parts',        icon: Package,          label: 'อะไหล่',         roles: null },
   { path: '/deductions',   icon: BadgeDollarSign,  label: 'หักเงิน',        roles: ['admin', 'central_admin', 'approver'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin'] },
