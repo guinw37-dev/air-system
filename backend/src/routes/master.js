@@ -378,19 +378,17 @@ router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), as
 router.get('/units/:id/timeline', authMiddleware, async (req, res) => {
   const uid = req.params.id;
   try {
-    const [wos, repairs, parts] = await Promise.all([
+    const [wos, repairs] = await Promise.all([
       req.db(`
         SELECT wo.id, wo.order_no, wo.type, wo.status,
                COALESCE(wo.approved_at, wo.completed_at, wo.created_at) AS date
         FROM work_order_units wou JOIN work_orders wo ON wou.work_order_id = wo.id
         WHERE wou.unit_id = $1`, [uid]),
       req.db(`SELECT id, problem, status, created_at AS date FROM repair_logs WHERE unit_id = $1`, [uid]),
-      req.db(`SELECT id, part_name, qty, requisitioned_at AS date FROM part_requisitions WHERE unit_id = $1`, [uid]),
     ]);
     const events = [
       ...wos.rows.map((r) => ({ kind: 'work_order', date: r.date, ...r })),
       ...repairs.rows.map((r) => ({ kind: 'repair', date: r.date, ...r })),
-      ...parts.rows.map((r) => ({ kind: 'part', date: r.date, ...r })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
     res.json(events);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -414,12 +412,9 @@ router.get('/units/:id/stats', authMiddleware, async (req, res) => {
       WHERE wou.unit_id = $1 AND wo.status = 'approved'
         AND iv.value_after ~ '^[0-9.]+$' AND ti.value_type IN ('number','before_after')
       ORDER BY date`, [uid]);
-    const parts = await req.db(`
-      SELECT part_name, SUM(qty)::int AS total_qty FROM part_requisitions
-      WHERE unit_id = $1 GROUP BY part_name ORDER BY total_qty DESC`, [uid]);
     const byType = {};
     for (const r of counts.rows) byType[r.type] = r.n;
-    res.json({ counts: byType, trend: trend.rows, parts: parts.rows });
+    res.json({ counts: byType, trend: trend.rows, parts: [] });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

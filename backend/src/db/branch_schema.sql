@@ -190,18 +190,6 @@ CREATE TABLE IF NOT EXISTS sign_tokens (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── เบิกอะไหล่ ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS part_requisitions (
-  id               SERIAL PRIMARY KEY,
-  work_order_id    INT REFERENCES work_orders(id),
-  unit_id          INT REFERENCES units(id),
-  requisitioned_by INT,
-  part_name        VARCHAR(200) NOT NULL,
-  qty              INT DEFAULT 1,
-  note             TEXT,
-  requisitioned_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- ── แจ้งซ่อม ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS repair_logs (
   id                 SERIAL PRIMARY KEY,
@@ -219,21 +207,6 @@ CREATE TABLE IF NOT EXISTS repair_logs (
   petty_cash         DECIMAL(10,2),
   created_at         TIMESTAMPTZ DEFAULT NOW(),
   updated_at         TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ── แผน PM รายปี ────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS pm_plan (
-  id             SERIAL PRIMARY KEY,
-  unit_id        INT NOT NULL REFERENCES units(id),
-  planned_type   VARCHAR(10) NOT NULL CHECK (planned_type IN ('major','minor','fan')),
-  scheduled_date DATE NOT NULL,
-  actual_date    DATE,
-  work_order_id  INT REFERENCES work_orders(id),
-  status         VARCHAR(20) NOT NULL DEFAULT 'pending'
-                   CHECK (status IN ('pending','done','overdue','skipped')),
-  note           TEXT,
-  created_at     TIMESTAMPTZ DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ── หักเงินค่าบริการรายเดือน ────────────────────────────────
@@ -258,10 +231,7 @@ CREATE INDEX IF NOT EXISTS idx_wou_order        ON work_order_units(work_order_i
 CREATE INDEX IF NOT EXISTS idx_wou_unit         ON work_order_units(unit_id);
 CREATE INDEX IF NOT EXISTS idx_iv_wou           ON inspection_values(work_order_unit_id);
 CREATE INDEX IF NOT EXISTS idx_photos_wou       ON work_order_photos(work_order_unit_id);
-CREATE INDEX IF NOT EXISTS idx_partreq_wo       ON part_requisitions(work_order_id);
 CREATE INDEX IF NOT EXISTS idx_repair_unit      ON repair_logs(unit_id);
-CREATE INDEX IF NOT EXISTS idx_pmplan_unit      ON pm_plan(unit_id);
-CREATE INDEX IF NOT EXISTS idx_pmplan_scheduled ON pm_plan(scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_deduction_month  ON deduction_notes(month);
 CREATE INDEX IF NOT EXISTS idx_wo_history_wo    ON work_order_status_history(work_order_id);
 CREATE INDEX IF NOT EXISTS idx_sign_tokens_wo   ON sign_tokens(work_order_id);

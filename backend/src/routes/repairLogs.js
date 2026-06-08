@@ -115,13 +115,6 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
         await req.db('UPDATE units SET next_pm_date=$1, pm_cycle_pos=$2, updated_at=NOW() WHERE id=$3',
           [nextDate, newPos, log.unit_id]);
-
-        await req.db(`
-          INSERT INTO pm_plan (unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
-          SELECT u.id, $1, $2, NOW(), NULL, 'done'
-          FROM units u WHERE u.id = $3
-          ON CONFLICT DO NOTHING
-        `, [cleaning_type, nextDate, log.unit_id]);
       }
     }
 

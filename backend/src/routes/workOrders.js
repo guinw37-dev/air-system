@@ -450,11 +450,6 @@ async function advancePmCycle(client, woId, type) {
       'UPDATE units SET last_major_clean_date=$1, next_pm_date=$2, pm_cycle_pos=$3, updated_at=NOW() WHERE id=$4',
       [lastMajor, next, pos, u.id]
     );
-    await client.query(`
-      INSERT INTO pm_plan (unit_id, planned_type, scheduled_date, actual_date, work_order_id, status)
-      VALUES ($1, $2, $3, NOW(), $4, 'done')
-      ON CONFLICT DO NOTHING
-    `, [u.id, type, next, woId]);
   }
 }
 
