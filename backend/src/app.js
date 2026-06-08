@@ -45,11 +45,8 @@ app.use('/api/simple-wo',   require('./routes/simpleWorkOrders'));
 // /api/work-orders/:id/photos (audit H-1)
 app.use('/api/repair-logs', require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
-app.use('/api/stats',       require('./routes/stats'));
-app.use('/api/pm',          require('./routes/pm'));
 app.use('/api/import',      require('./routes/import'));
 app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/parts',       require('./routes/parts'));
 app.use('/api/deductions',  require('./routes/deductions'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 

@@ -5,7 +5,6 @@ import { useTenantStore } from './store/tenant'
 import { initOfflineSync } from './lib/offline/sync'
 import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
 import WorkOrderList from './pages/WorkOrderList'
 import WorkOrderCreate from './pages/WorkOrderCreate'
 import WorkOrderDetail from './pages/WorkOrderDetail'
@@ -13,14 +12,9 @@ import WorkOrderUnitDetail from './pages/WorkOrderUnitDetail'
 import RepairLogs from './pages/RepairLogs'
 import MasterData from './pages/MasterData'
 import Users from './pages/Users'
-import PMSchedule from './pages/PMSchedule'
-import PMPlan from './pages/PMPlan'
-import CleaningStatus from './pages/CleaningStatus'
-import CleaningDashboard from './pages/CleaningDashboard'
 import ImportPage from './pages/ImportPage'
 import SignPage from './pages/SignPage'
 import Notifications from './pages/Notifications'
-import Parts from './pages/Parts'
 import UnitDetail from './pages/UnitDetail'
 import Deductions from './pages/Deductions'
 import SimpleWoList from './pages/SimpleWoList'
@@ -46,7 +40,7 @@ function Home() {
   const token = useAuthStore((s) => s.token)
   const isBranch = useTenantStore((s) => s.isBranch)
   if (!isBranch && !token) return <Landing />
-  return <RequireAuth><Dashboard /></RequireAuth>
+  return <Navigate to="/simple-wo" replace />
 }
 
 export default function App() {
@@ -89,10 +83,6 @@ export default function App() {
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
-        <Route path="/pm" element={<RequireAuth><PMSchedule /></RequireAuth>} />
-        <Route path="/pm-plan" element={<RequireAuth><PMPlan /></RequireAuth>} />
-        <Route path="/cleaning-status" element={<RequireAuth><CleaningStatus /></RequireAuth>} />
-        <Route path="/cleaning-dashboard" element={<RequireAuth><CleaningDashboard /></RequireAuth>} />
         <Route path="/import" element={
           <RequireAuth><RequireRole roles={['admin', 'central_admin']}><ImportPage /></RequireRole></RequireAuth>
         } />
@@ -105,7 +95,6 @@ export default function App() {
         <Route path="/branches" element={
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Branches /></RequireRole></RequireAuth>
         } />
-        <Route path="/parts" element={<RequireAuth><Parts /></RequireAuth>} />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
         <Route path="/deductions" element={
           <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver', 'checker']}><Deductions /></RequireRole></RequireAuth>
