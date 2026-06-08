@@ -20,11 +20,21 @@ export default function Landing() {
   }, [])
 
   const enter = (slug) => {
-    // Universal (works without per-branch DNS): re-enter the SPA scoped to slug.
-    const url = new URL(window.location.href)
-    url.searchParams.set('branch', slug)
-    url.pathname = '/login'
-    window.location.href = url.toString()
+    const host = window.location.hostname
+    const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(host)
+    // On a real apex domain (e.g. tw-carework.online) go to the branch's own
+    // subdomain (pts1.tw-carework.online). Otherwise (localhost / IP / the
+    // multi-label *.sslip.io dev host) fall back to ?branch= which the SPA
+    // resolves without per-branch DNS.
+    const isRealApex = !isIp && host !== 'localhost' && host.split('.').length === 2
+    if (isRealApex) {
+      window.location.href = `${window.location.protocol}//${slug}.${host}/login`
+    } else {
+      const url = new URL(window.location.href)
+      url.searchParams.set('branch', slug)
+      url.pathname = '/login'
+      window.location.href = url.toString()
+    }
   }
 
   return (
