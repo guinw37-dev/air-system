@@ -1,15 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Shield } from 'lucide-react'
+import { Plus, Pencil, Building2, ShieldCheck } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
+import { useTenantStore } from '../store/tenant'
 
-const ROLES = ['admin', 'checker', 'central_admin', 'approver', 'technician']
+// Role sets mirror the backend (master.js): branch-local users vs apex super-admins.
+const BRANCH_ROLES = ['admin', 'checker', 'central_admin', 'approver', 'technician', 'building', 'supervisor']
+const SUPER_ROLES  = ['super_admin', 'field_tech', 'admin']
 const ROLE_COLOR = {
   admin:         'badge-danger',
   checker:       'badge-primary',
   central_admin: 'bg-primary-soft text-primary',
   approver:      'badge-warn',
   technician:    'badge-gray',
+  building:      'badge-gray',
+  supervisor:    'badge-primary',
+  super_admin:   'badge-danger',
+  field_tech:    'badge-gray',
 }
 const ROLE_TH = {
   admin:         'ผู้ดูแลระบบ',
@@ -17,6 +24,10 @@ const ROLE_TH = {
   central_admin: 'แอดมินกลาง',
   approver:      'ผู้อนุมัติ',
   technician:    'ช่าง',
+  building:      'ช่างอาคาร',
+  supervisor:    'หัวหน้าช่าง',
+  super_admin:   'ผู้ดูแลสูงสุด',
+  field_tech:    'ช่างภาคสนาม (TW)',
 }
 
 function Modal({ title, onClose, children }) {
@@ -35,16 +46,19 @@ function Modal({ title, onClose, children }) {
 }
 
 export default function Users() {
+  const tenant = useTenantStore()
+  const ROLES = tenant.isBranch ? BRANCH_ROLES : SUPER_ROLES
+  const defaultRole = tenant.isBranch ? 'technician' : 'super_admin'
   const [users, setUsers] = useState([])
   const [modal, setModal] = useState(null)
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: 'technician', phone: '', active: true })
+  const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
   const [saving, setSaving] = useState(false)
 
   const load = () => api.get('/master/users').then((r) => setUsers(r.data))
   useEffect(() => { load() }, [])
 
   const openNew = () => {
-    setForm({ name: '', username: '', password: '', role: 'technician', phone: '', active: true })
+    setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
     setModal('new')
   }
 
@@ -70,7 +84,12 @@ export default function Users() {
   return (
     <Layout title="จัดการผู้ใช้งาน">
       <div className="p-6 flex flex-col gap-4">
-        <div>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg bg-primary-soft text-primary">
+            {tenant.isBranch
+              ? <><Building2 className="h-4 w-4" /> ผู้ใช้งานของสาขา: {tenant.name}</>
+              : <><ShieldCheck className="h-4 w-4" /> ผู้ดูแลกลาง (Super Admin)</>}
+          </div>
           <button onClick={openNew} className="btn-primary flex items-center gap-2">
             <Plus className="h-4 w-4" /> เพิ่มผู้ใช้งาน
           </button>
