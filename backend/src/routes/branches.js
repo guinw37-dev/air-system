@@ -84,7 +84,7 @@ router.post('/', authMiddleware, superOnly, async (req, res) => {
 // POST /api/branches/:slug/adopt-user { userId } — move a public.users account
 // into a branch's own users table (so it becomes a branch-local user, not a
 // global super-admin) and remove it from public. super-admin only.
-const BRANCH_ROLES = ['technician', 'checker', 'central_admin', 'approver', 'admin', 'building', 'supervisor'];
+const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician'];
 router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => {
   const { userId } = req.body || {};
   if (!userId) return res.status(400).json({ error: 'userId required' });

@@ -324,9 +324,11 @@ router.get('/photo-points', authMiddleware, async (req, res) => {
 // ── Users (per-branch on a subdomain via req.db → <schema>.users; super-admins
 // on apex via public.users). A branch's users never interconnect with another's.
 const userDb = (req) => (req.branch ? req.db : ((sql, p) => pool.query(sql, p)));
-// Branch users get the operational roles; apex (super-admin) gets the global ones.
-const BRANCH_ROLES = ['technician', 'central_admin', 'approver', 'admin', 'checker', 'building', 'supervisor'];
-const SUPER_ROLES  = ['super_admin', 'field_tech', 'admin'];
+// Role model: Super Dev (super_admin, apex only) vs the 4 branch roles
+// (Admin Dep./Approve Dev./Checker Dev./Technician). On apex you can only mint
+// Super Devs; branch roles are created inside the branch (เข้าจัดการ → ผู้ใช้งาน).
+const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician'];
+const SUPER_ROLES  = ['super_admin'];
 const validRolesFor = (req) => (req.branch ? BRANCH_ROLES : SUPER_ROLES);
 
 router.get('/users', authMiddleware, requireRole('admin', 'central_admin', 'super_admin'), async (req, res) => {

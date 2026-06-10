@@ -17,8 +17,9 @@ async function notifyUsers(client, userIds, { workOrderId, type, message, branch
   }
 }
 
-async function userIdsByRole(client, role) {
-  const { rows } = await client.query('SELECT id FROM users WHERE role = $1 AND active = true', [role]);
+async function userIdsByRole(client, roles) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const { rows } = await client.query('SELECT id FROM users WHERE role = ANY($1) AND active = true', [list]);
   return rows.map((r) => r.id);
 }
 
@@ -33,7 +34,7 @@ async function notifyTransition(client, wo, to, { reason, branchSlug } = {}) {
   const orderNo = wo.order_no || `#${wo.id}`;
   const base = { workOrderId: wo.id, branchSlug };
   if (to === 'pending_admin') {
-    await notifyUsers(client, await userIdsByRole(client, 'central_admin'),
+    await notifyUsers(client, await userIdsByRole(client, ['admin', 'central_admin']),
       { ...base, type: 'pending_admin', message: `ใบงาน ${orderNo} รอตรวจ (Admin)` });
   } else if (to === 'pending_approval') {
     await notifyUsers(client, await userIdsByRole(client, 'approver'),

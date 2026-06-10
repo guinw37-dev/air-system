@@ -4,30 +4,39 @@ import Layout from '../components/Layout'
 import api from '../api/client'
 import { useTenantStore } from '../store/tenant'
 
-// Role sets mirror the backend (master.js): branch-local users vs apex super-admins.
-const BRANCH_ROLES = ['admin', 'checker', 'central_admin', 'approver', 'technician', 'building', 'supervisor']
-const SUPER_ROLES  = ['super_admin', 'field_tech', 'admin']
+// Role model (mirrors backend master.js):
+//  Super Dev   = super_admin — apex/public, cross-branch, owner only.
+//  Admin Dep.  = admin       — branch-local, full within the branch.
+//  Approve Dev.= approver    — branch, approves work orders.
+//  Checker Dev.= checker      — branch, supervisor / inspection.
+//  Technician  = technician   — branch, field tech.
+// On apex (super context) you may only create Super Devs; branch roles are
+// created INSIDE that branch (เข้าจัดการ → ผู้ใช้งาน).
+const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician']
+const SUPER_ROLES  = ['super_admin']
 const ROLE_COLOR = {
-  admin:         'badge-danger',
-  checker:       'badge-primary',
-  central_admin: 'bg-primary-soft text-primary',
+  super_admin:   'badge-danger',
+  admin:         'badge-primary',
   approver:      'badge-warn',
+  checker:       'bg-primary-soft text-primary',
   technician:    'badge-gray',
+  // legacy (display only)
+  central_admin: 'bg-primary-soft text-primary',
   building:      'badge-gray',
   supervisor:    'badge-primary',
-  super_admin:   'badge-danger',
   field_tech:    'badge-gray',
 }
 const ROLE_TH = {
-  admin:         'ผู้ดูแลระบบ',
-  checker:       'Checker / ผู้ตรวจสอบ',
-  central_admin: 'แอดมินกลาง',
-  approver:      'ผู้อนุมัติ',
-  technician:    'ช่าง',
-  building:      'ช่างอาคาร',
-  supervisor:    'หัวหน้าช่าง',
-  super_admin:   'ผู้ดูแลสูงสุด',
-  field_tech:    'ช่างภาคสนาม (TW)',
+  super_admin:   'Super Dev — ผู้ดูแลระบบ',
+  admin:         'Admin Dep. — ผู้จัดการสาขา',
+  approver:      'Approve Dev. — ผู้อนุมัติงาน',
+  checker:       'Checker Dev. — ผู้ตรวจสอบ',
+  technician:    'Technician — ช่าง',
+  // legacy (display only)
+  central_admin: 'แอดมินกลาง (เก่า)',
+  building:      'ช่างอาคาร (เก่า)',
+  supervisor:    'หัวหน้าช่าง (เก่า)',
+  field_tech:    'ช่างภาคสนาม (เก่า)',
 }
 
 function Modal({ title, onClose, children }) {
