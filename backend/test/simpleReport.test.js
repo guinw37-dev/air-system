@@ -36,6 +36,16 @@ html = buildSimpleReportHtml(baseData({ wo: { work_type: 'minor' }, gridRows: [{
 assert(html.includes('OLD-9'), 'minor back-compat name → เลขเครื่อง');
 ok('grid minor back-compat: legacy {name} row still renders');
 
+// ── Major: header สถานที่ + ประเภทแอร์, AC block ไม่มี detail/location ───────
+html = buildSimpleReportHtml(baseData({
+  wo: { work_type: 'major', location: 'คลินิกบางพระ', ac_type: 'AHU' },
+  unit: { building_name: 'A', floor_name: '2', room_name: 'ห้อง X', asset_code: 'AC-9' },
+}));
+assert(html.includes('สถานที่') && html.includes('คลินิกบางพระ'), 'major header สถานที่');
+assert(html.includes('ประเภทเครื่องปรับอากาศ') && html.includes('AHU'), 'major header ประเภทแอร์');
+assert(!html.includes('ตำแหน่งที่ติดตั้ง'), 'major AC block drops duplicate ตำแหน่งที่ติดตั้ง');
+ok('major report: สถานที่ + ประเภทแอร์ in header, no duplicate AC fields');
+
 // ── Grid: พัดลม ─────────────────────────────────────────────────
 html = buildSimpleReportHtml(baseData({
   wo: { work_type: 'fan' },

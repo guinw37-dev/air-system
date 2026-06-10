@@ -144,14 +144,14 @@ export default function SimpleWoDetail() {
           <InfoRow label="ช่าง" value={wo.tech_name} />
           <InfoRow label="วันที่" value={dateVal ? dayjs(dateVal).format('DD/MM/YYYY') : '-'} />
           <InfoRow label="ลูกค้า" value={wo.client_name} />
-          {isGrid && <InfoRow label="สถานที่" value={wo.location || wo.client_name} />}
+          <InfoRow label="สถานที่" value={wo.location || wo.client_name} />
           <InfoRow label="อาคาร" value={wo.building} />
           <InfoRow label="ชั้น" value={wo.floor} />
-          {!isGrid && <InfoRow label="ห้อง" value={wo.room} />}
+          {!isGrid && <InfoRow label="ห้อง/แผนก" value={wo.room} />}
           {!isGrid && <InfoRow label="เลขเครื่อง" value={wo.asset_code} />}
           <InfoRow label="ประเภทงาน" value={WORK_TYPE_LABEL[wo.work_type] || wo.work_type} />
+          {wo.work_type !== 'fan' && <InfoRow label="ประเภทแอร์" value={wo.ac_type || '-'} />}
           {wo.work_type === 'major' && <InfoRow label="ระบบไฟ" value={wo.power_system ? `${wo.power_system}V` : '-'} />}
-          {wo.work_type === 'minor' && <InfoRow label="ประเภทแอร์" value={wo.ac_type || '-'} />}
           <InfoRow label="เวลาเริ่ม" value={wo.start_time} />
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
         </div>
@@ -203,8 +203,7 @@ export default function SimpleWoDetail() {
         {!isGrid && (
         <div className="card">
           <h2 className="section-header mb-3">รายละเอียดเครื่องปรับอากาศ</h2>
-          <InfoRow label="รายละเอียดเครื่อง" value={ac.detail} />
-          <InfoRow label="ตำแหน่งที่ติดตั้ง" value={ac.location} />
+          {/* รายละเอียดเครื่อง/ตำแหน่งที่ติดตั้ง = เลขเครื่อง/ห้อง อยู่ใน ข้อมูลทั่วไป แล้ว */}
           <InfoRow label="ชนิดเครื่อง" value={AC_KIND_LABEL[ac.kind] || '-'} />
           <InfoRow label="ยี่ห้อ" value={ac.brand} />
           <InfoRow label="รุ่น" value={ac.model} />

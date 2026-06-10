@@ -419,14 +419,8 @@ export default function SimpleWoForm() {
             </div>
           </div>
 
-          {/* major → ระบบไฟ ; ล้างย่อย → ประเภทเครื่องปรับอากาศ ; พัดลม → ไม่มี */}
-          {header.work_type === 'major' && (
-            <div>
-              <label className="label">ระบบไฟ</label>
-              <PowerToggle value={header.power_system} onChange={(v) => setHeader({ ...header, power_system: v })} />
-            </div>
-          )}
-          {header.work_type === 'minor' && (
+          {/* ประเภทเครื่องปรับอากาศ — ล้างใหญ่ + ล้างย่อย (พัดลมไม่มี) */}
+          {header.work_type !== 'fan' && (
             <div>
               <label className="label">ประเภทเครื่องปรับอากาศ</label>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -443,6 +437,13 @@ export default function SimpleWoForm() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+          {/* ระบบไฟ — major only (ใช้ใน checklist) */}
+          {header.work_type === 'major' && (
+            <div>
+              <label className="label">ระบบไฟ</label>
+              <PowerToggle value={header.power_system} onChange={(v) => setHeader({ ...header, power_system: v })} />
             </div>
           )}
         </div>
@@ -462,9 +463,8 @@ export default function SimpleWoForm() {
         {!isGrid && (
         <div className="card flex flex-col gap-3">
           <h2 className="section-header">รายละเอียดเครื่องปรับอากาศ</h2>
+          {/* รายละเอียดเครื่อง (=เลขเครื่อง) + ตำแหน่งที่ติดตั้ง (=ห้อง/แผนก) ตัดออก — กรอกใน ข้อมูลทั่วไป แล้ว */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Text label="รายละเอียดเครื่อง" value={acInfo.detail} onChange={(v) => setAc({ detail: v })} />
-            <Text label="ตำแหน่งที่ติดตั้ง" value={acInfo.location} onChange={(v) => setAc({ location: v })} />
             <Text label="ยี่ห้อ" value={acInfo.brand} onChange={(v) => setAc({ brand: v })} />
             <Text label="รุ่น" value={acInfo.model} onChange={(v) => setAc({ model: v })} />
             <div>
