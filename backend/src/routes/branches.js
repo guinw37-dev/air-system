@@ -17,7 +17,8 @@ const superOnly = requireRole('super_admin', 'admin');
 router.get('/public', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT slug, name FROM clients WHERE active = true AND slug IS NOT NULL AND schema_name IS NOT NULL ORDER BY name`);
+      `SELECT slug, subdomain, name, card_image FROM clients
+       WHERE active = true AND slug IS NOT NULL AND schema_name IS NOT NULL ORDER BY name`);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -26,8 +27,19 @@ router.get('/public', async (req, res) => {
 router.get('/', authMiddleware, superOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, code, name, slug, subdomain, schema_name, active, created_at FROM clients ORDER BY code');
+      'SELECT id, code, name, slug, subdomain, schema_name, card_image, active, created_at FROM clients ORDER BY code');
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/branches/:id/qr?url=<branchUrl> — QR code (data URI) for direct entry.
+router.get('/:id/qr', authMiddleware, superOnly, async (req, res) => {
+  const QRCode = require('qrcode');
+  const url = req.query.url;
+  if (!url || !/^https?:\/\/[^\s]+$/.test(String(url))) return res.status(400).json({ error: 'url ไม่ถูกต้อง' });
+  try {
+    const qr = await QRCode.toDataURL(String(url), { width: 320, margin: 1 });
+    res.json({ qr });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -100,15 +112,29 @@ router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PATCH /api/branches/:id — activate/deactivate a branch (registry only)
+// PATCH /api/branches/:id — edit name/code/subdomain/card image, or toggle
+// active. slug + schema_name stay fixed (changing them breaks the schema mapping).
 router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
-  const { active } = req.body || {};
+  const { name, code, subdomain, card_image, active } = req.body || {};
+  let sub = subdomain;
+  if (sub != null && sub !== '' && !/^[a-z0-9-]{1,63}$/.test(String(sub))) {
+    return res.status(400).json({ error: 'subdomain ต้องเป็น a-z 0-9 - เท่านั้น' });
+  }
   try {
     const { rows } = await pool.query(
-      'UPDATE clients SET active=$1 WHERE id=$2 RETURNING id, code, name, slug, active',
-      [active !== false, req.params.id]);
+      `UPDATE clients SET
+         name       = COALESCE($1, name),
+         code       = COALESCE($2, code),
+         subdomain  = COALESCE($3, subdomain),
+         card_image = COALESCE($4, card_image),
+         active     = COALESCE($5, active)
+       WHERE id = $6
+       RETURNING id, code, name, slug, subdomain, schema_name, card_image, active`,
+      [name ?? null, code ?? null, sub ?? null, card_image ?? null,
+       typeof active === 'boolean' ? active : null, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบสาขา' });
     invalidateBranchCache(rows[0].slug);
+    invalidateBranchCache(rows[0].subdomain);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
