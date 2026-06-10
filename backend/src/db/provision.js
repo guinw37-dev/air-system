@@ -51,11 +51,14 @@ async function provisionBranchSchema(schemaName) {
   try {
     await c.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
     await c.query(`SET search_path TO "${schema}", public`);
+    // simple_work_orders: columns added after the table first shipped — ADD them
+    // BEFORE running BRANCH_SQL, because BRANCH_SQL's CREATE OR REPLACE VIEW
+    // vw_simple_wo_minor references s.location/s.ac_type (would fail if absent).
+    // ALTER TABLE IF EXISTS = no-op on a brand-new schema (the CREATE TABLE in
+    // BRANCH_SQL then ships the columns); adds them on an existing table.
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
     await c.query(BRANCH_SQL);
-    // simple_work_orders: columns added after the table first shipped (CREATE
-    // TABLE IF NOT EXISTS won't add them to an existing table).
-    await c.query(`ALTER TABLE simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
-    await c.query(`ALTER TABLE simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
     // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
     // TABLE IF NOT EXISTS above won't alter an already-present users table).
     await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
