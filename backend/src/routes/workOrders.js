@@ -366,7 +366,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
       [req.params.id]
     );
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'pending_admin', changedBy: req.user.id });
-    await notifyTransition(client, wo, 'pending_admin');
+    await notifyTransition(client, wo, 'pending_admin', { branchSlug: req.branch?.slug });
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -389,7 +389,7 @@ router.post('/:id/admin-approve', authMiddleware, requireRole('checker'), async 
       [req.params.id]
     );
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'pending_approval', changedBy: req.user.id });
-    await notifyTransition(client, wo, 'pending_approval');
+    await notifyTransition(client, wo, 'pending_approval', { branchSlug: req.branch?.slug });
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -414,7 +414,7 @@ router.post('/:id/final-approve', authMiddleware, requireRole('approver'), async
     );
     await advancePmCycle(client, req.params.id, wo.type);
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'approved', changedBy: req.user.id });
-    await notifyTransition(client, wo, 'approved');
+    await notifyTransition(client, wo, 'approved', { branchSlug: req.branch?.slug });
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
@@ -468,7 +468,7 @@ router.post('/:id/reject', authMiddleware, requireRole('checker', 'approver'), a
       [reason.trim(), req.params.id]
     );
     await logTransition(client, { workOrderId: req.params.id, from: wo.status, to: 'rejected', changedBy: req.user.id, reason: reason.trim() });
-    await notifyTransition(client, wo, 'rejected', { reason: reason.trim() });
+    await notifyTransition(client, wo, 'rejected', { reason: reason.trim(), branchSlug: req.branch?.slug });
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {

@@ -329,7 +329,7 @@ const BRANCH_ROLES = ['technician', 'central_admin', 'approver', 'admin', 'check
 const SUPER_ROLES  = ['super_admin', 'field_tech', 'admin'];
 const validRolesFor = (req) => (req.branch ? BRANCH_ROLES : SUPER_ROLES);
 
-router.get('/users', authMiddleware, async (req, res) => {
+router.get('/users', authMiddleware, requireRole('admin', 'central_admin', 'super_admin'), async (req, res) => {
   const { rows } = await userDb(req)(
     'SELECT id, name, username, role, phone, active FROM users ORDER BY name');
   res.json(rows);

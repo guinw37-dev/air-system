@@ -24,18 +24,9 @@ export default function Layout({ children, title, back, actions }) {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [rejectedCount, setRejectedCount] = useState(0)
 
-  const isTechAdmin = ['admin', 'technician', 'checker'].includes(user?.role)
   const [unreadCount, setUnreadCount] = useState(0)
   const notifPollRef = useRef(null)
-
-  useEffect(() => {
-    if (!isTechAdmin) return
-    api.get('/stats/rejected-count')
-      .then((r) => setRejectedCount(r.data.count))
-      .catch(() => {})
-  }, [isTechAdmin, location.pathname])
 
   // Poll unread notification count every 30s
   useEffect(() => {
@@ -129,17 +120,6 @@ export default function Layout({ children, title, back, actions }) {
               {visibleNav.map(({ path, icon: Icon, label }) => (
                 <NavLink key={path} path={path} icon={Icon} label={label} onClick={() => setSidebarOpen(false)} />
               ))}
-
-              {/* Shortcut: งานตีกลับ — admin/technician only */}
-              {isTechAdmin && (
-                <NavLink
-                  path="/work-orders?status=rejected"
-                  icon={AlertCircle}
-                  label="งานตีกลับ"
-                  badge={rejectedCount}
-                  onClick={() => setSidebarOpen(false)}
-                />
-              )}
             </nav>
             <div className="px-5 py-4 border-t border-white/10">
               <p className="text-xs text-blue-300">{user?.name}</p>

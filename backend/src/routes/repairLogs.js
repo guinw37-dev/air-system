@@ -96,7 +96,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       SET cause         = COALESCE($1, cause),
           solution      = COALESCE($2, solution),
           status        = COALESCE($3, status),
-          cleaning_type = $4,
+          cleaning_type = COALESCE($4, cleaning_type),
           resolved_at   = CASE WHEN $3 = 'done' THEN NOW() ELSE resolved_at END,
           updated_at    = NOW()
       WHERE id = $5

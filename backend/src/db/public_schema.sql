@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS photo_point_templates (
 -- a branch schema, so no cross-schema FK).
 CREATE TABLE IF NOT EXISTS notifications (
   id            SERIAL PRIMARY KEY,
-  user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id       INT NOT NULL,                 -- per-branch user id (no cross-schema FK)
   work_order_id INT,
   branch_slug   VARCHAR(63),
   type          VARCHAR(30) NOT NULL,
