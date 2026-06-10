@@ -38,6 +38,11 @@ async function migratePublic(client) {
     await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
       'super_admin','admin','approver','checker','technician'))`);
+    // Legacy public.simple_work_orders (pre-schema-per-tenant rows still edited on
+    // apex) needs the same new columns or saving an apex WO 500s with
+    // 'column "location" does not exist'. IF EXISTS → skip if the table is absent.
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
   } finally {
     if (!client) c.release();
   }
