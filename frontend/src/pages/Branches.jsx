@@ -43,6 +43,14 @@ export default function Branches() {
   const manage = (b) => { tenant.switchBranch(b.slug, b.name); navigate('/') }
   const exitBranch = () => { tenant.switchBranch(null) }
 
+  // Edit display name (slug/schema are fixed — not editable).
+  const rename = async (b) => {
+    const name = window.prompt('แก้ไขชื่อสาขา', b.name)
+    if (!name || name.trim() === b.name) return
+    try { await api.patch(`/branches/${b.id}`, { name: name.trim() }); load() }
+    catch (err) { setMsg({ ok: false, text: err.response?.data?.error || 'แก้ไม่สำเร็จ' }) }
+  }
+
   return (
     <Layout>
       <div className="p-4 flex flex-col gap-4 max-w-3xl">
@@ -83,6 +91,7 @@ export default function Branches() {
                   {b.slug && b.schema_name && (
                     <button onClick={() => manage(b)} className="text-sm text-primary flex items-center gap-1"><LogIn className="h-4 w-4" /> เข้าจัดการ</button>
                   )}
+                  <button onClick={() => rename(b)} className="text-xs text-ink-muted hover:text-primary">แก้ไขชื่อ</button>
                   <button onClick={() => toggle(b)} className="text-xs text-ink-muted">{b.active ? 'ปิด' : 'เปิด'}</button>
                 </div>
               </div>

@@ -100,13 +100,18 @@ router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PATCH /api/branches/:id — activate/deactivate a branch (registry only)
+// PATCH /api/branches/:id — edit name/code or activate/deactivate (registry).
+// slug/schema_name are intentionally NOT editable (would break schema mapping).
 router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
-  const { active } = req.body || {};
+  const { name, code, active } = req.body || {};
   try {
     const { rows } = await pool.query(
-      'UPDATE clients SET active=$1 WHERE id=$2 RETURNING id, code, name, slug, active',
-      [active !== false, req.params.id]);
+      `UPDATE clients SET
+         name   = COALESCE($1, name),
+         code   = COALESCE($2, code),
+         active = COALESCE($3, active)
+       WHERE id = $4 RETURNING id, code, name, slug, schema_name, active`,
+      [name ?? null, code ?? null, typeof active === 'boolean' ? active : null, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบสาขา' });
     invalidateBranchCache(rows[0].slug);
     res.json(rows[0]);
