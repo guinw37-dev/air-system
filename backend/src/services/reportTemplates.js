@@ -1104,8 +1104,6 @@ function acDetailBlock(ac, wo, unit) {
   <div style="border:1px solid #e3eaec;border-radius:6px;padding:7px 10px">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px">
       <div>
-        ${line('รายละเอียดเครื่อง', a.detail)}
-        ${line('ตำแหน่งที่ติดตั้ง', a.location)}
         <div style="padding:2px 0"><span style="color:#5a6e73">ชนิดเครื่อง</span> &nbsp; ${cb(a.kind === 'water')}แอร์น้ำ ${cb(a.kind === 'refrigerant')}แอร์น้ำยา ${cb(a.kind === 'other')}อื่นๆ</div>
       </div>
       <div>
@@ -1257,13 +1255,15 @@ function simpleReportPages(data) {
   const meta = `
     <div class="uhead">
       <div class="row"><span class="k">ลูกค้า:</span><span class="v">${dash(wo.client_name)}</span></div>
+      <div class="row"><span class="k">สถานที่:</span><span class="v">${dash(wo.location || wo.client_name)}</span></div>
       <div class="row"><span class="k">อาคาร:</span><span class="v">${dash(u.building_name)}</span></div>
       <div class="row"><span class="k">ชั้น:</span><span class="v">${dash(u.floor_name)}</span></div>
-      <div class="row"><span class="k">ห้อง:</span><span class="v">${dash(u.room_name)}</span></div>
+      <div class="row"><span class="k">ห้อง/แผนก:</span><span class="v">${dash(u.room_name)}</span></div>
       <div class="row"><span class="k">เลขเครื่อง:</span><span class="v">${dash(u.asset_code)}</span></div>
       <div class="row"><span class="k">ช่าง:</span><span class="v">${dash(wo.tech_name)}</span></div>
       <div class="row"><span class="k">วันที่:</span><span class="v">${fmtDate(wo.work_date || wo.created_at)}</span></div>
       <div class="row"><span class="k">ประเภทงาน:</span><span class="v">${dash(u.equipment_type)}</span></div>
+      <div class="row"><span class="k">ประเภทเครื่องปรับอากาศ:</span><span class="v">${dash(wo.ac_type)}</span></div>
     </div>`;
 
   const inner = `<div class="major-c">
