@@ -10,7 +10,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 // Super-admin back-office for branches (สาขา). Each branch is fully isolated:
 // its own Postgres schema + its own users. Only global super-admins (apex) may
 // provision branches or seed their first admin.
-const superOnly = requireRole('super_admin', 'admin');
+const superOnly = requireRole('super_admin');
 
 // GET /api/branches/public — PUBLIC minimal list for the apex landing page (the
 // branch cards). Only name + slug of active, provisioned branches; no auth.

@@ -13,8 +13,9 @@
     "migrate:copy-simple-wo": "node src/db/migrate_copy_simple_wo.js",
     "migrate:assign-unmatched": "node src/db/migrate_assign_unmatched.js",
     "migrate:drop-legacy": "node src/db/migrate_drop_legacy_public.js",
+    "migrate:roles-cleanup": "node src/db/migrate_roles_cleanup.js",
     "add-branch": "node src/db/add_branch.js",
-    "test": "node test/schema.test.js && node test/woStateMachine.test.js && node test/simpleReport.test.js"
+    "test": "node test/schema.test.js && node test/woStateMachine.test.js && node test/simpleReport.test.js && node test/roles.test.js"
   },
   "keywords": [],
   "author": "",

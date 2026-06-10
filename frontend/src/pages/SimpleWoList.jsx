@@ -26,7 +26,7 @@ export default function SimpleWoList() {
 
   const role = user?.role
   const canSign = !!SLOT_LABEL[role]
-  const canBill = role === 'admin' || role === 'central_admin'
+  const canBill = role === 'admin' || role === 'super_admin'
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)

@@ -14,19 +14,19 @@ async function seed() {
   try {
     await client.query('BEGIN');
 
-    // ── Users (1 per role) ─────────────────────────────────
+    // ── Users (5-role model) ───────────────────────────────
+    // Apex/public.users — Super Dev is the owner; the rest are demo accounts in
+    // the valid role set. Legacy roles (central_admin/supervisor/building) retired.
     const passwordHash = await bcrypt.hash('admin1234', 10);
     await client.query(`
       INSERT INTO users (name, username, password_hash, role, phone)
       VALUES
-        ('Administrator',   'admin',   $1, 'admin',         ''),
-        ('Checker Admin',   'checker', $1, 'checker',       ''),
-        ('Central Admin',   'cadmin',  $1, 'central_admin', ''),
-        ('Approver',        'approver',$1, 'approver',      ''),
-        ('ช่างทดสอบ 1',     'tech1',     $1, 'technician',    ''),
-        ('ช่างทดสอบ 2',     'tech2',     $1, 'technician',    ''),
-        ('หัวหน้าช่าง',     'supervisor',$1, 'supervisor',    ''),
-        ('ช่างอาคาร',       'building',  $1, 'building',      '')
+        ('Super Dev',       'superadmin',$1, 'super_admin', ''),
+        ('Administrator',   'admin',   $1, 'admin',       ''),
+        ('Checker Admin',   'checker', $1, 'checker',     ''),
+        ('Approver',        'approver',$1, 'approver',    ''),
+        ('ช่างทดสอบ 1',     'tech1',     $1, 'technician',  ''),
+        ('ช่างทดสอบ 2',     'tech2',     $1, 'technician',  '')
       ON CONFLICT (username) DO NOTHING
     `, [passwordHash]);
 
@@ -146,7 +146,7 @@ async function seed() {
     const tpl = await client.query(`SELECT category, COUNT(*)::int n FROM inspection_template_items WHERE equipment_type='ac' GROUP BY category ORDER BY MIN(sort_order)`);
     const pp = await client.query(`SELECT equipment_type, work_type, COUNT(*)::int n FROM photo_point_templates GROUP BY 1,2 ORDER BY 1,2`);
     console.log('Seed success');
-    console.log('Users: admin / cadmin / approver / tech1 / tech2  (password: admin1234)');
+    console.log('Users: superadmin / admin / checker / approver / tech1 / tech2  (password: admin1234)');
     console.log('Clients: PTS1, PTS2 (+ main site each)');
     console.log('AC template by category:', tpl.rows.map(r => `${r.category}=${r.n}`).join(', '));
     console.log('Photo points:', pp.rows.map(r => `${r.equipment_type}/${r.work_type}=${r.n}`).join(', '));

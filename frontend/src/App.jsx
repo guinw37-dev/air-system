@@ -86,10 +86,10 @@ export default function App() {
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />
         <Route path="/import" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin']}><ImportPage /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin']}><ImportPage /></RequireRole></RequireAuth>
         } />
         <Route path="/master" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin']}><MasterData /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin']}><MasterData /></RequireRole></RequireAuth>
         } />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Users /></RequireRole></RequireAuth>
@@ -99,7 +99,7 @@ export default function App() {
         } />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
         <Route path="/deductions" element={
-          <RequireAuth><RequireRole roles={['admin', 'central_admin', 'approver', 'checker']}><Deductions /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'approver', 'checker']}><Deductions /></RequireRole></RequireAuth>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

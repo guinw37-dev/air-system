@@ -34,7 +34,7 @@ async function notifyTransition(client, wo, to, { reason, branchSlug } = {}) {
   const orderNo = wo.order_no || `#${wo.id}`;
   const base = { workOrderId: wo.id, branchSlug };
   if (to === 'pending_admin') {
-    await notifyUsers(client, await userIdsByRole(client, ['admin', 'central_admin']),
+    await notifyUsers(client, await userIdsByRole(client, ['admin']),
       { ...base, type: 'pending_admin', message: `ใบงาน ${orderNo} รอตรวจ (Admin)` });
   } else if (to === 'pending_approval') {
     await notifyUsers(client, await userIdsByRole(client, 'approver'),

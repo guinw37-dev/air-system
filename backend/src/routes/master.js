@@ -3,12 +3,13 @@ const router = express.Router();
 const pool = require('../db/pool');
 const bcrypt = require('bcryptjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { BRANCH_ROLES, SUPER_ROLES, rankOf } = require('../utils/roles');
 
 // Master data CRUD. Schema-per-tenant split:
 //   GLOBAL (public, on pool): clients (branch registry), users (super-admins),
 //     inspection_template_items, photo_point_templates.
 //   PER-BRANCH (req.db): sites → buildings → floors → rooms → units (+ history).
-const canEdit = requireRole('admin', 'central_admin', 'super_admin');
+const canEdit = requireRole('admin', 'super_admin');
 const canDelete = requireRole('admin', 'super_admin');
 const canRegistry = requireRole('admin', 'super_admin');
 
@@ -327,24 +328,53 @@ const userDb = (req) => (req.branch ? req.db : ((sql, p) => pool.query(sql, p)))
 // Role model: Super Dev (super_admin, apex only) vs the 4 branch roles
 // (Admin Dep./Approve Dev./Checker Dev./Technician). On apex you can only mint
 // Super Devs; branch roles are created inside the branch (เข้าจัดการ → ผู้ใช้งาน).
-const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician'];
-const SUPER_ROLES  = ['super_admin'];
 const validRolesFor = (req) => (req.branch ? BRANCH_ROLES : SUPER_ROLES);
 
-router.get('/users', authMiddleware, requireRole('admin', 'central_admin', 'super_admin'), async (req, res) => {
+// Verify the acting user's own password — required as a step-up before any
+// super_admin is created, edited, or deleted ("ฉันต้องอนุญาตอีกครั้ง").
+async function verifyActorPassword(req, password) {
+  if (!password) return false;
+  const { rows } = await userDb(req)('SELECT password_hash FROM users WHERE id=$1', [req.user.id]);
+  if (!rows.length) return false;
+  return bcrypt.compare(String(password), rows[0].password_hash);
+}
+
+// Hierarchy guard for a mutation: actor may only act on a role <= their own rank,
+// and may not assign a role above their own. Returns an error string or null.
+function hierarchyError(req, { assignRole, targetRole } = {}) {
+  const actor = rankOf(req.user.role);
+  if (assignRole != null && rankOf(assignRole) > actor) {
+    return 'ตั้ง role สูงกว่ายศตัวเองไม่ได้';
+  }
+  if (targetRole != null && rankOf(targetRole) > actor) {
+    return 'ยศต่ำกว่าแก้ไข/ลบผู้ใช้ที่ยศสูงกว่าไม่ได้';
+  }
+  return null;
+}
+
+router.get('/users', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
   const { rows } = await userDb(req)(
     'SELECT id, name, username, role, phone, active FROM users ORDER BY name');
   res.json(rows);
 });
 
 router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
-  const { name, username, password, role, phone } = req.body;
+  const { name, username, password, role, phone, confirm_password } = req.body;
   if (!name || !username || !password || !role) {
     return res.status(400).json({ error: 'name, username, password, role required' });
   }
   const valid = validRolesFor(req);
   if (!valid.includes(role)) {
     return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
+  }
+  const hErr = hierarchyError(req, { assignRole: role });
+  if (hErr) return res.status(403).json({ error: hErr });
+  // Step-up: creating a Super Dev requires the actor to re-enter their password.
+  if (role === 'super_admin') {
+    if (req.user.role !== 'super_admin') return res.status(403).json({ error: 'เฉพาะ Super Dev สร้าง Super Dev ได้' });
+    if (!(await verifyActorPassword(req, confirm_password))) {
+      return res.status(403).json({ error: 'ต้องยืนยันรหัสผ่าน Super Dev ของคุณก่อนสร้าง Super Dev' });
+    }
   }
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -356,13 +386,26 @@ router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async
 });
 
 router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
-  const { name, role, phone, active, password } = req.body;
+  const { name, role, phone, active, password, confirm_password } = req.body;
   const valid = validRolesFor(req);
   if (role && !valid.includes(role)) {
     return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
   }
   const db = userDb(req);
   try {
+    const { rows: cur } = await db('SELECT role FROM users WHERE id=$1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    const targetRole = cur[0].role;
+    // Hierarchy: can't edit a higher rank, and can't promote above own rank.
+    const hErr = hierarchyError(req, { assignRole: role, targetRole });
+    if (hErr) return res.status(403).json({ error: hErr });
+    // Step-up if the target IS or BECOMES a Super Dev.
+    if (targetRole === 'super_admin' || role === 'super_admin') {
+      if (req.user.role !== 'super_admin') return res.status(403).json({ error: 'เฉพาะ Super Dev แก้ไข Super Dev ได้' });
+      if (!(await verifyActorPassword(req, confirm_password))) {
+        return res.status(403).json({ error: 'ต้องยืนยันรหัสผ่าน Super Dev ของคุณก่อน' });
+      }
+    }
     if (password) {
       const hash = await bcrypt.hash(password, 10);
       await db('UPDATE users SET name=$1, role=$2, phone=$3, active=$4, password_hash=$5 WHERE id=$6',
@@ -373,6 +416,30 @@ router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), as
     }
     const { rows } = await db('SELECT id, name, username, role, phone, active FROM users WHERE id=$1', [req.params.id]);
     res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE a user. Hierarchy applies; a Super Dev may only be removed by another
+// Super Dev (with password step-up). Can't delete yourself.
+router.delete('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
+  const db = userDb(req);
+  try {
+    if (String(req.user.id) === String(req.params.id) && !req.branch) {
+      return res.status(400).json({ error: 'ลบบัญชีตัวเองไม่ได้' });
+    }
+    const { rows: cur } = await db('SELECT role FROM users WHERE id=$1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    const targetRole = cur[0].role;
+    const hErr = hierarchyError(req, { targetRole });
+    if (hErr) return res.status(403).json({ error: hErr });
+    if (targetRole === 'super_admin') {
+      if (req.user.role !== 'super_admin') return res.status(403).json({ error: 'เฉพาะ Super Dev ลบ Super Dev ได้' });
+      if (!(await verifyActorPassword(req, req.body?.confirm_password))) {
+        return res.status(403).json({ error: 'ต้องยืนยันรหัสผ่าน Super Dev ของคุณก่อนลบ' });
+      }
+    }
+    await db('DELETE FROM users WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Building2, ShieldCheck } from 'lucide-react'
+import { Plus, Pencil, Trash2, Building2, ShieldCheck } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useTenantStore } from '../store/tenant'
+import { useAuthStore } from '../store/auth'
 
 // Role model (mirrors backend master.js):
 //  Super Dev   = super_admin — apex/public, cross-branch, owner only.
@@ -14,17 +15,16 @@ import { useTenantStore } from '../store/tenant'
 // created INSIDE that branch (เข้าจัดการ → ผู้ใช้งาน).
 const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician']
 const SUPER_ROLES  = ['super_admin']
+// Hierarchy rank (mirrors backend utils/roles.js). A user can only manage roles
+// at or below their own rank, and can't assign a role above it.
+const ROLE_RANK = { super_admin: 100, admin: 80, approver: 60, checker: 60, technician: 40 }
+const rankOf = (r) => ROLE_RANK[r] || 0
 const ROLE_COLOR = {
   super_admin:   'badge-danger',
   admin:         'badge-primary',
   approver:      'badge-warn',
   checker:       'bg-primary-soft text-primary',
   technician:    'badge-gray',
-  // legacy (display only)
-  central_admin: 'bg-primary-soft text-primary',
-  building:      'badge-gray',
-  supervisor:    'badge-primary',
-  field_tech:    'badge-gray',
 }
 const ROLE_TH = {
   super_admin:   'Super Dev — ผู้ดูแลระบบ',
@@ -32,11 +32,6 @@ const ROLE_TH = {
   approver:      'Approve Dev. — ผู้อนุมัติงาน',
   checker:       'Checker Dev. — ผู้ตรวจสอบ',
   technician:    'Technician — ช่าง',
-  // legacy (display only)
-  central_admin: 'แอดมินกลาง (เก่า)',
-  building:      'ช่างอาคาร (เก่า)',
-  supervisor:    'หัวหน้าช่าง (เก่า)',
-  field_tech:    'ช่างภาคสนาม (เก่า)',
 }
 
 function Modal({ title, onClose, children }) {
@@ -56,12 +51,17 @@ function Modal({ title, onClose, children }) {
 
 export default function Users() {
   const tenant = useTenantStore()
-  const ROLES = tenant.isBranch ? BRANCH_ROLES : SUPER_ROLES
-  const defaultRole = tenant.isBranch ? 'technician' : 'super_admin'
+  const me = useAuthStore((s) => s.user)
+  const myRank = rankOf(me?.role)
+  // Only roles at or below my rank can be assigned.
+  const ROLES = (tenant.isBranch ? BRANCH_ROLES : SUPER_ROLES).filter((r) => rankOf(r) <= myRank)
+  const defaultRole = ROLES[ROLES.length - 1] || (tenant.isBranch ? 'technician' : 'super_admin')
   const [users, setUsers] = useState([])
   const [modal, setModal] = useState(null)
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
+  const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true, confirm_password: '' })
   const [saving, setSaving] = useState(false)
+  // Step-up: any action touching a Super Dev needs my own password re-entered.
+  const needsStepUp = form.role === 'super_admin' || (modal && modal !== 'new' && modal.role === 'super_admin')
 
   const [branches, setBranches] = useState([])
   const load = () => api.get('/master/users').then((r) => setUsers(r.data))
@@ -82,12 +82,12 @@ export default function Users() {
   }
 
   const openNew = () => {
-    setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
+    setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true, confirm_password: '' })
     setModal('new')
   }
 
   const openEdit = (u) => {
-    setForm({ name: u.name, username: u.username, password: '', role: u.role, phone: u.phone || '', active: u.active })
+    setForm({ name: u.name, username: u.username, password: '', role: u.role, phone: u.phone || '', active: u.active, confirm_password: '' })
     setModal(u)
   }
 
@@ -104,6 +104,23 @@ export default function Users() {
     } catch (err) { alert(err.response?.data?.error || 'เกิดข้อผิดพลาด') }
     finally { setSaving(false) }
   }
+
+  // Delete — Super Dev target needs a password step-up (handled server-side too).
+  const remove = async (u) => {
+    if (!window.confirm(`ลบผู้ใช้ "${u.name}" ?`)) return
+    let confirm_password
+    if (u.role === 'super_admin') {
+      confirm_password = window.prompt('ยืนยันรหัสผ่าน Super Dev ของคุณเพื่อลบ')
+      if (!confirm_password) return
+    }
+    try {
+      await api.delete(`/master/users/${u.id}`, { data: { confirm_password } })
+      load()
+    } catch (err) { alert(err.response?.data?.error || 'ลบไม่สำเร็จ') }
+  }
+
+  // Can I manage this row? Not higher rank, and not my own account.
+  const canManage = (u) => rankOf(u.role) <= myRank && String(u.id) !== String(me?.id)
 
   return (
     <Layout title="จัดการผู้ใช้งาน">
@@ -165,9 +182,16 @@ export default function Users() {
                           {branches.map((b) => <option key={b.slug} value={b.slug}>{b.name}</option>)}
                         </select>
                       )}
-                      <button onClick={() => openEdit(u)} className="p-1.5 text-ink-muted hover:text-primary rounded-lg hover:bg-primary-soft">
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      {canManage(u) && (
+                        <>
+                          <button onClick={() => openEdit(u)} className="p-1.5 text-ink-muted hover:text-primary rounded-lg hover:bg-primary-soft" title="แก้ไข">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => remove(u)} className="p-1.5 text-ink-muted hover:text-danger rounded-lg hover:bg-danger-soft" title="ลบ">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -193,6 +217,13 @@ export default function Users() {
               </select>
             </div>
             <div><label className="label">โทรศัพท์</label><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            {needsStepUp && (
+              <div className="rounded-input bg-danger-soft p-3">
+                <label className="label text-danger flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> ยืนยันรหัสผ่าน Super Dev ของคุณ *</label>
+                <input type="password" className="input" placeholder="รหัสผ่านของคุณ" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
+                <p className="text-xs text-danger mt-1">การสร้าง/แก้ไข Super Dev ต้องยืนยันตัวตนอีกครั้ง</p>
+              </div>
+            )}
             {modal !== 'new' && (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="h-4 w-4 accent-primary" />

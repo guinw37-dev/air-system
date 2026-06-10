@@ -13,8 +13,8 @@ import SyncIndicator from './SyncIndicator'
 // อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null },
-  { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin', 'central_admin'] },
-  { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin', 'central_admin'] },
+  { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
+  { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin', 'super_admin'] },
   { path: '/branches',     icon: Building2,        label: 'จัดการสาขา',     superOnly: true },
 ]

@@ -65,7 +65,7 @@ function ClientsTab() {
     await api.delete(`/master/clients/${id}`); load()
   }
 
-  const canEdit = ['admin', 'central_admin'].includes(user?.role)
+  const canEdit = ['admin', 'super_admin'].includes(user?.role)
 
   return (
     <div>
@@ -451,7 +451,7 @@ function UnitsTab() {
     loadUnits(selectedClient, equipmentTypeFilter)
   }
 
-  const canEdit = ['admin', 'central_admin'].includes(user?.role)
+  const canEdit = ['admin', 'super_admin'].includes(user?.role)
 
   return (
     <div>

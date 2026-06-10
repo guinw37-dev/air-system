@@ -94,7 +94,7 @@ export default function WorkOrderDetail() {
 
   const role = user?.role
   const isTech         = role === 'technician'
-  const isCentralAdmin = role === 'central_admin'
+  const isCentralAdmin = role === 'admin'
   const isApprover     = role === 'approver'
   const isAdmin        = role === 'admin'
   const isChecker      = role === 'checker'
