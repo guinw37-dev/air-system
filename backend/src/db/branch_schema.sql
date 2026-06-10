@@ -246,12 +246,14 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   tech_name    VARCHAR(150),
   work_date    DATE,
   client_name  VARCHAR(200),
+  location     VARCHAR(200),    -- สถานที่ (e.g. คลินิกในเครือ); blank = same as client_name
   building     VARCHAR(100),
   floor        VARCHAR(50),
   room         VARCHAR(100),
   asset_code   VARCHAR(100),
   work_type    VARCHAR(20),     -- major | minor | fan
-  power_system VARCHAR(5),      -- 380 | 220
+  ac_type      VARCHAR(10),     -- FCU | SPT | VRF | AHU | OAU (ล้างย่อย: ประเภทแอร์ทั้งใบ)
+  power_system VARCHAR(5),      -- 380 | 220 (major checklist)
   checklist_values JSONB DEFAULT '{}'::jsonb,
   result     VARCHAR(20),       -- ok | not_ok
   start_time TIME,
@@ -290,9 +292,12 @@ CREATE OR REPLACE VIEW vw_simple_wo_major AS
   WHERE deleted_at IS NULL AND (work_type = 'major' OR work_type IS NULL);
 
 CREATE OR REPLACE VIEW vw_simple_wo_minor AS
-  SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+  SELECT s.wo_number, s.work_date, s.client_name,
+         COALESCE(NULLIF(s.location,''), s.client_name) AS "สถานที่",
+         s.building, s.floor, s.ac_type AS "ประเภทแอร์", s.tech_name,
          g.ord AS "ลำดับ",
-         g.row->>'name' AS "ชื่อเครื่อง",
+         COALESCE(g.row->>'room', s.room)        AS "ห้อง_แผนก",
+         COALESCE(g.row->>'machine_no', g.row->>'name') AS "เลขเครื่อง",
          (g.row->'checks'->>0)::boolean AS "ตรวจเช็คระบบการทำงาน",
          (g.row->'checks'->>1)::boolean AS "ล้างหัวจ่าย",
          (g.row->'checks'->>2)::boolean AS "ล้างช่องรีเทิร์น",
