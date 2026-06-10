@@ -42,7 +42,8 @@ async function migratePublic(client) {
     // apex) needs the same new columns or saving an apex WO 500s with
     // 'column "location" does not exist'. IF EXISTS → skip if the table is absent.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
-    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
   } finally {
     if (!client) c.release();
   }
@@ -62,11 +63,16 @@ async function provisionBranchSchema(schemaName) {
     // ALTER TABLE IF EXISTS = no-op on a brand-new schema (the CREATE TABLE in
     // BRANCH_SQL then ships the columns); adds them on an existing table.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
-    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
-    // vw_simple_wo_minor changed column names/order (added สถานที่/ประเภทแอร์,
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
+    // ac_type widened 10→30 for fan types (Exhaust Fan Duct Type). Widening a
+    // varchar length is metadata-only (no table rewrite). The view drops below
+    // depend on ac_type, so this must run first.
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
+    // vw_simple_wo_minor/_fan changed column names/order (added สถานที่/ประเภท,
     // split ห้อง/เลขเครื่อง). CREATE OR REPLACE VIEW can't rename/reorder existing
-    // columns, so drop it first; BRANCH_SQL recreates it fresh.
+    // columns, so drop them first; BRANCH_SQL recreates them fresh.
     await c.query(`DROP VIEW IF EXISTS vw_simple_wo_minor`);
+    await c.query(`DROP VIEW IF EXISTS vw_simple_wo_fan`);
     await c.query(BRANCH_SQL);
     // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
     // TABLE IF NOT EXISTS above won't alter an already-present users table).

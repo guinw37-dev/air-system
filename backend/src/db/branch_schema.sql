@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   room         VARCHAR(100),
   asset_code   VARCHAR(100),
   work_type    VARCHAR(20),     -- major | minor | fan
-  ac_type      VARCHAR(10),     -- FCU | SPT | VRF | AHU | OAU (ล้างย่อย: ประเภทแอร์ทั้งใบ)
+  ac_type      VARCHAR(30),     -- ล้างใหญ่/ย่อย: FCU|SPT|VRF|AHU|OAU · พัดลม: Exhaust Fan|Exhaust Fan Duct Type
   power_system VARCHAR(5),      -- 380 | 220 (major checklist)
   checklist_values JSONB DEFAULT '{}'::jsonb,
   result     VARCHAR(20),       -- ok | not_ok
@@ -309,9 +309,12 @@ CREATE OR REPLACE VIEW vw_simple_wo_minor AS
   WHERE s.deleted_at IS NULL AND s.work_type = 'minor';
 
 CREATE OR REPLACE VIEW vw_simple_wo_fan AS
-  SELECT s.wo_number, s.work_date, s.client_name, s.building, s.floor, s.tech_name,
+  SELECT s.wo_number, s.work_date, s.client_name,
+         COALESCE(NULLIF(s.location,''), s.client_name) AS "สถานที่",
+         s.building, s.floor, s.ac_type AS "ประเภทพัดลม", s.tech_name,
          g.ord AS "ลำดับ",
-         g.row->>'name' AS "หมายเลขเครื่อง",
+         COALESCE(g.row->>'room', s.room)        AS "ห้อง_แผนก",
+         COALESCE(g.row->>'machine_no', g.row->>'name') AS "เลขเครื่อง",
          (g.row->'checks'->>0)::boolean AS "ล้างหน้ากาก_มอเตอร์_ใบพัด",
          (g.row->'checks'->>1)::boolean AS "ใส่น้ำมันหล่อลื่นมอเตอร์",
          (g.row->'checks'->>2)::boolean AS "เช็คกระแสไฟฟ้า",
