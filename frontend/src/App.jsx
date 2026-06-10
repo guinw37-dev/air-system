@@ -22,6 +22,7 @@ import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
 import Branches from './pages/Branches'
 import Landing from './pages/Landing'
+import SelectBranch from './pages/SelectBranch'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/sign/:token" element={<SignPage />} />
 
         <Route path="/" element={<Home />} />
+        <Route path="/select-branch" element={<RequireAuth><SelectBranch /></RequireAuth>} />
 
         {/* Work Orders — phase-2 routes */}
         <Route path="/work-orders" element={<RequireAuth><WorkOrderList /></RequireAuth>} />
