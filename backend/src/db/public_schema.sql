@@ -34,8 +34,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      VARCHAR(50) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role          VARCHAR(20) NOT NULL CHECK (role IN (
-                  'technician','checker','central_admin','approver','admin',
-                  'building','supervisor','super_admin','field_tech'
+                  'super_admin','admin','approver','checker','technician'
                 )),
   branch_slug   VARCHAR(63),                 -- NULL = global super-admin; else local to that branch
   phone         VARCHAR(20),

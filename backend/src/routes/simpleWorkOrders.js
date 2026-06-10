@@ -395,7 +395,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const privileged = ['admin', 'central_admin', 'super_admin'].includes(req.user.role);
+    const privileged = ['admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขใบงานนี้' });
     }
@@ -436,7 +436,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       'SELECT created_by FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const privileged = ['admin', 'central_admin', 'super_admin'].includes(req.user.role);
+    const privileged = ['admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
     }
@@ -467,7 +467,7 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
 
 // ── POST /api/simple-wo/batch-pdf — billing cover + each WO report ───────────
 router.post('/batch-pdf', authMiddleware, async (req, res) => {
-  if (!['admin', 'central_admin', 'super_admin'].includes(req.user.role)) {
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'เฉพาะ admin ออกเอกสารชุดได้' });
   }
   const { ids = [], cover = {} } = req.body || {};

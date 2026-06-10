@@ -22,8 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      VARCHAR(50) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role          VARCHAR(20) NOT NULL CHECK (role IN (
-                  'technician','checker','central_admin','approver','admin',
-                  'building','supervisor'
+                  'admin','approver','checker','technician'
                 )),
   phone         VARCHAR(20),
   active        BOOLEAN DEFAULT true,

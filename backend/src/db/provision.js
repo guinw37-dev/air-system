@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('./pool');
 const { slugToSchema } = require('../utils/schema');
+const { REMAP_CASE_SQL } = require('../utils/roles');
 
 const BRANCH_SQL = fs.readFileSync(path.join(__dirname, 'branch_schema.sql'), 'utf8');
 const PUBLIC_SQL = fs.readFileSync(path.join(__dirname, 'public_schema.sql'), 'utf8');
@@ -30,10 +31,13 @@ async function migratePublic(client) {
     // else the user is local to that branch.
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
-    // Widen the users.role CHECK to admit super_admin / field_tech.
+    // 5-role model: remap any retired legacy role to the new set, THEN tighten the
+    // CHECK (must remap first — adding the constraint fails on stale legacy rows).
+    await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
+      WHERE role IN ('central_admin','supervisor','building','field_tech')`);
     await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
-      'technician','checker','central_admin','approver','admin','building','supervisor','super_admin','field_tech'))`);
+      'super_admin','admin','approver','checker','technician'))`);
   } finally {
     if (!client) c.release();
   }
@@ -48,6 +52,13 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
     await c.query(`SET search_path TO "${schema}", public`);
     await c.query(BRANCH_SQL);
+    // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
+    // TABLE IF NOT EXISTS above won't alter an already-present users table).
+    await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
+      WHERE role IN ('central_admin','supervisor','building','field_tech')`);
+    await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+    await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
+      'admin','approver','checker','technician'))`);
     return schema;
   } finally {
     c.release();

@@ -134,7 +134,7 @@ export default function WorkOrderCreate() {
     }
   }
 
-  const techUsers = allUsers.filter((u) => ['technician', 'central_admin'].includes(u.role))
+  const techUsers = allUsers.filter((u) => ['technician', 'admin'].includes(u.role))
 
   return (
     <Layout title="เปิดใบงานใหม่" back="/work-orders">

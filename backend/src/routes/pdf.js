@@ -21,7 +21,7 @@ async function loadReport(req, res) {
   if (!data) { res.status(404).json({ error: 'ไม่พบใบงาน' }); return null; }
 
   // approved WOs are open to all staff; earlier states only for admin/central_admin
-  const previewRoles = ['admin', 'central_admin', 'approver', 'super_admin'];
+  const previewRoles = ['admin', 'approver', 'super_admin'];
   if (data.wo.status !== 'approved' && !previewRoles.includes(req.user.role)) {
     res.status(403).json({ error: 'ออกรายงานได้เมื่อใบงานอนุมัติแล้วเท่านั้น' }); return null;
   }
