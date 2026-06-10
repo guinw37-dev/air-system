@@ -11,6 +11,7 @@
     "migrate:schemas": "node src/db/migrate_branch_schemas.js",
     "migrate:drop-modules": "node src/db/migrate_drop_modules.js",
     "migrate:copy-simple-wo": "node src/db/migrate_copy_simple_wo.js",
+    "migrate:assign-unmatched": "node src/db/migrate_assign_unmatched.js",
     "add-branch": "node src/db/add_branch.js",
     "test": "node test/schema.test.js && node test/woStateMachine.test.js && node test/simpleReport.test.js"
   },
