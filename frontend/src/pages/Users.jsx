@@ -54,8 +54,23 @@ export default function Users() {
   const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
   const [saving, setSaving] = useState(false)
 
+  const [branches, setBranches] = useState([])
   const load = () => api.get('/master/users').then((r) => setUsers(r.data))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    if (!tenant.isBranch) api.get('/branches/public').then((r) => setBranches(r.data || [])).catch(() => {})
+  }, [tenant.isBranch])
+
+  // Apex only: move a public super-admin account into a branch's own users.
+  const moveToBranch = async (userId, slug) => {
+    if (!slug) return
+    const b = branches.find((x) => x.slug === slug)
+    if (!window.confirm(`ย้ายผู้ใช้นี้ไปสาขา "${b?.name || slug}"? จะ login ได้เฉพาะสาขานั้น`)) return
+    try {
+      await api.post(`/branches/${slug}/adopt-user`, { userId })
+      load()
+    } catch (err) { alert(err.response?.data?.error || 'ย้ายไม่สำเร็จ') }
+  }
 
   const openNew = () => {
     setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true })
@@ -129,9 +144,22 @@ export default function Users() {
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    <button onClick={() => openEdit(u)} className="p-1.5 text-ink-muted hover:text-primary rounded-lg hover:bg-primary-soft">
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-2 justify-end">
+                      {!tenant.isBranch && branches.length > 0 && u.role !== 'super_admin' && (
+                        <select
+                          defaultValue=""
+                          onChange={(e) => { moveToBranch(u.id, e.target.value); e.target.value = '' }}
+                          className="text-xs border border-line rounded-lg px-2 py-1 text-ink-muted"
+                          title="ย้ายไปสาขา"
+                        >
+                          <option value="">→ ย้ายไปสาขา</option>
+                          {branches.map((b) => <option key={b.slug} value={b.slug}>{b.name}</option>)}
+                        </select>
+                      )}
+                      <button onClick={() => openEdit(u)} className="p-1.5 text-ink-muted hover:text-primary rounded-lg hover:bg-primary-soft">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

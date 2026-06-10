@@ -69,6 +69,37 @@ router.post('/', authMiddleware, superOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/branches/:slug/adopt-user { userId } — move a public.users account
+// into a branch's own users table (so it becomes a branch-local user, not a
+// global super-admin) and remove it from public. super-admin only.
+const BRANCH_ROLES = ['technician', 'checker', 'central_admin', 'approver', 'admin', 'building', 'supervisor'];
+router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => {
+  const { userId } = req.body || {};
+  if (!userId) return res.status(400).json({ error: 'userId required' });
+  let schema;
+  try { schema = slugToSchema(req.params.slug); }
+  catch { return res.status(400).json({ error: 'slug ไม่ถูกต้อง' }); }
+  try {
+    const { rows: br } = await pool.query(
+      'SELECT 1 FROM clients WHERE slug = $1 AND schema_name IS NOT NULL AND active = true', [req.params.slug]);
+    if (!br.length) return res.status(404).json({ error: 'ไม่พบสาขา (ยังไม่ provision)' });
+    const { rows: u } = await pool.query(
+      'SELECT name, username, password_hash, role, phone, active FROM users WHERE id = $1', [userId]);
+    if (!u.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    const usr = u[0];
+    const role = BRANCH_ROLES.includes(usr.role) ? usr.role : 'technician';
+    await query(schema,
+      `INSERT INTO users (name, username, password_hash, role, phone, active)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (username) DO UPDATE SET
+         name=EXCLUDED.name, password_hash=EXCLUDED.password_hash,
+         role=EXCLUDED.role, phone=EXCLUDED.phone, active=EXCLUDED.active`,
+      [usr.name, usr.username, usr.password_hash, role, usr.phone, usr.active]);
+    await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    res.json({ ok: true, movedTo: schema });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // PATCH /api/branches/:id — activate/deactivate a branch (registry only)
 router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
   const { active } = req.body || {};
