@@ -58,6 +58,10 @@ async function provisionBranchSchema(schemaName) {
     // BRANCH_SQL then ships the columns); adds them on an existing table.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(10)`);
+    // vw_simple_wo_minor changed column names/order (added สถานที่/ประเภทแอร์,
+    // split ห้อง/เลขเครื่อง). CREATE OR REPLACE VIEW can't rename/reorder existing
+    // columns, so drop it first; BRANCH_SQL recreates it fresh.
+    await c.query(`DROP VIEW IF EXISTS vw_simple_wo_minor`);
     await c.query(BRANCH_SQL);
     // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
     // TABLE IF NOT EXISTS above won't alter an already-present users table).
