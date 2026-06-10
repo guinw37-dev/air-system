@@ -48,12 +48,18 @@ ok('major report: สถานที่ + ประเภทแอร์ in head
 
 // ── Grid: พัดลม ─────────────────────────────────────────────────
 html = buildSimpleReportHtml(baseData({
-  wo: { work_type: 'fan' },
-  gridRows: [{ name: 'FAN-1', checks: [true, true, false, true, true], broken: 'มอเตอร์ดัง' }],
+  wo: { work_type: 'fan', location: 'คลินิกบางพระ', ac_type: 'Exhaust Fan Duct Type' },
+  gridRows: [{ room: 'ห้องแอร์', machine_no: 'FAN-1', checks: [true, true, false, true, true], broken: 'มอเตอร์ดัง',
+    photos: { before: 'data:image/png;base64,B', during: 'data:image/png;base64,D' } }],
 }));
 assert(html.includes('ใบบันทึกการบำรุงรักษาระบบปรับอากาศ'), 'fan title');
 assert(html.includes('ชำรุดเนื่องจาก') && html.includes('มอเตอร์ดัง'), 'fan broken column');
-ok('grid fan renders the พัดลม form with the ชำรุด column');
+assert(html.includes('ห้อง/แผนก') && html.includes('ห้องแอร์') && html.includes('FAN-1'), 'fan room + machine_no');
+assert(html.includes('สถานที่') && html.includes('คลินิกบางพระ'), 'fan สถานที่');
+assert(html.includes('ประเภทพัดลม') && html.includes('Exhaust Fan Duct Type'), 'fan ประเภทพัดลม');
+assert(html.includes('ล้างพัดลมดูดอากาศ'), 'fan ประเภทงาน label');
+assert(html.includes('รูปถ่ายงานล้างพัดลม'), 'fan per-machine photo section');
+ok('grid fan: room/machine_no + สถานที่ + ประเภทพัดลม + ชำรุด + photos');
 
 // ── ln_vi (Compressor): 1 เฟส vs 3 เฟส ──────────────────────────
 const lnvi = (ps, v) => baseData({ unit: { inspections: [{ category: 'refrigerant', item_label: 'Compressor', value_type: 'ln_vi', power_system: ps, ...v }] } });

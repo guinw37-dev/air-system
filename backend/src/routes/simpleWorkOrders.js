@@ -111,11 +111,13 @@ const WORK_TYPES_OK = ['major', 'minor', 'fan'];
 const RESULTS_OK = ['ok', 'not_ok'];
 const POWER_OK = ['380', '220'];
 const AC_TYPES_OK = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU'];
+const FAN_TYPES_OK = ['Exhaust Fan', 'Exhaust Fan Duct Type'];
+const AC_OR_FAN_TYPES = [...AC_TYPES_OK, ...FAN_TYPES_OK];
 function validateBody(b) {
   if (b.work_type && !WORK_TYPES_OK.includes(b.work_type)) return 'work_type ไม่ถูกต้อง';
   if (b.result && !RESULTS_OK.includes(b.result)) return 'result ไม่ถูกต้อง';
   if (b.power_system && !POWER_OK.includes(String(b.power_system))) return 'power_system ไม่ถูกต้อง';
-  if (b.ac_type && !AC_TYPES_OK.includes(String(b.ac_type))) return 'ac_type ไม่ถูกต้อง';
+  if (b.ac_type && !AC_OR_FAN_TYPES.includes(String(b.ac_type))) return 'ac_type ไม่ถูกต้อง';
   if (b.grid_rows != null && !Array.isArray(b.grid_rows)) return 'grid_rows ต้องเป็น array';
   if (b.photo_urls != null && !Array.isArray(b.photo_urls)) return 'photo_urls ต้องเป็น array';
   if (b.gallery_urls != null && !Array.isArray(b.gallery_urls)) return 'gallery_urls ต้องเป็น array';
@@ -250,7 +252,8 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
     };
     const gridSheetFor = (wt, cols, sheetName) => {
-      const minor = wt === 'minor';
+      const fan = wt === 'fan';
+      const typeLabel = fan ? 'ประเภทพัดลม' : 'ประเภทแอร์';  // both ล้างย่อย & พัดลม carry สถานที่ + ห้อง/เลขเครื่อง
       const out = [];
       for (const r of rows) {
         if (r.work_type !== wt) continue;
@@ -260,26 +263,25 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
             'เลขใบงาน': r.wo_number,
             'วันที่': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
             'ลูกค้า': r.client_name || '',
-            ...(minor ? { 'สถานที่': r.location || r.client_name || '', 'ประเภทแอร์': r.ac_type || '' } : {}),
+            'สถานที่': r.location || r.client_name || '',
+            [typeLabel]: r.ac_type || '',
             'อาคาร': r.building || '',
             'ชั้น': r.floor || '',
             'ช่าง': r.tech_name || r.created_by_name || '',
             'ลำดับ': idx + 1,
-            ...(minor
-              ? { 'ห้อง/แผนก': g.room || r.room || '', 'เลขเครื่อง': g.machine_no || g.name || '' }
-              : { 'ชื่อ/เลขเครื่อง': g.name || '' }),
+            'ห้อง/แผนก': g.room || r.room || '',
+            'เลขเครื่อง': g.machine_no || g.name || '',
           };
           cols.forEach((c, ci) => { row[c] = (g.checks || [])[ci] ? '1' : '-'; });
-          if (wt === 'fan') row['ชำรุดเนื่องจาก'] = g.broken || '';
+          if (fan) row['ชำรุดเนื่องจาก'] = g.broken || '';
           row['ข้อแนะนำ'] = r.recommendation || '';
           out.push(row);
         });
       }
       if (!out.length) return;
-      const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า',
-        ...(minor ? ['สถานที่', 'ประเภทแอร์'] : []), 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
-        ...(minor ? ['ห้อง/แผนก', 'เลขเครื่อง'] : ['ชื่อ/เลขเครื่อง']),
-        ...cols, ...(wt === 'fan' ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
+      const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'สถานที่', typeLabel, 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
+        'ห้อง/แผนก', 'เลขเครื่อง',
+        ...cols, ...(fan ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out, { header: hdr }), sheetName);
     };
     gridSheetFor('minor', GRID_COLS_X.minor, 'ล้างย่อย');

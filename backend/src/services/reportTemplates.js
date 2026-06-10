@@ -1153,7 +1153,7 @@ function gridLetterhead(fan) {
 
 // Per-machine photo block for ล้างย่อย: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
 // Renders only the rows that actually carry photos; returns '' if none do.
-function gridPhotoSection(rows) {
+function gridPhotoSection(rows, title = 'รูปถ่ายงานล้างย่อย') {
   const PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']];
   const withPhotos = (rows || []).filter((r) => r.photos && PHASES.some(([k]) => r.photos[k]));
   if (!withPhotos.length) return '';
@@ -1172,7 +1172,7 @@ function gridPhotoSection(rows) {
         <div style="display:flex;gap:5px">${PHASES.map(([k, lbl]) => cell(r.photos[k], lbl)).join('')}</div>
       </div>`;
   }).join('');
-  const secbar = `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:10px 0 6px;border-radius:2px">รูปถ่ายงานล้างย่อย</div>`;
+  const secbar = `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:10px 0 6px;border-radius:2px">${title}</div>`;
   return secbar + blocks;
 }
 
@@ -1185,25 +1185,21 @@ function simpleGridPage(data) {
   const fan = wo.work_type === 'fan';
   const cols = GRID_COLS_PDF[wo.work_type] || GRID_COLS_PDF.minor;
   const rows = Array.isArray(d.gridRows) ? d.gridRows : [];
-  // minor: ห้อง/แผนก + เลขเครื่อง (2 cols) · fan: หมายเลขเครื่อง (1 col)
-  const idCols = fan ? 1 : 2;
-  const nCols = 1 + idCols + cols.length + (fan ? 1 : 0);
+  // both ล้างย่อย & พัดลม: ห้อง/แผนก + เลขเครื่อง (2 cols); fan adds ชำรุด.
+  const nCols = 3 + cols.length + (fan ? 1 : 0);
   const checkW = `${Math.floor(50 / cols.length)}%`;
-  const acType = wo.ac_type || 'FCU';
+  const acType = wo.ac_type || (fan ? 'Exhaust Fan' : 'FCU');
+  const jobLabel = fan ? 'ล้างพัดลมดูดอากาศ' : `ล้างแอร์ แบบล้างย่อย (${escapeHtml(acType)})`;
 
   const head = `<thead><tr>
     <th style="width:24px">ลำดับ</th>
-    ${fan
-      ? '<th style="width:22%">หมายเลขเครื่อง</th>'
-      : '<th style="width:20%">ห้อง/แผนก</th><th style="width:16%">เลขเครื่อง</th>'}
+    <th style="width:20%">ห้อง/แผนก</th><th style="width:16%">เลขเครื่อง</th>
     ${cols.map((c) => `<th style="width:${checkW}">${escapeHtml(c)}</th>`).join('')}
     ${fan ? '<th>ชำรุดเนื่องจาก</th>' : ''}
   </tr></thead>`;
   const body = rows.map((r, i) => `<tr>
     <td class="center">${i + 1}</td>
-    ${fan
-      ? `<td>${escapeHtml(r.name || '')}</td>`
-      : `<td>${dash(r.room)}</td><td>${dash(r.machine_no || r.name)}</td>`}
+    <td>${dash(r.room)}</td><td>${dash(r.machine_no || r.name)}</td>
     ${cols.map((_, ci) => `<td class="tk ${(r.checks || [])[ci] ? 'on' : ''}">${(r.checks || [])[ci] ? TICK : ''}</td>`).join('')}
     ${fan ? `<td>${escapeHtml(r.broken || '')}</td>` : ''}
   </tr>`).join('') || `<tr><td colspan="${nCols}" class="center muted">ไม่มีรายการ</td></tr>`;
@@ -1214,17 +1210,18 @@ function simpleGridPage(data) {
     ${secbar('ข้อมูลลูกค้า')}
     <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:2px 14px;font-size:8pt">
       ${fld('นามลูกค้า', wo.client_name)}
+      ${fld('สถานที่', wo.location || wo.client_name)}
       ${fld('อาคาร', u.building_name)}
       ${fld('ชั้น', u.floor_name)}
-      ${fan ? fld('ประเภทงาน', 'พัดลมดูดอากาศ') : fld('สถานที่', wo.location)}
-      ${fan ? fld('วันที่', fmtDate(wo.work_date || wo.created_at)) : fld('ประเภทงาน', `ล้างแอร์ แบบล้างย่อย (${escapeHtml(acType)})`)}
-      ${fan ? fld('เวลาเริ่มงาน', fmtTime(wo.started_at)) : fld('วันที่', fmtDate(wo.work_date || wo.created_at))}
-      ${fan ? fld('ช่างผู้ให้บริการ', wo.tech_name) : fld('เวลาเริ่มงาน', fmtTime(wo.started_at))}
-      ${fan ? '' : fld('ช่างผู้ให้บริการ', wo.tech_name)}
+      ${fld('ประเภทงาน', jobLabel)}
+      ${fan ? fld('ประเภทพัดลม', acType) : ''}
+      ${fld('วันที่', fmtDate(wo.work_date || wo.created_at))}
+      ${fld('เวลาเริ่มงาน', fmtTime(wo.started_at))}
+      ${fld('ช่างผู้ให้บริการ', wo.tech_name)}
     </div>`;
 
   // ล้างย่อย: 3 รูปต่อเครื่อง (ก่อน/หลัง/ขณะปฏิบัติงาน). ข้ามถ้าไม่มีรูปเลย.
-  const photoSection = fan ? '' : gridPhotoSection(rows);
+  const photoSection = gridPhotoSection(rows, fan ? 'รูปถ่ายงานล้างพัดลม' : 'รูปถ่ายงานล้างย่อย');
 
   const inner = `<div class="major-c">
     ${gridLetterhead(fan)}

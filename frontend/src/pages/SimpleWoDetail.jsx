@@ -151,6 +151,7 @@ export default function SimpleWoDetail() {
           {!isGrid && <InfoRow label="เลขเครื่อง" value={wo.asset_code} />}
           <InfoRow label="ประเภทงาน" value={WORK_TYPE_LABEL[wo.work_type] || wo.work_type} />
           {wo.work_type !== 'fan' && <InfoRow label="ประเภทแอร์" value={wo.ac_type || '-'} />}
+          {wo.work_type === 'fan' && <InfoRow label="ประเภทพัดลม" value={wo.ac_type || '-'} />}
           {wo.work_type === 'major' && <InfoRow label="ระบบไฟ" value={wo.power_system ? `${wo.power_system}V` : '-'} />}
           <InfoRow label="เวลาเริ่ม" value={wo.start_time} />
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
@@ -164,7 +165,7 @@ export default function SimpleWoDetail() {
             {gridRows.map((r, i) => (
               <div key={i} className="rounded-xl border border-line p-3">
                 <p className="font-medium text-ink mb-1.5">
-                  {i + 1}. {wo.work_type === 'minor'
+                  {i + 1}. {isGrid && (r.room || r.machine_no)
                     ? `${r.room || '–'} · เลขเครื่อง ${r.machine_no || r.name || '–'}`
                     : (r.name || '-')}
                 </p>
@@ -176,7 +177,7 @@ export default function SimpleWoDetail() {
                   ))}
                 </div>
                 {wo.work_type === 'fan' && r.broken && <p className="text-sm text-danger mt-1.5">ชำรุด: {r.broken}</p>}
-                {wo.work_type === 'minor' && r.photos && Object.values(r.photos).some(Boolean) && (
+                {r.photos && Object.values(r.photos).some(Boolean) && (
                   <div className="grid grid-cols-3 gap-2 mt-2">
                     {[['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']].map(([k, label]) => (
                       <div key={k} className="text-center">
