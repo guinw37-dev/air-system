@@ -20,7 +20,8 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', form)
       setAuth(data.token, data.user)
-      navigate('/')
+      // Super-admin (apex login) picks a branch first; branch users go straight in.
+      navigate(data.user?.isSuper && !tenant.isBranch ? '/select-branch' : '/')
     } catch (err) {
       setError(err.response?.data?.error || 'เกิดข้อผิดพลาด')
     } finally {
