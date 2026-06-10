@@ -51,9 +51,9 @@ export default function SelectBranch() {
                 className="card text-left hover:shadow-md hover:border-primary transition group flex flex-col gap-3"
               >
                 <div className="flex items-center justify-between">
-                  <div className="w-11 h-11 rounded-xl bg-primary-soft flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-primary" />
-                  </div>
+                  {b.card_image
+                    ? <img src={b.card_image} alt="" className="w-11 h-11 rounded-xl object-cover border border-line" />
+                    : <div className="w-11 h-11 rounded-xl bg-primary-soft flex items-center justify-center"><Building2 className="h-6 w-6 text-primary" /></div>}
                   <ArrowRight className="h-5 w-5 text-ink-muted group-hover:text-primary group-hover:translate-x-1 transition" />
                 </div>
                 <div>

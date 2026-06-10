@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS clients (
   slug        VARCHAR(63),                 -- URL key: acme-co
   subdomain   VARCHAR(63),                 -- host label resolved to this branch
   schema_name VARCHAR(63),                 -- Postgres schema: acme_co
+  card_image  TEXT,                        -- logo/รูปหน้า card (URL or data URI)
   active      BOOLEAN DEFAULT true,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
