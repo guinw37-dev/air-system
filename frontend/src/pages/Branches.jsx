@@ -43,6 +43,20 @@ export default function Branches() {
   const manage = (b) => { tenant.switchBranch(b.slug, b.name); navigate('/') }
   const exitBranch = () => { tenant.switchBranch(null) }
 
+  // Provision an existing registry client that has no slug/schema yet → give it a
+  // slug + create its schema (reuses POST /branches upsert-by-code + provision).
+  const provision = async (b) => {
+    const slug = window.prompt(`ตั้ง slug (subdomain) ของ ${b.name}\nเช่น salawakan`, slugify(b.name))
+    if (!slug) return
+    try {
+      await api.post('/branches', { code: b.code, name: b.name, slug: slugify(slug) })
+      setMsg({ ok: true, text: `ทำให้ ${b.name} เป็นสาขาแล้ว [${slugify(slug)}]` })
+      load()
+    } catch (err) {
+      setMsg({ ok: false, text: err.response?.data?.error || 'ทำไม่สำเร็จ' })
+    }
+  }
+
   return (
     <Layout>
       <div className="p-4 flex flex-col gap-4 max-w-3xl">
@@ -80,8 +94,10 @@ export default function Branches() {
                   <div className="text-xs text-ink-muted">{b.slug ? `${b.slug}.<domain>` : '— ไม่มี subdomain'} · schema {b.schema_name || '—'} {b.active ? '' : '· ปิดใช้งาน'}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {b.slug && b.schema_name && (
+                  {b.slug && b.schema_name ? (
                     <button onClick={() => manage(b)} className="text-sm text-primary flex items-center gap-1"><LogIn className="h-4 w-4" /> เข้าจัดการ</button>
+                  ) : (
+                    <button onClick={() => provision(b)} className="text-sm text-amber-600 font-medium">⚙ ทำให้เป็นสาขา</button>
                   )}
                   <button onClick={() => toggle(b)} className="text-xs text-ink-muted">{b.active ? 'ปิด' : 'เปิด'}</button>
                 </div>
