@@ -1,13 +1,18 @@
-// In-app notification helpers. Called inside status-transition transactions so
-// a notification is written atomically with the status change.
+// In-app notification helpers. Recipients are read from the BRANCH users table
+// (via the schema-pinned `client`), but notifications themselves live in
+// public.notifications — so the INSERT goes through `pool` (public), NOT the
+// branch transaction. This avoids a cross-schema FK violation (branch user id ∉
+// public.users) that used to roll back the whole status-change transaction.
+const pool = require('../db/pool');
 
-// Insert one notification per target user.
-async function notifyUsers(client, userIds, { workOrderId, type, message }) {
+// Insert one notification per target user. `branchSlug` records which branch the
+// recipient ids belong to (no hard FK — recipients are per-branch users).
+async function notifyUsers(client, userIds, { workOrderId, type, message, branchSlug }) {
   const ids = [...new Set(userIds.filter(Boolean))];
   for (const uid of ids) {
-    await client.query(
-      `INSERT INTO notifications (user_id, work_order_id, type, message) VALUES ($1,$2,$3,$4)`,
-      [uid, workOrderId, type, message]
+    await pool.query(
+      `INSERT INTO notifications (user_id, work_order_id, type, message, branch_slug) VALUES ($1,$2,$3,$4,$5)`,
+      [uid, workOrderId, type, message, branchSlug || null]
     );
   }
 }
@@ -23,20 +28,22 @@ async function assigneeIds(client, woId) {
 }
 
 // Fan out the right notification for a transition. `wo` is the work-order row.
-async function notifyTransition(client, wo, to, { reason } = {}) {
+// `branchSlug` = the schema/branch the WO + its users belong to.
+async function notifyTransition(client, wo, to, { reason, branchSlug } = {}) {
   const orderNo = wo.order_no || `#${wo.id}`;
+  const base = { workOrderId: wo.id, branchSlug };
   if (to === 'pending_admin') {
     await notifyUsers(client, await userIdsByRole(client, 'central_admin'),
-      { workOrderId: wo.id, type: 'pending_admin', message: `ใบงาน ${orderNo} รอตรวจ (Admin)` });
+      { ...base, type: 'pending_admin', message: `ใบงาน ${orderNo} รอตรวจ (Admin)` });
   } else if (to === 'pending_approval') {
     await notifyUsers(client, await userIdsByRole(client, 'approver'),
-      { workOrderId: wo.id, type: 'pending_approval', message: `ใบงาน ${orderNo} รออนุมัติ` });
+      { ...base, type: 'pending_approval', message: `ใบงาน ${orderNo} รออนุมัติ` });
   } else if (to === 'approved') {
     await notifyUsers(client, await assigneeIds(client, wo.id),
-      { workOrderId: wo.id, type: 'approved', message: `ใบงาน ${orderNo} อนุมัติแล้ว` });
+      { ...base, type: 'approved', message: `ใบงาน ${orderNo} อนุมัติแล้ว` });
   } else if (to === 'rejected') {
     await notifyUsers(client, await assigneeIds(client, wo.id),
-      { workOrderId: wo.id, type: 'rejected', message: `ใบงาน ${orderNo} ถูกส่งคืน: ${reason || '-'}` });
+      { ...base, type: 'rejected', message: `ใบงาน ${orderNo} ถูกส่งคืน: ${reason || '-'}` });
   }
 }
 

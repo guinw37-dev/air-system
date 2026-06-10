@@ -22,6 +22,9 @@ async function migratePublic(client) {
     // Backfill schema_name from slug (dash→underscore) where missing.
     await c.query(`UPDATE clients SET schema_name = lower(replace(slug,'-','_')) WHERE schema_name IS NULL AND slug IS NOT NULL`);
     await c.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
+    // Recipients are per-branch users → drop the cross-schema FK to public.users
+    // (an FK violation here would roll back the whole WO status transaction).
+    await c.query(`ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_user_id_fkey`);
     // Per-branch user binding: branch_slug NULL = global super-admin (cross-branch),
     // else the user is local to that branch.
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
