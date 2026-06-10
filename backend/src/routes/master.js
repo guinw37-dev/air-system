@@ -387,15 +387,18 @@ router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async
 
 router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
   const { name, role, phone, active, password, confirm_password } = req.body;
-  const valid = validRolesFor(req);
-  if (role && !valid.includes(role)) {
-    return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
-  }
   const db = userDb(req);
   try {
     const { rows: cur } = await db('SELECT role FROM users WHERE id=$1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
     const targetRole = cur[0].role;
+    // Validate only when the role actually changes — editing name/phone of an
+    // existing user keeps a role that may be outside the assignable set (e.g. an
+    // apex non-super user) without a spurious 400.
+    const valid = validRolesFor(req);
+    if (role && role !== targetRole && !valid.includes(role)) {
+      return res.status(400).json({ error: `role must be one of ${valid.join(', ')}` });
+    }
     // Hierarchy: can't edit a higher rank, and can't promote above own rank.
     const hErr = hierarchyError(req, { assignRole: role, targetRole });
     if (hErr) return res.status(403).json({ error: hErr });

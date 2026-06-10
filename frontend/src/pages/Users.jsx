@@ -213,7 +213,8 @@ export default function Users() {
             <div>
               <label className="label">Role *</label>
               <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {ROLES.map((r) => <option key={r} value={r}>{ROLE_TH[r]}</option>)}
+                {/* include the row's current role even if it's outside my assignable set, so editing keeps it */}
+                {(ROLES.includes(form.role) ? ROLES : [form.role, ...ROLES]).map((r) => <option key={r} value={r}>{ROLE_TH[r] || r}</option>)}
               </select>
             </div>
             <div><label className="label">โทรศัพท์</label><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
