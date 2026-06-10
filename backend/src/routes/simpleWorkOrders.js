@@ -110,10 +110,12 @@ const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร�
 const WORK_TYPES_OK = ['major', 'minor', 'fan'];
 const RESULTS_OK = ['ok', 'not_ok'];
 const POWER_OK = ['380', '220'];
+const AC_TYPES_OK = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU'];
 function validateBody(b) {
   if (b.work_type && !WORK_TYPES_OK.includes(b.work_type)) return 'work_type ไม่ถูกต้อง';
   if (b.result && !RESULTS_OK.includes(b.result)) return 'result ไม่ถูกต้อง';
   if (b.power_system && !POWER_OK.includes(String(b.power_system))) return 'power_system ไม่ถูกต้อง';
+  if (b.ac_type && !AC_TYPES_OK.includes(String(b.ac_type))) return 'ac_type ไม่ถูกต้อง';
   if (b.grid_rows != null && !Array.isArray(b.grid_rows)) return 'grid_rows ต้องเป็น array';
   if (b.photo_urls != null && !Array.isArray(b.photo_urls)) return 'photo_urls ต้องเป็น array';
   if (b.gallery_urls != null && !Array.isArray(b.gallery_urls)) return 'gallery_urls ต้องเป็น array';
@@ -248,6 +250,7 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
     };
     const gridSheetFor = (wt, cols, sheetName) => {
+      const minor = wt === 'minor';
       const out = [];
       for (const r of rows) {
         if (r.work_type !== wt) continue;
@@ -257,11 +260,14 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
             'เลขใบงาน': r.wo_number,
             'วันที่': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
             'ลูกค้า': r.client_name || '',
+            ...(minor ? { 'สถานที่': r.location || r.client_name || '', 'ประเภทแอร์': r.ac_type || '' } : {}),
             'อาคาร': r.building || '',
             'ชั้น': r.floor || '',
             'ช่าง': r.tech_name || r.created_by_name || '',
             'ลำดับ': idx + 1,
-            'ชื่อ/เลขเครื่อง': g.name || '',
+            ...(minor
+              ? { 'ห้อง/แผนก': g.room || r.room || '', 'เลขเครื่อง': g.machine_no || g.name || '' }
+              : { 'ชื่อ/เลขเครื่อง': g.name || '' }),
           };
           cols.forEach((c, ci) => { row[c] = (g.checks || [])[ci] ? '1' : '-'; });
           if (wt === 'fan') row['ชำรุดเนื่องจาก'] = g.broken || '';
@@ -270,7 +276,9 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         });
       }
       if (!out.length) return;
-      const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ', 'ชื่อ/เลขเครื่อง',
+      const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า',
+        ...(minor ? ['สถานที่', 'ประเภทแอร์'] : []), 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
+        ...(minor ? ['ห้อง/แผนก', 'เลขเครื่อง'] : ['ชื่อ/เลขเครื่อง']),
         ...cols, ...(wt === 'fan' ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out, { header: hdr }), sheetName);
     };
@@ -300,8 +308,8 @@ router.post('/', authMiddleware, async (req, res) => {
         team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
         sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
-        grid_rows, recommendation, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+        grid_rows, recommendation, location, ac_type, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW())
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null,
@@ -318,6 +326,7 @@ router.post('/', authMiddleware, async (req, res) => {
       b.sig_supervisor || null, b.sig_supervisor_name || null,
       b.sig_building || null, b.sig_building_name || null,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
+      b.location || null, b.ac_type || null,
     ]);
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
@@ -407,7 +416,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
-        grid_rows=$29, recommendation=$30, updated_at=NOW()
+        grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -424,6 +433,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.sig_building || null, b.sig_building_name || null,
       b.sig_supervisor || null, b.sig_supervisor_name || null,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
+      b.location || null, b.ac_type || null,
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }

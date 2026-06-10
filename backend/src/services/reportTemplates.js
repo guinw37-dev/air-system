@@ -1153,6 +1153,31 @@ function gridLetterhead(fan) {
     </div>`;
 }
 
+// Per-machine photo block for ล้างย่อย: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
+// Renders only the rows that actually carry photos; returns '' if none do.
+function gridPhotoSection(rows) {
+  const PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']];
+  const withPhotos = (rows || []).filter((r) => r.photos && PHASES.some(([k]) => r.photos[k]));
+  if (!withPhotos.length) return '';
+  const cell = (src, label) => `
+    <div style="flex:1;text-align:center">
+      <div style="font-size:6.5pt;color:#5a6e73;margin-bottom:2px">${label}</div>
+      ${src
+        ? `<img src="${src}" style="width:100%;height:78px;object-fit:cover;border:1px solid #cdd9da;border-radius:3px"/>`
+        : `<div style="width:100%;height:78px;border:1px dashed #cdd9da;border-radius:3px;display:flex;align-items:center;justify-content:center;color:#aab6b8;font-size:6.5pt">—</div>`}
+    </div>`;
+  const blocks = withPhotos.map((r, i) => {
+    const id = [r.room, (r.machine_no || r.name)].filter(Boolean).join(' · ') || `เครื่องที่ ${i + 1}`;
+    return `
+      <div style="margin-bottom:7px;break-inside:avoid">
+        <div style="font-size:7pt;font-weight:700;color:var(--navy);margin-bottom:2px">${escapeHtml(id)}</div>
+        <div style="display:flex;gap:5px">${PHASES.map(([k, lbl]) => cell(r.photos[k], lbl)).join('')}</div>
+      </div>`;
+  }).join('');
+  const secbar = `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:10px 0 6px;border-radius:2px">รูปถ่ายงานล้างย่อย</div>`;
+  return secbar + blocks;
+}
+
 // ล้างย่อย / พัดลม → multi-unit checkbox grid page (one A4, no photo pages).
 function simpleGridPage(data) {
   const d = data || {};
@@ -1162,18 +1187,25 @@ function simpleGridPage(data) {
   const fan = wo.work_type === 'fan';
   const cols = GRID_COLS_PDF[wo.work_type] || GRID_COLS_PDF.minor;
   const rows = Array.isArray(d.gridRows) ? d.gridRows : [];
-  const nCols = 2 + cols.length + (fan ? 1 : 0);
-  const checkW = `${Math.floor(55 / cols.length)}%`;
+  // minor: ห้อง/แผนก + เลขเครื่อง (2 cols) · fan: หมายเลขเครื่อง (1 col)
+  const idCols = fan ? 1 : 2;
+  const nCols = 1 + idCols + cols.length + (fan ? 1 : 0);
+  const checkW = `${Math.floor(50 / cols.length)}%`;
+  const acType = wo.ac_type || 'FCU';
 
   const head = `<thead><tr>
     <th style="width:24px">ลำดับ</th>
-    <th style="width:${fan ? 22 : 32}%">${fan ? 'หมายเลขเครื่อง' : 'รายการเครื่องที่ล้างย่อย'}</th>
+    ${fan
+      ? '<th style="width:22%">หมายเลขเครื่อง</th>'
+      : '<th style="width:20%">ห้อง/แผนก</th><th style="width:16%">เลขเครื่อง</th>'}
     ${cols.map((c) => `<th style="width:${checkW}">${escapeHtml(c)}</th>`).join('')}
     ${fan ? '<th>ชำรุดเนื่องจาก</th>' : ''}
   </tr></thead>`;
   const body = rows.map((r, i) => `<tr>
     <td class="center">${i + 1}</td>
-    <td>${escapeHtml(r.name || '')}</td>
+    ${fan
+      ? `<td>${escapeHtml(r.name || '')}</td>`
+      : `<td>${dash(r.room)}</td><td>${dash(r.machine_no || r.name)}</td>`}
     ${cols.map((_, ci) => `<td class="tk ${(r.checks || [])[ci] ? 'on' : ''}">${(r.checks || [])[ci] ? TICK : ''}</td>`).join('')}
     ${fan ? `<td>${escapeHtml(r.broken || '')}</td>` : ''}
   </tr>`).join('') || `<tr><td colspan="${nCols}" class="center muted">ไม่มีรายการ</td></tr>`;
@@ -1186,11 +1218,15 @@ function simpleGridPage(data) {
       ${fld('นามลูกค้า', wo.client_name)}
       ${fld('อาคาร', u.building_name)}
       ${fld('ชั้น', u.floor_name)}
-      ${fld('ประเภทงาน', fan ? 'พัดลมดูดอากาศ' : 'ล้างแอร์ แบบล้างย่อย (FCU)')}
-      ${fld('วันที่', fmtDate(wo.work_date || wo.created_at))}
-      ${fld('เวลาเริ่มงาน', fmtTime(wo.started_at))}
-      ${fld('ช่างผู้ให้บริการ', wo.tech_name)}
+      ${fan ? fld('ประเภทงาน', 'พัดลมดูดอากาศ') : fld('สถานที่', wo.location)}
+      ${fan ? fld('วันที่', fmtDate(wo.work_date || wo.created_at)) : fld('ประเภทงาน', `ล้างแอร์ แบบล้างย่อย (${escapeHtml(acType)})`)}
+      ${fan ? fld('เวลาเริ่มงาน', fmtTime(wo.started_at)) : fld('วันที่', fmtDate(wo.work_date || wo.created_at))}
+      ${fan ? fld('ช่างผู้ให้บริการ', wo.tech_name) : fld('เวลาเริ่มงาน', fmtTime(wo.started_at))}
+      ${fan ? '' : fld('ช่างผู้ให้บริการ', wo.tech_name)}
     </div>`;
+
+  // ล้างย่อย: 3 รูปต่อเครื่อง (ก่อน/หลัง/ขณะปฏิบัติงาน). ข้ามถ้าไม่มีรูปเลย.
+  const photoSection = fan ? '' : gridPhotoSection(rows);
 
   const inner = `<div class="major-c">
     ${gridLetterhead(fan)}
@@ -1198,6 +1234,7 @@ function simpleGridPage(data) {
     ${secbar('สำหรับพนักงานผู้ให้บริการ')}
     <table class="lmt" style="table-layout:fixed">${head}<tbody>${body}</tbody></table>
     <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
+    ${photoSection}
     <div class="sign-row">
       ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
       ${signatureBox('ลงชื่อหัวหน้าช่างแอร์', sigs.supervisor)}

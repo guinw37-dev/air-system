@@ -115,6 +115,8 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
     order_no: r.wo_number,
     work_type: r.work_type,
     client_name: r.client_name,
+    location: r.location || r.client_name,   // สถานที่ (ล้างย่อย); blank → ชื่อลูกค้า
+    ac_type: r.ac_type || '',                // FCU | SPT | VRF | AHU | OAU
     site_name: r.building,
     tech_name: r.tech_name,
     work_date: r.work_date,
@@ -157,7 +159,16 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
   }
 
   // No QR badge on the simple-wo report (qr omitted → qrBadge() renders nothing).
-  const gridRows = Array.isArray(r.grid_rows) ? r.grid_rows : [];
+  // Inline each grid row's 3 photos (ก่อน/หลัง/ขณะ) to base64 so the PDF needs no
+  // network round-trips, same as the major-report photos above.
+  const gridRows = (Array.isArray(r.grid_rows) ? r.grid_rows : []).map((g) => {
+    const ph = g.photos || {};
+    const inline = {};
+    for (const k of ['before', 'after', 'during']) {
+      if (ph[k]) inline[k] = inlinePhoto(typeof ph[k] === 'string' ? ph[k] : ph[k].url, httpBase);
+    }
+    return { ...g, photos: inline };
+  });
   return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '', gridRows, recommendation: r.recommendation || '' };
 }
 

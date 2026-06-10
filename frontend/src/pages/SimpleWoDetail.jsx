@@ -144,12 +144,14 @@ export default function SimpleWoDetail() {
           <InfoRow label="ช่าง" value={wo.tech_name} />
           <InfoRow label="วันที่" value={dateVal ? dayjs(dateVal).format('DD/MM/YYYY') : '-'} />
           <InfoRow label="ลูกค้า" value={wo.client_name} />
+          {isGrid && <InfoRow label="สถานที่" value={wo.location || wo.client_name} />}
           <InfoRow label="อาคาร" value={wo.building} />
           <InfoRow label="ชั้น" value={wo.floor} />
-          <InfoRow label="ห้อง" value={wo.room} />
-          <InfoRow label="เลขเครื่อง" value={wo.asset_code} />
+          {!isGrid && <InfoRow label="ห้อง" value={wo.room} />}
+          {!isGrid && <InfoRow label="เลขเครื่อง" value={wo.asset_code} />}
           <InfoRow label="ประเภทงาน" value={WORK_TYPE_LABEL[wo.work_type] || wo.work_type} />
-          <InfoRow label="ระบบไฟ" value={wo.power_system ? `${wo.power_system}V` : '-'} />
+          {wo.work_type === 'major' && <InfoRow label="ระบบไฟ" value={wo.power_system ? `${wo.power_system}V` : '-'} />}
+          {wo.work_type === 'minor' && <InfoRow label="ประเภทแอร์" value={wo.ac_type || '-'} />}
           <InfoRow label="เวลาเริ่ม" value={wo.start_time} />
           <InfoRow label="เวลาเสร็จ" value={wo.end_time} />
         </div>
@@ -161,7 +163,11 @@ export default function SimpleWoDetail() {
             {gridRows.length === 0 && <p className="text-sm text-ink-muted">ไม่มีรายการ</p>}
             {gridRows.map((r, i) => (
               <div key={i} className="rounded-xl border border-line p-3">
-                <p className="font-medium text-ink mb-1.5">{i + 1}. {r.name || '-'}</p>
+                <p className="font-medium text-ink mb-1.5">
+                  {i + 1}. {wo.work_type === 'minor'
+                    ? `${r.room || '–'} · เลขเครื่อง ${r.machine_no || r.name || '–'}`
+                    : (r.name || '-')}
+                </p>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                   {gridCols.map((c, ci) => (
                     <span key={ci} className={(r.checks || [])[ci] ? 'text-primary' : 'text-ink-muted line-through'}>
@@ -170,6 +176,18 @@ export default function SimpleWoDetail() {
                   ))}
                 </div>
                 {wo.work_type === 'fan' && r.broken && <p className="text-sm text-danger mt-1.5">ชำรุด: {r.broken}</p>}
+                {wo.work_type === 'minor' && r.photos && Object.values(r.photos).some(Boolean) && (
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {[['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']].map(([k, label]) => (
+                      <div key={k} className="text-center">
+                        <div className="text-[11px] text-ink-muted mb-0.5">{label}</div>
+                        {r.photos[k]
+                          ? <a href={photoSrc(r.photos[k])} target="_blank" rel="noreferrer"><img src={photoSrc(r.photos[k])} alt={label} loading="lazy" className="w-full aspect-square object-cover rounded-lg border border-line" /></a>
+                          : <div className="w-full aspect-square rounded-lg border border-dashed border-line flex items-center justify-center text-ink-muted text-xs">—</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

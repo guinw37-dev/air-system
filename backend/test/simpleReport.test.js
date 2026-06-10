@@ -15,17 +15,26 @@ const baseData = (over = {}) => ({
 
 // ── Grid: ล้างย่อย ──────────────────────────────────────────────
 let html = buildSimpleReportHtml(baseData({
-  wo: { work_type: 'minor' },
-  gridRows: [{ name: 'AC-101', checks: [true, false, true, true] }],
+  wo: { work_type: 'minor', location: 'คลินิกบางพระ', ac_type: 'FCU' },
+  gridRows: [{ room: 'ห้องลงทะเบียน', machine_no: 'AC-101', checks: [true, false, true, true],
+    photos: { before: 'data:image/png;base64,B', after: 'data:image/png;base64,A', during: 'data:image/png;base64,D' } }],
   recommendation: 'ปกติดี',
 }));
 assert(html.includes('CUSTOMER SERVICE REPORT AIR'), 'minor letterhead title');
-assert(html.includes('รายการเครื่องที่ล้างย่อย'), 'minor table header');
-assert(html.includes('AC-101'), 'minor unit name');
+assert(html.includes('ห้อง/แผนก') && html.includes('เลขเครื่อง'), 'minor table headers (room + machine_no)');
+assert(html.includes('ห้องลงทะเบียน') && html.includes('AC-101'), 'minor room + machine_no values');
+assert(html.includes('สถานที่') && html.includes('คลินิกบางพระ'), 'minor สถานที่');
+assert(html.includes('ล้างแอร์ แบบล้างย่อย (FCU)'), 'minor ประเภทงาน with ac_type');
+assert(html.includes('รูปถ่ายงานล้างย่อย') && html.includes('ขณะปฏิบัติงาน'), 'minor per-machine photo section');
 assert(html.includes('ข้อมูลลูกค้า') && html.includes('สำหรับพนักงานผู้ให้บริการ'), 'minor section bars');
 assert(html.includes('ปกติดี'), 'minor recommendation');
 assert(!html.includes('รายงานบริการ'), 'minor does NOT use major header');
-ok('grid minor renders the ล้างย่อย form (not the major checklist)');
+ok('grid minor renders the ล้างย่อย form (room/machine_no + สถานที่ + ac_type + photos)');
+
+// minor fallback: old rows that only have `name` still render under เลขเครื่อง
+html = buildSimpleReportHtml(baseData({ wo: { work_type: 'minor' }, gridRows: [{ name: 'OLD-9', checks: [true, true, true, true] }] }));
+assert(html.includes('OLD-9'), 'minor back-compat name → เลขเครื่อง');
+ok('grid minor back-compat: legacy {name} row still renders');
 
 // ── Grid: พัดลม ─────────────────────────────────────────────────
 html = buildSimpleReportHtml(baseData({

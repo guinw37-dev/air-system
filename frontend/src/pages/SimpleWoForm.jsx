@@ -16,6 +16,9 @@ const WORK_TYPES = [
 
 const REFRIGERANTS = ['R32', 'R410', 'R22']
 
+// ประเภทเครื่องปรับอากาศ (ล้างย่อย) — job-level, prints on the FCU report.
+const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
+
 // Photo points (ก่อน + หลัง each). 1-5 required, 6-8 optional.
 const PHOTO_POINTS = [
   { no: 1, label: 'Location',     required: true },
@@ -53,11 +56,13 @@ export default function SimpleWoForm() {
     tech_name: '',
     work_date: '',
     client_name: '',
+    location: '',
     building: '',
     floor: '',
     room: '',
     asset_code: '',
     work_type: 'major',
+    ac_type: 'FCU',
     power_system: '380',
     start_time: '',
     end_time: '',
@@ -118,11 +123,13 @@ export default function SimpleWoForm() {
             tech_name: w.tech_name || '',
             work_date: w.work_date ? String(w.work_date).slice(0, 10) : '',
             client_name: w.client_name || '',
+            location: w.location || '',
             building: w.building || '',
             floor: w.floor || '',
             room: w.room || '',
             asset_code: w.asset_code || '',
             work_type: w.work_type || 'major',
+            ac_type: w.ac_type || 'FCU',
             power_system: w.power_system || '380',
             start_time: w.start_time ? String(w.start_time).slice(0, 5) : '',
             end_time: w.end_time ? String(w.end_time).slice(0, 5) : '',
@@ -271,11 +278,13 @@ export default function SimpleWoForm() {
       tech_name: '',
       work_date: '',
       client_name: '',
+      location: '',
       building: '',
       floor: '',
       room: '',
       asset_code: '',
       work_type: 'major',
+      ac_type: 'FCU',
       power_system: '380',
       start_time: '',
       end_time: '',
@@ -320,11 +329,13 @@ export default function SimpleWoForm() {
         tech_name: header.tech_name,
         work_date: header.work_date,
         client_name: header.client_name,
+        location: header.location,
         building: header.building,
         floor: header.floor,
         room: header.room,
         asset_code: header.asset_code,
         work_type: header.work_type,
+        ac_type: header.ac_type,
         power_system: header.power_system,
         ac_info: acInfo,
         checklist_values: checklistValues,
@@ -375,10 +386,12 @@ export default function SimpleWoForm() {
               <label className="label">ลูกค้า (โรงพยาบาล)</label>
               <ClientCombobox value={header.client_name} onChange={(v) => setHeader({ ...header, client_name: v })} />
             </div>
+            <Text label="สถานที่ (เว้นว่าง = ใช้ชื่อลูกค้า)" value={header.location} onChange={(v) => setHeader({ ...header, location: v })} />
             <Text label="อาคาร" value={header.building} onChange={(v) => setHeader({ ...header, building: v })} />
             <Text label="ชั้น" value={header.floor} onChange={(v) => setHeader({ ...header, floor: v })} />
-            <Text label="ห้อง" value={header.room} onChange={(v) => setHeader({ ...header, room: v })} />
-            <Text label="เลขเครื่อง" value={header.asset_code} onChange={(v) => setHeader({ ...header, asset_code: v })} />
+            {/* ห้อง + เลขเครื่อง: major = header; ล้างย่อย/พัดลม = ต่อเครื่องใน "รายการเครื่อง" */}
+            {!isGrid && <Text label="ห้อง" value={header.room} onChange={(v) => setHeader({ ...header, room: v })} />}
+            {!isGrid && <Text label="เลขเครื่อง" value={header.asset_code} onChange={(v) => setHeader({ ...header, asset_code: v })} />}
             <div>
               <label className="label">เวลาเริ่ม</label>
               <input type="time" className="input" value={header.start_time} onChange={(e) => setHeader({ ...header, start_time: e.target.value })} />
@@ -406,17 +419,38 @@ export default function SimpleWoForm() {
             </div>
           </div>
 
-          {/* power_system toggle */}
-          <div>
-            <label className="label">ระบบไฟ</label>
-            <PowerToggle value={header.power_system} onChange={(v) => setHeader({ ...header, power_system: v })} />
-          </div>
+          {/* major → ระบบไฟ ; ล้างย่อย → ประเภทเครื่องปรับอากาศ ; พัดลม → ไม่มี */}
+          {header.work_type === 'major' && (
+            <div>
+              <label className="label">ระบบไฟ</label>
+              <PowerToggle value={header.power_system} onChange={(v) => setHeader({ ...header, power_system: v })} />
+            </div>
+          )}
+          {header.work_type === 'minor' && (
+            <div>
+              <label className="label">ประเภทเครื่องปรับอากาศ</label>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {AC_TYPES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setHeader({ ...header, ac_type: t })}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      header.ac_type === t ? 'bg-primary text-white border-primary' : 'bg-white text-ink-muted border-line'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Grid form (ล้างย่อย / พัดลม) ── */}
         {isGrid && (
           <>
-            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} />
+            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} />
             <div className="card flex flex-col gap-3">
               <h2 className="section-header">ข้อแนะนำ</h2>
               <textarea className="input" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} placeholder="ข้อแนะนำ / หมายเหตุ" />
@@ -1022,13 +1056,19 @@ function ClientCombobox({ value, onChange }) {
   )
 }
 
-// Multi-unit checkbox grid for ล้างย่อย / พัดลม. Each row: typed name + the
-// work_type's checkbox columns (+ ชำรุด text for fan). Rows added/removed freely.
-function GridEditor({ workType, rows, onChange }) {
+// Multi-unit checkbox grid for ล้างย่อย / พัดลม.
+//   ล้างย่อย: ห้อง/แผนก + เลขเครื่อง + checks + 3 รูป (ก่อน/หลัง/ขณะ) ต่อเครื่อง.
+//   พัดลม:   ชื่อ/เลขเครื่อง + checks + ชำรุด.
+const ROW_PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']]
+function GridEditor({ workType, rows, onChange, uploadOne }) {
   const cols = GRID_COLS[workType] || []
-  const addRow = () => onChange([...rows, { name: '', checks: cols.map(() => false), broken: '' }])
+  const minor = workType === 'minor'
+  const addRow = () => onChange([...rows, minor
+    ? { room: '', machine_no: '', checks: cols.map(() => false), photos: {} }
+    : { name: '', checks: cols.map(() => false), broken: '' }])
   const setRow = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
   const toggle = (i, c) => setRow(i, { checks: cols.map((_, idx) => (idx === c ? !(rows[i].checks || [])[c] : !!(rows[i].checks || [])[idx])) })
+  const setPhoto = (i, phase, url) => setRow(i, { photos: { ...(rows[i].photos || {}), [phase]: url } })
   const removeRow = (i) => onChange(rows.filter((_, idx) => idx !== i))
   return (
     <div className="card flex flex-col gap-3">
@@ -1038,7 +1078,14 @@ function GridEditor({ workType, rows, onChange }) {
         <div key={i} className="rounded-xl border border-line p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-ink-muted w-6 shrink-0">{i + 1}.</span>
-            <input className="input flex-1 min-w-0" placeholder="ชื่อ / เลขเครื่อง" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} />
+            {minor ? (
+              <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
+                <input className="input min-w-0" placeholder="ห้อง/แผนก (ไม่รู้ใส่ –)" value={r.room || ''} onChange={(e) => setRow(i, { room: e.target.value })} />
+                <input className="input min-w-0" placeholder="เลขเครื่อง (ไม่รู้ใส่ –)" value={r.machine_no || ''} onChange={(e) => setRow(i, { machine_no: e.target.value })} />
+              </div>
+            ) : (
+              <input className="input flex-1 min-w-0" placeholder="ชื่อ / เลขเครื่อง" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} />
+            )}
             <button type="button" onClick={() => removeRow(i)} className="text-danger px-1 shrink-0" aria-label="ลบแถว"><X className="h-4 w-4" /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -1051,6 +1098,22 @@ function GridEditor({ workType, rows, onChange }) {
           </div>
           {workType === 'fan' && (
             <input className="input" placeholder="ชำรุดเนื่องจาก (ถ้ามี)" value={r.broken || ''} onChange={(e) => setRow(i, { broken: e.target.value })} />
+          )}
+          {minor && (
+            <div>
+              <div className="text-xs text-ink-muted mb-1">รูปถ่าย (3 รูป/เครื่อง)</div>
+              <div className="grid grid-cols-3 gap-2">
+                {ROW_PHASES.map(([k, label]) => (
+                  <PhotoSlot
+                    key={k}
+                    label={label}
+                    photo={(r.photos || {})[k] ? { url: (r.photos || {})[k] } : null}
+                    onUpload={async (file) => setPhoto(i, k, await uploadOne(file))}
+                    onRemove={() => setPhoto(i, k, '')}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
       ))}
