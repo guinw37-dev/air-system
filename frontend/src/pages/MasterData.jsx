@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, ChevronRight, ExternalLink } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 
 const FAMILIES = ['Split', 'VRF', 'FCU', 'AHU', 'Cassette', 'Floor Standing', 'Chiller', 'Other']
 const EQUIPMENT_TYPES = [
@@ -367,17 +368,20 @@ function UnitsTab() {
   })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/master/clients').then((r) => setClients(r.data)) }, [])
+  const isBranch = useTenantStore((s) => s.isBranch)
+  useEffect(() => { if (!isBranch) api.get('/master/clients').then((r) => setClients(r.data)) }, [isBranch])
 
+  // On a branch, units are X-Branch-scoped — load all without a client filter.
   const loadUnits = (clientId, eqType) => {
-    if (!clientId) { setUnitList([]); return }
+    if (!isBranch && !clientId) { setUnitList([]); return }
     setLoadingUnits(true)
-    const params = new URLSearchParams({ client_id: clientId })
+    const params = new URLSearchParams()
+    if (clientId) params.append('client_id', clientId)
     if (eqType) params.append('equipment_type', eqType)
     api.get(`/master/units?${params}`).then((r) => setUnitList(r.data)).finally(() => setLoadingUnits(false))
   }
 
-  useEffect(() => { loadUnits(selectedClient, equipmentTypeFilter) }, [selectedClient, equipmentTypeFilter])
+  useEffect(() => { loadUnits(selectedClient, equipmentTypeFilter) }, [selectedClient, equipmentTypeFilter, isBranch])
 
   // Cascade for add form
   useEffect(() => {
@@ -452,10 +456,12 @@ function UnitsTab() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row gap-3 mb-4 flex-wrap">
-        <select className="input max-w-xs" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)}>
-          <option value="">-- เลือก Client --</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {!isBranch && (
+          <select className="input max-w-xs" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)}>
+            <option value="">-- เลือก Client --</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
         <div className="flex gap-2">
           {[{ value: '', label: 'ทั้งหมด' }, ...EQUIPMENT_TYPES].map((et) => (
             <button
@@ -634,13 +640,34 @@ const TABS = [
 ]
 
 export default function MasterData() {
-  const [tab, setTab] = useState('clients')
+  const tenant = useTenantStore()
+  const [tab, setTab] = useState('structure')
+
+  // Master Data is per-branch now (sites/units live in each branch schema). On
+  // apex there is no tenant data — prompt the super-admin to enter a branch.
+  if (!tenant.isBranch) {
+    return (
+      <Layout title="Master Data">
+        <div className="p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[50vh]">
+          <p className="text-ink-muted">Master Data แยกตามสาขา — เลือกสาขาก่อนใช้งาน</p>
+          <Link to="/select-branch" className="btn-primary">เลือกสาขา</Link>
+        </div>
+      </Layout>
+    )
+  }
+
+  // On a branch the "Clients" tab (the global registry) is out of place — branches
+  // are managed in จัดการสาขา. Show only the structure + units of this branch.
+  const visibleTabs = TABS.filter((t) => t.key !== 'clients')
 
   return (
     <Layout title="Master Data">
       <div className="p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg bg-primary-soft text-primary w-fit">
+          สาขา: {tenant.name}
+        </div>
         <div className="flex gap-1 bg-page rounded-xl p-1 w-fit border border-line">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
