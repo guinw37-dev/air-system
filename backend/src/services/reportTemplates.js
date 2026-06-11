@@ -1177,7 +1177,7 @@ function gridPhotoSection(rows, title = 'รูปถ่ายงานล้า
 }
 
 // ล้างย่อย / พัดลม → multi-unit checkbox grid page (one A4, no photo pages).
-function simpleGridPage(data) {
+function simpleGridPage(data, includePhotos = true) {
   const d = data || {};
   const wo = d.wo || {};
   const u = d.unit || {};
@@ -1221,7 +1221,7 @@ function simpleGridPage(data) {
     </div>`;
 
   // ล้างย่อย: 3 รูปต่อเครื่อง (ก่อน/หลัง/ขณะปฏิบัติงาน). ข้ามถ้าไม่มีรูปเลย.
-  const photoSection = gridPhotoSection(rows, fan ? 'รูปถ่ายงานล้างพัดลม' : 'รูปถ่ายงานล้างย่อย');
+  const photoSection = includePhotos ? gridPhotoSection(rows, fan ? 'รูปถ่ายงานล้างพัดลม' : 'รูปถ่ายงานล้างย่อย') : '';
 
   const inner = `<div class="major-c">
     ${gridLetterhead(fan)}
@@ -1240,14 +1240,17 @@ function simpleGridPage(data) {
   return [page(d, inner)];
 }
 
-function simpleReportPages(data) {
+// includePhotos=false → omit the photo pages / per-machine photo blocks. Used by
+// the วางบิล batch so a 4-WO bundle (each with ~12 photos) doesn't blow past the
+// PDF/proxy timeout; the photos still live in each WO's own PDF.
+function simpleReportPages(data, includePhotos = true) {
   const d = data || {};
   const wo = d.wo || {};
   const u = d.unit || {};
   const sigs = d.sigs || {};
 
   // ล้างย่อย / พัดลม use the multi-unit grid layout instead.
-  if (wo.work_type === 'minor' || wo.work_type === 'fan') return simpleGridPage(d);
+  if (wo.work_type === 'minor' || wo.work_type === 'fan') return simpleGridPage(d, includePhotos);
 
   const meta = `
     <div class="uhead">
@@ -1291,8 +1294,10 @@ function simpleReportPages(data) {
   </div>`;
 
   const pages = [page(d, inner)];
-  for (const frag of simplePhotoPages(u, d)) {
-    pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'รายงานบริการ<small>รูปภาพประกอบ</small>')}${frag}</div>`));
+  if (includePhotos) {
+    for (const frag of simplePhotoPages(u, d)) {
+      pages.push(page(d, `<div style="page-break-before:always;">${docHeader(d, 'รายงานบริการ<small>รูปภาพประกอบ</small>')}${frag}</div>`));
+    }
   }
   return pages;
 }
@@ -1359,8 +1364,11 @@ function buildSimpleBatchHtml(dataArray, meta) {
     work_type: (d.unit || {}).equipment_type,
     work_date: (d.wo || {}).work_date || (d.wo || {}).created_at,
   }));
+  // Billing bundle = cover + each WO's report sheet WITHOUT photo pages — keeps a
+  // many-WO PDF light enough to render inside the proxy/PDF timeout. Full photos
+  // remain in each WO's individual PDF.
   const pages = [simpleBatchCover(d0, items, meta || {})];
-  for (const d of arr) pages.push(...simpleReportPages(d));
+  for (const d of arr) pages.push(...simpleReportPages(d, false));
   return htmlDoc(d0, `วางบิล ${(meta || {}).doc_no || ''}`, pages);
 }
 

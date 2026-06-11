@@ -27,6 +27,8 @@ async function htmlToPdf(html, { landscape = false } = {}) {
     browser = await puppeteer.launch({
       executablePath: findChrome(),
       headless: true,
+      // protocolTimeout raised for big multi-WO batches (cover + many reports).
+      protocolTimeout: 180000,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
   } catch (err) {
@@ -34,11 +36,14 @@ async function htmlToPdf(html, { landscape = false } = {}) {
   }
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    // Photos are inlined as base64 (no network), so 'load' is enough and avoids a
+    // needless networkidle0 wait; generous timeout for large batch documents.
+    await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
     const pdf = await page.pdf({
       format: 'A4',
       landscape,
       printBackground: true,
+      timeout: 120000,
       margin: { top: '10mm', right: '10mm', bottom: '12mm', left: '10mm' },
     });
     return pdf;
