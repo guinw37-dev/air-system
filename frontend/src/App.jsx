@@ -20,6 +20,7 @@ import Deductions from './pages/Deductions'
 import SimpleWoList from './pages/SimpleWoList'
 import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
+import AcRepair from './pages/AcRepair'
 import Branches from './pages/Branches'
 import Landing from './pages/Landing'
 import SelectBranch from './pages/SelectBranch'
@@ -82,6 +83,8 @@ export default function App() {
         <Route path="/simple-wo/new" element={<RequireAuth><SimpleWoForm /></RequireAuth>} />
         <Route path="/simple-wo/:id/edit" element={<RequireAuth><SimpleWoForm /></RequireAuth>} />
         <Route path="/simple-wo/:id" element={<RequireAuth><SimpleWoDetail /></RequireAuth>} />
+
+        <Route path="/ac-repair" element={<RequireAuth><AcRepair /></RequireAuth>} />
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS clients (
   subdomain   VARCHAR(63),                 -- host label resolved to this branch
   schema_name VARCHAR(63),                 -- Postgres schema: acme_co
   card_image  TEXT,                        -- logo/รูปหน้า card (URL or data URI)
+  repair_slug VARCHAR(63),                 -- maps this branch → repair-system hospital slug (AC-repair bridge)
   active      BOOLEAN DEFAULT true,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
