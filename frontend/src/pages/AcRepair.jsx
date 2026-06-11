@@ -16,6 +16,17 @@ const STATUS = {
 }
 const loc = (j) => [j.building, j.floor, j.department].filter((x) => x && x !== 'ไม่ระบุ').join(' / ')
 
+// SLA / งานค้าง — อายุนับจากเวลาแจ้ง. เกิน 48ชม.=แดง, 24ชม.=เหลือง.
+function aging(j) {
+  const t = j.register_time || j.assign_time
+  if (!t) return null
+  const hrs = (Date.now() - new Date(t).getTime()) / 3.6e6
+  const d = Math.floor(hrs / 24), h = Math.floor(hrs % 24)
+  const label = d > 0 ? `ค้าง ${d} วัน ${h} ชม.` : `ค้าง ${h} ชม.`
+  const color = hrs >= 48 ? 'text-danger' : hrs >= 24 ? 'text-amber-500' : 'text-ink-muted'
+  return { label, color, hrs }
+}
+
 export default function AcRepair() {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +44,16 @@ export default function AcRepair() {
   useEffect(() => { load() }, [])
   const done = () => { setModal(null); load() }
 
+  // งานค้างนานสุดขึ้นก่อน (SLA focus) + นับตามสถานะ
+  const sorted = [...jobs].sort((a, b) => new Date(a.register_time || 0) - new Date(b.register_time || 0))
+  const counts = {
+    total: jobs.length,
+    overdue: jobs.filter((j) => (aging(j)?.hrs || 0) >= 48).length,
+    Assign: jobs.filter((j) => j.status === 'Assign').length,
+    'Work On': jobs.filter((j) => j.status === 'Work On').length,
+    Clear: jobs.filter((j) => ['Clear', 'Clear1'].includes(j.status)).length,
+  }
+
   const exportExcel = async () => {
     setBusy(true)
     try {
@@ -49,9 +70,27 @@ export default function AcRepair() {
     }>
       <div className="p-4 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-ink-muted flex items-center gap-1.5"><Wrench className="h-4 w-4" /> งาน AC จากระบบแจ้งซ่อม ({jobs.length})</p>
+          <p className="text-sm text-ink-muted flex items-center gap-1.5"><Wrench className="h-4 w-4" /> งาน AC จากระบบแจ้งซ่อม</p>
           <button onClick={exportExcel} disabled={busy} className="btn-secondary text-sm flex items-center gap-1.5"><Download className="h-4 w-4" /> ส่งออก Excel</button>
         </div>
+
+        {/* สรุปงาน (dashboard) */}
+        {!error && jobs.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {[
+              ['ทั้งหมด', counts.total, 'text-ink'],
+              ['ค้าง >48ชม.', counts.overdue, 'text-danger'],
+              ['รอเริ่ม', counts.Assign, 'text-amber-500'],
+              ['กำลังซ่อม', counts['Work On'], 'text-primary'],
+              ['รอปิด', counts.Clear, 'text-indigo-500'],
+            ].map(([label, n, color]) => (
+              <div key={label} className="card py-3 text-center">
+                <div className={`text-2xl font-bold ${color}`}>{n}</div>
+                <div className="text-[11px] text-ink-muted mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="card flex items-start gap-3 text-danger">
@@ -67,9 +106,10 @@ export default function AcRepair() {
           <div className="card text-center text-ink-muted py-12"><Wrench className="h-8 w-8 mx-auto opacity-40 mb-2" /><p className="text-sm">ไม่มีงาน AC ค้างอยู่</p></div>
         ) : (
           <div className="flex flex-col gap-2">
-            {jobs.map((j) => {
+            {sorted.map((j) => {
               const s = STATUS[j.status] || { label: j.status, color: 'badge-gray' }
               const pendingBudget = j.status === 'Work On' && j.status_work === 'Pending Budget'
+              const age = aging(j)
               return (
                 <div key={j.id} className="card flex flex-col gap-2">
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -81,7 +121,10 @@ export default function AcRepair() {
                   </div>
                   <div className="text-sm text-ink">{loc(j) || '-'}</div>
                   <div className="text-sm text-ink-muted">{j.description || j.job_detail || '-'}</div>
-                  <div className="text-xs text-ink-muted">แจ้งโดย {j.requester || '-'} · {j.register_time ? dayjs(j.register_time).format('DD/MM/YY HH:mm') : ''}{j.assign_name ? ` · ช่าง ${j.assign_name}` : ''}</div>
+                  <div className="text-xs text-ink-muted flex items-center gap-2 flex-wrap">
+                    <span>แจ้งโดย {j.requester || '-'} · {j.register_time ? dayjs(j.register_time).format('DD/MM/YY HH:mm') : ''}{j.assign_name ? ` · ช่าง ${j.assign_name}` : ''}</span>
+                    {age && <span className={`font-medium ${age.color}`}>· {age.label}</span>}
+                  </div>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {j.status === 'Assign' && (
                       <button onClick={() => setModal({ kind: 'start', job: j })} disabled={busy} className="btn-primary text-sm flex items-center gap-1.5"><Play className="h-4 w-4" /> เริ่มงาน</button>
