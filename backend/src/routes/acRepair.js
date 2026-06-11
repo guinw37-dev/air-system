@@ -52,6 +52,11 @@ router.put('/jobs/:id/status', h(async (req, res) => {
   res.json(await callRepair('PUT', req.repairSlug, `/ac-jobs/${req.params.id}/status`, { actor: actorOf(req), body: req.body || {} }));
 }));
 
+// POST /jobs/:id/evaluation — record work rating (Clear → Clear1)
+router.post('/jobs/:id/evaluation', h(async (req, res) => {
+  res.json(await callRepair('POST', req.repairSlug, `/ac-jobs/${req.params.id}/evaluation`, { actor: actorOf(req), body: req.body || {} }));
+}));
+
 // POST /jobs/:id/spare-parts — close with AC parts
 router.post('/jobs/:id/spare-parts', h(async (req, res) => {
   res.json(await callRepair('POST', req.repairSlug, `/ac-jobs/${req.params.id}/spare-parts`, { actor: actorOf(req), body: req.body || {} }));
