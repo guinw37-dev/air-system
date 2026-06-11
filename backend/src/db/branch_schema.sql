@@ -271,7 +271,12 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   recommendation      TEXT,
   updated_at          TIMESTAMPTZ,
   deleted_at          TIMESTAMPTZ,
-  status     VARCHAR(20) DEFAULT 'submitted'
+  -- Approval workflow: submitted → (checked) → approved · rejected.
+  -- approved = locked + billable. Checker step is optional (can skip to approved).
+  status     VARCHAR(20) DEFAULT 'submitted',
+  checked_by   INT, checked_at   TIMESTAMPTZ,
+  approved_by  INT, approved_at  TIMESTAMPTZ,
+  reject_reason TEXT, rejected_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_swo_created_at ON simple_work_orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_swo_created_by ON simple_work_orders(created_by);

@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Download, Trash2, Pencil } from 'lucide-react'
+import { FileText, Download, Trash2, Pencil, Check, CheckCheck, Undo2, RotateCcw } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
+import { useAuthStore } from '../store/auth'
+
+// Approval workflow status. approved = locked + billable.
+const STATUS_LABEL = {
+  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
+  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
+  approved:  { label: 'อนุมัติแล้ว (ล็อก)', color: 'badge-success' },
+  rejected:  { label: 'ส่งกลับให้แก้',  color: 'badge-danger' },
+}
 
 const WORK_TYPE_LABEL = {
   major: 'ล้างใหญ่',
@@ -33,11 +42,33 @@ export default function SimpleWoDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
 
+  const { user } = useAuthStore()
+  const role = user?.role
+  const privileged = role === 'admin' || role === 'super_admin'
+
   const [wo, setWo] = useState(null)
   const [schema, setSchema] = useState({ sections: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Run an approval-workflow transition then refresh the WO.
+  const transition = async (action) => {
+    let reason
+    if (action === 'reject') {
+      reason = window.prompt('เหตุผลที่ส่งกลับ (ให้ช่างแก้)')
+      if (reason === null) return
+    }
+    if (action === 'reopen' && !window.confirm('ปลดล็อกใบงานนี้กลับเป็น "รอตรวจ"?')) return
+    setBusy(true)
+    try {
+      await api.post(`/simple-wo/${id}/transition`, { action, reason })
+      const r = await api.get(`/simple-wo/${id}`)
+      setWo(r.data)
+    } catch (err) {
+      alert(err.response?.data?.error || 'ทำรายการไม่สำเร็จ')
+    } finally { setBusy(false) }
+  }
 
   useEffect(() => {
     api.get(`/simple-wo/${id}`)
@@ -132,11 +163,19 @@ export default function SimpleWoDetail() {
     >
       <div className="px-4 pt-4 pb-8 flex flex-col gap-4 max-w-2xl mx-auto w-full">
 
-        {/* WO number badge */}
+        {/* WO number + status badge */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="badge badge-primary text-sm px-3 py-1">{wo.wo_number || `#${id}`}</span>
-          {result && <span className={`badge ${result.color}`}>{result.label}</span>}
+          <div className="flex items-center gap-2">
+            {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
+            {result && <span className={`badge ${result.color}`}>{result.label}</span>}
+          </div>
         </div>
+        {wo.status === 'rejected' && wo.reject_reason && (
+          <div className="rounded-input bg-danger-soft text-danger text-sm px-3 py-2">
+            <span className="font-medium">ส่งกลับ:</span> {wo.reject_reason}
+          </div>
+        )}
 
         {/* Header info */}
         <div className="card">
@@ -287,14 +326,53 @@ export default function SimpleWoDetail() {
           </div>
         </div>
 
-        {/* Actions */}
-        <button
-          onClick={() => navigate(`/simple-wo/${id}/edit`)}
-          disabled={busy}
-          className="btn-secondary w-full flex items-center justify-center gap-2"
-        >
-          <Pencil className="h-4 w-4" /> แก้ไขใบงาน
-        </button>
+        {/* ── Approval workflow ── */}
+        {(() => {
+          const status = wo.status || 'submitted'
+          const canCheck   = status === 'submitted' && ['checker', 'admin', 'super_admin'].includes(role)
+          const canApprove = ['submitted', 'checked'].includes(status) && ['approver', 'admin', 'super_admin'].includes(role)
+          const canReject  = ['submitted', 'checked'].includes(status) && ['checker', 'approver', 'admin', 'super_admin'].includes(role)
+          const canReopen  = ['approved', 'rejected'].includes(status) && privileged
+          if (!(canCheck || canApprove || canReject || canReopen)) return null
+          return (
+            <div className="card flex flex-col gap-2">
+              <h2 className="section-header">ขั้นตอนอนุมัติ</h2>
+              <div className="flex flex-wrap gap-2">
+                {canCheck && (
+                  <button onClick={() => transition('check')} disabled={busy} className="btn-secondary flex items-center gap-1.5">
+                    <Check className="h-4 w-4" /> ตรวจผ่าน
+                  </button>
+                )}
+                {canApprove && (
+                  <button onClick={() => transition('approve')} disabled={busy} className="btn-primary flex items-center gap-1.5">
+                    <CheckCheck className="h-4 w-4" /> อนุมัติ{status === 'submitted' ? ' (ข้ามตรวจ)' : ''}
+                  </button>
+                )}
+                {canReject && (
+                  <button onClick={() => transition('reject')} disabled={busy} className="btn-danger flex items-center gap-1.5">
+                    <Undo2 className="h-4 w-4" /> ส่งกลับ
+                  </button>
+                )}
+                {canReopen && (
+                  <button onClick={() => transition('reopen')} disabled={busy} className="btn-secondary flex items-center gap-1.5">
+                    <RotateCcw className="h-4 w-4" /> ปลดล็อก
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Actions — edit/delete locked once approved (except admin/super) */}
+        {!(wo.status === 'approved' && !privileged) && (
+          <button
+            onClick={() => navigate(`/simple-wo/${id}/edit`)}
+            disabled={busy}
+            className="btn-secondary w-full flex items-center justify-center gap-2"
+          >
+            <Pencil className="h-4 w-4" /> แก้ไขใบงาน
+          </button>
+        )}
         <div className="flex flex-col sm:flex-row gap-2">
           <button onClick={downloadPdf} disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2">
             <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
@@ -305,13 +383,15 @@ export default function SimpleWoDetail() {
         </div>
 
         {/* Delete */}
-        <button
-          onClick={remove}
-          disabled={busy}
-          className="btn-danger w-full flex items-center justify-center gap-2"
-        >
-          <Trash2 className="h-4 w-4" /> ลบใบงาน
-        </button>
+        {!(wo.status === 'approved' && !privileged) && (
+          <button
+            onClick={remove}
+            disabled={busy}
+            className="btn-danger w-full flex items-center justify-center gap-2"
+          >
+            <Trash2 className="h-4 w-4" /> ลบใบงาน
+          </button>
+        )}
       </div>
     </Layout>
   )
