@@ -8,8 +8,8 @@ const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
-const { buildSimpleReportHtml, buildSimpleBatchHtml } = require('../services/reportTemplates');
-const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
+const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
+const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 
 // Schema-per-tenant: simple_work_orders lives in the current branch schema, so
 // req.db scopes every read/write. The "customer" is the branch itself (no
@@ -507,17 +507,21 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
       if (ov[k] != null && String(ov[k]).trim() !== '') meta[k] = String(ov[k]).trim();
     }
     if (ov.issue_date != null && String(ov.issue_date).trim() !== '') meta.issue_date = ov.issue_date;
-    const html = buildSimpleBatchHtml(dataArray, meta);
+    // Render the cover + each WO's FULL (with-photos) report as separate PDFs in
+    // one browser (concurrently) and merge → photos are included, yet wall-clock
+    // ≈ the slowest single WO, not the sum, so we stay under the proxy timeout.
+    const htmls = [buildSimpleBatchCoverHtml(dataArray, meta), ...dataArray.map((d) => buildSimpleReportHtml(d))];
     try {
-      const pdf = await htmlToPdf(html, { landscape: false });
+      const pdf = await renderAndMerge(htmls, { landscape: false });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${meta.doc_no}.pdf"`);
       return res.end(pdf);
     } catch (err) {
       if (err instanceof PdfUnavailableError) {
+        // Chrome unavailable → single combined HTML (no photos) as a readable fallback.
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('X-PDF-Fallback', 'html');
-        return res.send(html);
+        return res.send(buildSimpleBatchHtml(dataArray, meta));
       }
       throw err;
     }

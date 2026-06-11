@@ -52,4 +52,46 @@ async function htmlToPdf(html, { landscape = false } = {}) {
   }
 }
 
-module.exports = { htmlToPdf, PdfUnavailableError, findChrome };
+// Render many HTML docs to PDFs in ONE browser (pages concurrently) and merge
+// them into a single PDF Buffer with pdf-lib. Wall-clock ≈ the slowest single
+// doc, not the sum — so a วางบิล bundle of full-photo WO reports stays well under
+// the proxy timeout. Throws PdfUnavailableError if Chrome can't launch.
+async function renderAndMerge(htmls, { landscape = false } = {}) {
+  const { PDFDocument } = require('pdf-lib');
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      executablePath: findChrome(),
+      headless: true,
+      protocolTimeout: 180000,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    });
+  } catch (err) {
+    throw new PdfUnavailableError(err.message);
+  }
+  try {
+    const buffers = await Promise.all((htmls || []).map(async (html) => {
+      const page = await browser.newPage();
+      try {
+        await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
+        return await page.pdf({
+          format: 'A4', landscape, printBackground: true, timeout: 120000,
+          margin: { top: '10mm', right: '10mm', bottom: '12mm', left: '10mm' },
+        });
+      } finally {
+        await page.close();
+      }
+    }));
+    const merged = await PDFDocument.create();
+    for (const buf of buffers) {
+      const doc = await PDFDocument.load(buf);
+      const copied = await merged.copyPages(doc, doc.getPageIndices());
+      copied.forEach((p) => merged.addPage(p));
+    }
+    return Buffer.from(await merged.save());
+  } finally {
+    await browser.close();
+  }
+}
+
+module.exports = { htmlToPdf, renderAndMerge, PdfUnavailableError, findChrome };
