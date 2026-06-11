@@ -69,15 +69,16 @@ async function provisionBranchSchema(schemaName) {
                        'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
       await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ${col}`);
     }
-    // ac_type widened 10→30 for fan types (Exhaust Fan Duct Type). Widening a
-    // varchar length is metadata-only (no table rewrite). The view drops below
-    // depend on ac_type, so this must run first.
-    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
-    // vw_simple_wo_minor/_fan changed column names/order (added สถานที่/ประเภท,
-    // split ห้อง/เลขเครื่อง). CREATE OR REPLACE VIEW can't rename/reorder existing
-    // columns, so drop them first; BRANCH_SQL recreates them fresh.
+    // vw_simple_wo_minor/_fan reference ac_type AND changed column names/order
+    // (added สถานที่/ประเภท, split ห้อง/เลขเครื่อง). DROP them FIRST: Postgres can't
+    // ALTER a column type while a view depends on it ("cannot alter type of a
+    // column used by a view"), and CREATE OR REPLACE VIEW can't rename/reorder.
+    // BRANCH_SQL recreates them fresh after.
     await c.query(`DROP VIEW IF EXISTS vw_simple_wo_minor`);
     await c.query(`DROP VIEW IF EXISTS vw_simple_wo_fan`);
+    // ac_type widened 10→30 for fan types (Exhaust Fan Duct Type). Widening a
+    // varchar length is metadata-only (no table rewrite). Runs after the drops.
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
     await c.query(BRANCH_SQL);
     // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
     // TABLE IF NOT EXISTS above won't alter an already-present users table).
