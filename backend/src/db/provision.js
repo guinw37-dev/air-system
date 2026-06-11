@@ -44,6 +44,11 @@ async function migratePublic(client) {
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
+    // Approval-workflow audit columns (legacy public.simple_work_orders edited on apex).
+    for (const col of ['checked_by INT', 'checked_at TIMESTAMPTZ', 'approved_by INT',
+                       'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
+      await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ${col}`);
+    }
   } finally {
     if (!client) c.release();
   }
