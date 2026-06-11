@@ -11,6 +11,28 @@ const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 
+// Fan out an in-app notification for a simple-wo event. Recipients are branch
+// users (by role and/or a specific id) read from req.db (<schema>.users); rows
+// are inserted into the GLOBAL public.notifications with branch_slug set so the
+// per-branch GET can scope them. Best-effort — never throws into the caller.
+async function notifyWo(req, { woId, type, message, toRoles, toUserId }) {
+  try {
+    if (!req.branch) return;                 // only meaningful inside a branch
+    const branchSlug = req.branch.slug;
+    const ids = new Set();
+    if (toUserId) ids.add(toUserId);
+    if (toRoles && toRoles.length) {
+      const { rows } = await req.db('SELECT id FROM users WHERE role = ANY($1) AND active = true', [toRoles]);
+      rows.forEach((r) => ids.add(r.id));
+    }
+    const recipients = [...ids].filter(Boolean).filter((id) => id !== req.user.id); // don't notify self
+    if (!recipients.length) return;
+    const values = recipients.map((_, i) => `($${i * 5 + 1},$${i * 5 + 2},$${i * 5 + 3},$${i * 5 + 4},$${i * 5 + 5})`).join(',');
+    const params = recipients.flatMap((id) => [id, woId, branchSlug, type, message]);
+    await pool.query(`INSERT INTO notifications (user_id, work_order_id, branch_slug, type, message) VALUES ${values}`, params);
+  } catch { /* notifications are best-effort — never break the WO action */ }
+}
+
 // Schema-per-tenant: simple_work_orders lives in the current branch schema, so
 // req.db scopes every read/write. The "customer" is the branch itself (no
 // wo_clients table) — client_name on the WO is just denormalized display text.
@@ -331,6 +353,12 @@ router.post('/', authMiddleware, async (req, res) => {
       b.location || null, b.ac_type || null,
     ]);
     await client.query('COMMIT');
+    // New ใบงาน starts as 'submitted' → alert checkers/approvers/admins to review.
+    await notifyWo(req, {
+      woId: rows[0].id, type: 'wo_submitted',
+      message: `ใบงาน ${rows[0].wo_number} รอตรวจ`,
+      toRoles: ['checker', 'approver', 'admin'],
+    });
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -479,10 +507,11 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
   if (!t) return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
   if (!t.roles.includes(req.user.role)) return res.status(403).json({ error: 'role นี้ทำขั้นตอนนี้ไม่ได้' });
   try {
-    const { rows } = await req.db('SELECT status FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const { rows } = await req.db('SELECT status, created_by, wo_number FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    if (!t.from.includes(rows[0].status)) {
-      return res.status(409).json({ error: `สถานะ "${rows[0].status}" ทำ "${action}" ไม่ได้` });
+    const wo = rows[0];
+    if (!t.from.includes(wo.status)) {
+      return res.status(409).json({ error: `สถานะ "${wo.status}" ทำ "${action}" ไม่ได้` });
     }
     let sql, params;
     if (action === 'check') {
@@ -500,6 +529,17 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
       params = [req.params.id];
     }
     await req.db(sql, params);
+    // Notify the right people about the transition (best-effort).
+    if (action === 'check') {
+      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_checked',
+        message: `ใบงาน ${wo.wo_number} ตรวจแล้ว รออนุมัติ`, toRoles: ['approver', 'admin'] });
+    } else if (action === 'approve') {
+      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_approved',
+        message: `ใบงาน ${wo.wo_number} อนุมัติแล้ว`, toUserId: wo.created_by });
+    } else if (action === 'reject') {
+      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_rejected',
+        message: `ใบงาน ${wo.wo_number} ถูกส่งกลับ: ${reason || '-'}`, toUserId: wo.created_by });
+    }
     res.json({ ok: true, status: t.to });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

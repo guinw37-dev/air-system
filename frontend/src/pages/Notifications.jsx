@@ -35,7 +35,7 @@ export default function Notifications() {
       )
     }
     if (item.work_order_id) {
-      navigate(`/work-orders/${item.work_order_id}`)
+      navigate(`/simple-wo/${item.work_order_id}`)
     }
   }
 
