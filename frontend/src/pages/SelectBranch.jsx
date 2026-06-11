@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Snowflake, Building2, ArrowRight, ShieldCheck, LogOut } from 'lucide-react'
+import { Building2, ArrowRight, ShieldCheck, LogOut } from 'lucide-react'
+import Logo from '../components/Logo'
 import api from '../api/client'
 import { useTenantStore } from '../store/tenant'
 import { useAuthStore } from '../store/auth'
@@ -30,9 +31,7 @@ export default function SelectBranch() {
   return (
     <div className="min-h-screen bg-page flex flex-col items-center px-4 py-10">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-3 shadow-lg">
-          <Snowflake className="h-9 w-9 text-white" />
-        </div>
+        <Logo size={64} className="mx-auto mb-3 drop-shadow-md" />
         <h1 className="text-2xl font-bold text-ink">เลือกหน่วยงาน</h1>
         <p className="text-sm text-ink-muted mt-1">สวัสดี {user?.name} — เลือกสาขาที่จะเข้าใช้งาน</p>
       </div>

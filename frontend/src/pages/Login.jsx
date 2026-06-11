@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Snowflake, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import Logo from '../components/Logo'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useTenantStore } from '../store/tenant'
@@ -40,9 +41,7 @@ export default function Login() {
     <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4">
       {/* Branding strip */}
       <div className="mb-6 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-3 shadow-lg">
-          <Snowflake className="h-9 w-9 text-white" />
-        </div>
+        <Logo size={64} className="mx-auto mb-3 drop-shadow-md" />
         <h1 className="text-2xl font-bold text-ink">Air System</h1>
         <p className="text-sm text-ink-muted mt-1">Technical Water Co.,Ltd</p>
         {tenant.isBranch && (

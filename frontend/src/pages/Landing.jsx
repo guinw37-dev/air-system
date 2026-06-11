@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Snowflake, Building2, ArrowRight, ShieldCheck } from 'lucide-react'
+import { Building2, ArrowRight, ShieldCheck } from 'lucide-react'
+import Logo from '../components/Logo'
 import api from '../api/client'
 
 // Apex landing page — one card per active branch (สาขา). Cards come from the
@@ -40,9 +41,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-page flex flex-col items-center px-4 py-10">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-3 shadow-lg">
-          <Snowflake className="h-9 w-9 text-white" />
-        </div>
+        <Logo size={64} className="mx-auto mb-3 drop-shadow-md" />
         <h1 className="text-2xl font-bold text-ink">Air System</h1>
         <p className="text-sm text-ink-muted mt-1">Technical Water Co.,Ltd — เลือกสาขา</p>
       </div>
