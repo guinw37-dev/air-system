@@ -15,6 +15,7 @@
     "migrate:drop-legacy": "node src/db/migrate_drop_legacy_public.js",
     "migrate:roles-cleanup": "node src/db/migrate_roles_cleanup.js",
     "migrate:wo-approve-legacy": "node src/db/migrate_wo_approve_legacy.js",
+    "migrate:seed-hospitals": "node src/db/migrate_seed_hospitals.js",
     "add-branch": "node src/db/add_branch.js",
     "test": "node test/schema.test.js && node test/woStateMachine.test.js && node test/simpleReport.test.js && node test/roles.test.js"
   },

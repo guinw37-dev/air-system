@@ -48,6 +48,7 @@ app.use('/api/branches', require('./routes/branches'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/simple-wo',   require('./routes/simpleWorkOrders'));
+app.use('/api/ac-repair',   require('./routes/acRepair'));   // remote view of repair-system AC jobs
 // /api/photos (legacy, unguarded) retired — secure photo endpoints live under
 // /api/work-orders/:id/photos (audit H-1)
 app.use('/api/repair-logs', require('./routes/repairLogs'));
