@@ -403,12 +403,16 @@ router.put('/:id', authMiddleware, async (req, res) => {
   if (verr) return res.status(400).json({ error: verr });
   try {
     const { rows } = await req.db(
-      'SELECT created_by FROM simple_work_orders WHERE id = $1', [req.params.id]
+      'SELECT created_by, status FROM simple_work_orders WHERE id = $1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const privileged = ['admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขใบงานนี้' });
+    }
+    // Approved = locked. Only admin/super can edit (they implicitly unlock).
+    if (rows[0].status === 'approved' && !privileged) {
+      return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ส่งกลับก่อนจึงแก้ได้' });
     }
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
@@ -445,15 +449,58 @@ router.put('/:id', authMiddleware, async (req, res) => {
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(
-      'SELECT created_by FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
+      'SELECT created_by, status FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const privileged = ['admin', 'super_admin'].includes(req.user.role);
     if (!privileged && rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบใบงานนี้' });
     }
+    if (rows[0].status === 'approved' && !privileged) {
+      return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ลบไม่ได้' });
+    }
     await req.db('UPDATE simple_work_orders SET deleted_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/simple-wo/:id/transition — approval workflow ──────────────────
+// status: submitted → (checked) → approved · rejected. Checker step is optional —
+// approver/admin can approve straight from submitted (skip). approved = locked.
+const TRANSITIONS = {
+  check:   { roles: ['checker', 'admin', 'super_admin'],              from: ['submitted'],            to: 'checked' },
+  approve: { roles: ['approver', 'admin', 'super_admin'],             from: ['submitted', 'checked'], to: 'approved' },
+  reject:  { roles: ['checker', 'approver', 'admin', 'super_admin'],  from: ['submitted', 'checked'], to: 'rejected' },
+  reopen:  { roles: ['admin', 'super_admin'],                         from: ['approved', 'rejected'], to: 'submitted' },
+};
+router.post('/:id/transition', authMiddleware, async (req, res) => {
+  const { action, reason } = req.body || {};
+  const t = TRANSITIONS[action];
+  if (!t) return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
+  if (!t.roles.includes(req.user.role)) return res.status(403).json({ error: 'role นี้ทำขั้นตอนนี้ไม่ได้' });
+  try {
+    const { rows } = await req.db('SELECT status FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    if (!t.from.includes(rows[0].status)) {
+      return res.status(409).json({ error: `สถานะ "${rows[0].status}" ทำ "${action}" ไม่ได้` });
+    }
+    let sql, params;
+    if (action === 'check') {
+      sql = `UPDATE simple_work_orders SET status='checked', checked_by=$2, checked_at=NOW(), updated_at=NOW() WHERE id=$1`;
+      params = [req.params.id, req.user.id];
+    } else if (action === 'approve') {
+      sql = `UPDATE simple_work_orders SET status='approved', approved_by=$2, approved_at=NOW(), updated_at=NOW() WHERE id=$1`;
+      params = [req.params.id, req.user.id];
+    } else if (action === 'reject') {
+      sql = `UPDATE simple_work_orders SET status='rejected', reject_reason=$2, rejected_at=NOW(), updated_at=NOW() WHERE id=$1`;
+      params = [req.params.id, reason || null];
+    } else { // reopen — clear the approval/check stamps so the flow restarts cleanly
+      sql = `UPDATE simple_work_orders SET status='submitted', approved_by=NULL, approved_at=NULL,
+             checked_by=NULL, checked_at=NULL, reject_reason=NULL, rejected_at=NULL, updated_at=NOW() WHERE id=$1`;
+      params = [req.params.id];
+    }
+    await req.db(sql, params);
+    res.json({ ok: true, status: t.to });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -487,6 +534,15 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   const ov = cover && typeof cover === 'object' ? cover : {};
   try {
+    // Billing covers only APPROVED ใบงาน — block if any selected WO isn't approved.
+    const { rows: st } = await req.db(
+      `SELECT id, wo_number, status FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
+    const notApproved = st.filter((r) => r.status !== 'approved');
+    if (notApproved.length) {
+      return res.status(409).json({
+        error: `วางบิลได้เฉพาะใบที่อนุมัติแล้ว — ยังไม่อนุมัติ ${notApproved.length} ใบ: ${notApproved.map((r) => r.wo_number || r.id).join(', ')}`,
+      });
+    }
     const dataArray = [];
     for (const id of cleanIds) {
       const d = await getSimpleReportData(id, { db: req.db, publicBaseUrl: PUBLIC_BASE });

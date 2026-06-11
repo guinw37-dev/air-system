@@ -64,6 +64,11 @@ async function provisionBranchSchema(schemaName) {
     // BRANCH_SQL then ships the columns); adds them on an existing table.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
+    // Approval-workflow audit columns (status already exists, default 'submitted').
+    for (const col of ['checked_by INT', 'checked_at TIMESTAMPTZ', 'approved_by INT',
+                       'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
+      await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ${col}`);
+    }
     // ac_type widened 10→30 for fan types (Exhaust Fan Duct Type). Widening a
     // varchar length is metadata-only (no table rewrite). The view drops below
     // depend on ac_type, so this must run first.

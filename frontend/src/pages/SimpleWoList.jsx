@@ -18,6 +18,14 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
+// Approval workflow status. approved = locked + billable.
+const STATUS_LABEL = {
+  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
+  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
+  approved:  { label: 'อนุมัติ',  color: 'badge-success' },
+  rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
+}
+
 const SLOT_LABEL = { technician: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', approver: 'เจ้าหน้าวิศวกรรม' }
 
 export default function SimpleWoList() {
@@ -38,6 +46,7 @@ export default function SimpleWoList() {
   const [fType, setFType] = useState('')     // '' | major | minor | fan
   const [fClient, setFClient] = useState('') // '' | client_name
   const [fResult, setFResult] = useState('') // '' | ok | not_ok
+  const [fStatus, setFStatus] = useState('') // '' | submitted | checked | approved | rejected
   const [sortBy, setSortBy] = useState('date_desc') // date_desc|date_asc|wo_asc|wo_desc
 
   // Multi-select
@@ -73,7 +82,8 @@ export default function SimpleWoList() {
   const visibleRows = rows
     .filter((r) => (!fType || r.work_type === fType)
       && (!fClient || r.client_name === fClient)
-      && (!fResult || r.result === fResult))
+      && (!fResult || r.result === fResult)
+      && (!fStatus || (r.status || 'submitted') === fStatus))
     .sort((a, b) => {
       if (sortBy === 'wo_asc') return String(a.wo_number || '').localeCompare(String(b.wo_number || ''))
       if (sortBy === 'wo_desc') return String(b.wo_number || '').localeCompare(String(a.wo_number || ''))
@@ -82,8 +92,8 @@ export default function SimpleWoList() {
       return sortBy === 'date_asc' ? da - db : db - da
     })
 
-  const hasFilter = fType || fClient || fResult
-  const clearFilters = () => { setFType(''); setFClient(''); setFResult('') }
+  const hasFilter = fType || fClient || fResult || fStatus
+  const clearFilters = () => { setFType(''); setFClient(''); setFResult(''); setFStatus('') }
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -148,6 +158,12 @@ export default function SimpleWoList() {
   // Open the editable cover sheet, prefilling from the selected rows.
   const openBillModal = () => {
     const sel = rows.filter((r) => selected.has(r.id))
+    // วางบิลได้เฉพาะใบที่อนุมัติแล้ว (lock).
+    const notApproved = sel.filter((r) => (r.status || 'submitted') !== 'approved')
+    if (notApproved.length) {
+      alert(`วางบิลได้เฉพาะใบที่อนุมัติแล้ว — ยังไม่อนุมัติ ${notApproved.length} ใบ:\n${notApproved.map((r) => r.wo_number || r.id).join(', ')}`)
+      return
+    }
     const clients = [...new Set(sel.map((r) => r.client_name).filter(Boolean))]
     const fmt = (v) => (v ? new Date(v).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
     const dates = sel.map((r) => r.work_date || r.created_at).filter(Boolean).sort()
@@ -279,7 +295,17 @@ export default function SimpleWoList() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div>
+              <label className="label">สถานะ</label>
+              <select className="input" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                <option value="submitted">รอตรวจ</option>
+                <option value="checked">ตรวจแล้ว</option>
+                <option value="approved">อนุมัติ</option>
+                <option value="rejected">ส่งกลับ</option>
+              </select>
+            </div>
             <div>
               <label className="label">ประเภท</label>
               <select className="input" value={fType} onChange={(e) => setFType(e.target.value)}>
@@ -343,6 +369,7 @@ export default function SimpleWoList() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ลูกค้า</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">เครื่อง</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ประเภท</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">สถานะ</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">ผลงาน</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase tracking-wide">รูป</th>
                     <th className="py-3 px-4"><span className="sr-only">ลบ</span></th>
@@ -351,7 +378,7 @@ export default function SimpleWoList() {
                 <tbody className="divide-y divide-line">
                   {visibleRows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="py-16">
+                      <td colSpan={11} className="py-16">
                         <div className="flex flex-col items-center gap-3 text-ink-muted">
                           <FileText className="h-8 w-8 opacity-40" />
                           <p className="text-sm">{rows.length === 0 ? 'ยังไม่มีใบงาน' : 'ไม่พบใบงานตามตัวกรอง'}</p>
@@ -400,6 +427,9 @@ export default function SimpleWoList() {
                         <td className="py-3 px-4 text-ink-muted">{wo.asset_code || '-'}</td>
                         <td className="py-3 px-4">
                           <span className={`badge ${t.color}`}>{t.label}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s ? <span className={`badge ${s.color}`}>{s.label}</span> : <span className="text-ink-muted text-xs">-</span> })()}
                         </td>
                         <td className="py-3 px-4">
                           {r ? <span className={`badge ${r.color}`}>{r.label}</span> : <span className="text-ink-muted text-xs">-</span>}
