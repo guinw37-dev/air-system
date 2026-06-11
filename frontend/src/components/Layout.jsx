@@ -175,10 +175,34 @@ export default function Layout({ children, title, back, actions }) {
           {actions}
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        {/* Page content — extra bottom padding on mobile for the tab bar */}
+        <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
           {children}
         </main>
+
+        {/* Bottom tab bar — mobile only (thumb-reachable for field techs) */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-line flex items-stretch pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_12px_rgba(22,62,94,.06)]">
+          {[
+            { to: '/simple-wo',    icon: FilePlus2, label: 'ใบงาน' },
+            { to: '/ac-repair',    icon: Wrench,    label: 'ซ่อมแอร์' },
+            { to: '/notifications', icon: Bell,     label: 'แจ้งเตือน', badge: unreadCount },
+          ].map(({ to, icon: Icon, label, badge }) => {
+            const active = isActive(to)
+            return (
+              <Link key={to} to={to} className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] ${active ? 'text-primary' : 'text-ink-muted'}`}>
+                <Icon style={{ width: 22, height: 22 }} />
+                <span className="text-[11px] font-medium">{label}</span>
+                {badge > 0 && (
+                  <span className="absolute top-1.5 right-[22%] bg-rose-500 text-white text-[9px] font-bold min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center leading-none">{badge > 99 ? '99+' : badge}</span>
+                )}
+              </Link>
+            )
+          })}
+          <button onClick={() => setSidebarOpen(true)} className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-ink-muted">
+            <Menu style={{ width: 22, height: 22 }} />
+            <span className="text-[11px] font-medium">เมนู</span>
+          </button>
+        </nav>
       </div>
     </div>
   )
