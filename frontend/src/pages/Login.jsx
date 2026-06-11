@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Snowflake } from 'lucide-react'
+import { Snowflake, ArrowLeft } from 'lucide-react'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useTenantStore } from '../store/tenant'
@@ -12,6 +12,13 @@ export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Back to the apex landing (branch cards). From a branch login, clear the
+  // active branch first so we don't bounce straight back into /login.
+  const goHome = () => {
+    if (tenant.isBranch) tenant.switchBranch(null)
+    navigate('/')
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -75,6 +82,10 @@ export default function Login() {
           </button>
         </form>
       </div>
+
+      <button onClick={goHome} className="mt-5 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-primary">
+        <ArrowLeft className="h-4 w-4" /> กลับหน้าหลัก
+      </button>
     </div>
   )
 }
