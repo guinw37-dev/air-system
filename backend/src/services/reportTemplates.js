@@ -1352,11 +1352,8 @@ function simpleBatchCover(data, items, meta) {
   return page(data, inner);
 }
 
-// Combined batch document: billing cover + every selected WO's report pages.
-function buildSimpleBatchHtml(dataArray, meta) {
-  const arr = dataArray || [];
-  const d0 = arr[0] || {};
-  const items = arr.map((d) => ({
+function batchItems(arr) {
+  return (arr || []).map((d) => ({
     wo_number: (d.wo || {}).order_no,
     building: (d.unit || {}).building_name,
     room: (d.unit || {}).room_name,
@@ -1364,12 +1361,25 @@ function buildSimpleBatchHtml(dataArray, meta) {
     work_type: (d.unit || {}).equipment_type,
     work_date: (d.wo || {}).work_date || (d.wo || {}).created_at,
   }));
-  // Billing bundle = cover + each WO's report sheet WITHOUT photo pages — keeps a
-  // many-WO PDF light enough to render inside the proxy/PDF timeout. Full photos
-  // remain in each WO's individual PDF.
-  const pages = [simpleBatchCover(d0, items, meta || {})];
+}
+
+// Single combined doc, NO photo pages — the HTML fallback when Chrome is
+// unavailable. The route normally renders the cover + each WO's full WITH-photos
+// PDF separately and merges them (renderAndMerge), so photos ARE in the bundle.
+function buildSimpleBatchHtml(dataArray, meta) {
+  const arr = dataArray || [];
+  const d0 = arr[0] || {};
+  const pages = [simpleBatchCover(d0, batchItems(arr), meta || {})];
   for (const d of arr) pages.push(...simpleReportPages(d, false));
   return htmlDoc(d0, `วางบิล ${(meta || {}).doc_no || ''}`, pages);
+}
+
+// Just the billing cover page as its own doc, so the route can render it then
+// append each WO's full report and merge the lot into one PDF.
+function buildSimpleBatchCoverHtml(dataArray, meta) {
+  const arr = dataArray || [];
+  const d0 = arr[0] || {};
+  return htmlDoc(d0, `วางบิล ${(meta || {}).doc_no || ''}`, [simpleBatchCover(d0, batchItems(arr), meta || {})]);
 }
 
 function buildReportHtml(data, type) {
@@ -1391,4 +1401,4 @@ function buildReportHtml(data, type) {
   return htmlDoc(d, TYPE_TITLES[type] || 'รายงานการปฏิบัติงาน', pages);
 }
 
-module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml };
+module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml };
