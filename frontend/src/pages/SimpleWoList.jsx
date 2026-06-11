@@ -38,9 +38,6 @@ export default function SimpleWoList() {
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [exporting, setExporting] = useState(false)
 
   // List filter + sort (client-side)
   const [fType, setFType] = useState('')     // '' | major | minor | fan
@@ -130,29 +127,6 @@ export default function SimpleWoList() {
   }
 
   const clearSelection = () => setSelected(new Set())
-
-  const exportExcel = async () => {
-    setExporting(true)
-    try {
-      const params = new URLSearchParams()
-      if (dateFrom) params.append('date_from', dateFrom)
-      if (dateTo)   params.append('date_to', dateTo)
-      const qs = params.toString()
-      const res = await api.get(`/simple-wo/export/excel${qs ? `?${qs}` : ''}`, { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `simple-wo-${dayjs().format('YYYYMMDD-HHmm')}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
-      alert('ดาวน์โหลด Excel ไม่สำเร็จ')
-    } finally {
-      setExporting(false)
-    }
-  }
 
   // ── Batch bill (PDF) ───────────────────────────────────────────────
   // Open the editable cover sheet, prefilling from the selected rows.
@@ -262,28 +236,6 @@ export default function SimpleWoList() {
         >
           <Plus className="h-5 w-5" /> เปิดใบงานใหม่
         </button>
-
-        {/* Export Excel */}
-        <div className="card flex flex-col gap-3">
-          <h2 className="section-header">ส่งออก Excel</h2>
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <div>
-              <label className="label">วันที่เริ่ม</label>
-              <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">วันที่สิ้นสุด</label>
-              <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            </div>
-            <button
-              onClick={exportExcel}
-              disabled={exporting}
-              className="btn-secondary flex items-center justify-center gap-1.5 sm:ml-auto"
-            >
-              <Download className="h-4 w-4" /> {exporting ? 'กำลังสร้าง...' : 'ส่งออก Excel'}
-            </button>
-          </div>
-        </div>
 
         {/* Filter + sort */}
         <div className="card flex flex-col gap-3">

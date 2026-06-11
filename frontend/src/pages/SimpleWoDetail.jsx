@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Download, Trash2, Pencil, Check, CheckCheck, Undo2, RotateCcw } from 'lucide-react'
+import { FileText, Trash2, Pencil, Check, CheckCheck, Undo2, RotateCcw } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import { PageSpinner } from '../components/Spinner'
@@ -96,29 +96,6 @@ export default function SimpleWoDetail() {
       window.open(url, '_blank')
     } catch {
       alert('ดาวน์โหลด PDF ไม่สำเร็จ')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const exportExcel = async () => {
-    setBusy(true)
-    try {
-      const d = wo.work_date ? dayjs(wo.work_date).format('YYYY-MM-DD') : ''
-      const params = new URLSearchParams()
-      if (d) { params.append('date_from', d); params.append('date_to', d) }
-      const qs = params.toString()
-      const res = await api.get(`/simple-wo/export/excel${qs ? `?${qs}` : ''}`, { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${wo.wo_number || `simple-wo-${id}`}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
-      alert('ดาวน์โหลด Excel ไม่สำเร็จ')
     } finally {
       setBusy(false)
     }
@@ -373,14 +350,9 @@ export default function SimpleWoDetail() {
             <Pencil className="h-4 w-4" /> แก้ไขใบงาน
           </button>
         )}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button onClick={downloadPdf} disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2">
-            <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
-          </button>
-          <button onClick={exportExcel} disabled={busy} className="btn-secondary flex-1 flex items-center justify-center gap-2">
-            <Download className="h-4 w-4" /> ส่งออก Excel ใบนี้
-          </button>
-        </div>
+        <button onClick={downloadPdf} disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2">
+          <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
+        </button>
 
         {/* Delete */}
         {!(wo.status === 'approved' && !privileged) && (
