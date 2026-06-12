@@ -44,6 +44,12 @@ export default function Landing() {
         <Logo size={64} className="mx-auto mb-3 drop-shadow-md" />
         <h1 className="text-2xl font-bold text-ink">Air System</h1>
         <p className="text-sm text-ink-muted mt-1">Technical Water Co.,Ltd — เลือกสาขา</p>
+        <button
+          onClick={() => navigate('/login')}
+          className="btn-secondary mt-4 inline-flex items-center gap-2 text-sm"
+        >
+          <ShieldCheck className="h-4 w-4" /> เข้าระบบผู้ดูแล (Super Admin)
+        </button>
       </div>
 
       <div className="w-full max-w-4xl">
