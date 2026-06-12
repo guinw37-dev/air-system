@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Wrench, Database,
-  Users, ChevronLeft, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
+  Users, ChevronLeft, ChevronDown, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
@@ -13,7 +13,15 @@ import Logo from './Logo'
 // Trimmed nav. Hidden entries (Dashboard, PM Schedule, PM Plan, ติดตามการล้าง,
 // อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
-  { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null },
+  { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null,
+    children: [
+      { to: '/simple-wo',                       label: 'งานค้าง (ยังไม่เสร็จ)' },
+      { to: '/simple-wo?pending=supervisor',    label: 'รอหัวหน้าช่างเซ็น' },
+      { to: '/simple-wo?pending=building',      label: 'รอช่างอาคารเซ็น' },
+      { to: '/simple-wo?pending=engineer',      label: 'รอวิศวกรรมเซ็น' },
+      { to: '/simple-wo?view=ready',            label: 'รอวางบิล', roles: ['admin', 'super_admin'] },
+      { to: '/simple-wo?view=all',              label: 'ทั้งหมด' },
+    ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin'] },
@@ -76,6 +84,60 @@ export default function Layout({ children, title, back, actions }) {
     )
   }
 
+  // Is a sub-link (with a ?pending=…/?view=… query) the one currently shown?
+  const subActive = (to) => {
+    const [p, q] = to.split('?')
+    const w = new URLSearchParams(q || ''), h = new URLSearchParams(location.search)
+    return location.pathname === p
+      && (w.get('pending') || '') === (h.get('pending') || '')
+      && (w.get('view') || '') === (h.get('view') || '')
+  }
+
+  // Collapsible nav group (e.g. ใบงาน → ทั้งหมด / รอแต่ละขั้นเซ็น). Open by default
+  // when its base path is active.
+  const NavGroup = ({ item, onNavigate }) => {
+    const Icon = item.icon
+    const [open, setOpen] = useState(isActive(item.path))
+    const children = item.children.filter((c) => !c.roles || c.roles.includes(user?.role))
+    return (
+      <div>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+            isActive(item.path) ? 'text-white' : 'text-blue-100/80 hover:bg-white/10 hover:text-white'
+          }`}
+        >
+          <Icon className="shrink-0" style={{ width: 18, height: 18 }} />
+          <span className="flex-1 text-left">{item.label}</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="ml-4 mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-white/15 pl-2">
+            {children.map((c) => (
+              <Link
+                key={c.to}
+                to={c.to}
+                onClick={onNavigate}
+                className={`px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                  subActive(c.to) ? 'bg-white/15 text-white font-medium' : 'text-blue-100/70 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {c.label}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Render a nav entry as either a leaf link or a collapsible group.
+  const renderNav = (item, onNavigate) =>
+    item.children
+      ? <NavGroup key={item.path} item={item} onNavigate={onNavigate} />
+      : <NavLink key={item.path} path={item.path} icon={item.icon} label={item.label} onClick={onNavigate} />
+
+
   return (
     <div className="flex h-screen bg-page overflow-hidden">
 
@@ -90,11 +152,8 @@ export default function Layout({ children, title, back, actions }) {
         </div>
         <div className="mx-4 border-t border-white/10" />
 
-        <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
-          {visibleNav.map(({ path, icon: Icon, label }) => (
-            <NavLink key={path} path={path} icon={Icon} label={label} />
-          ))}
-
+        <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2 overflow-y-auto">
+          {visibleNav.map((item) => renderNav(item))}
         </nav>
 
         <div className="px-3 py-3 border-t border-white/10">
@@ -128,10 +187,8 @@ export default function Layout({ children, title, back, actions }) {
               </div>
               <button onClick={() => setSidebarOpen(false)}><X className="h-5 w-5 text-blue-200" /></button>
             </div>
-            <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
-              {visibleNav.map(({ path, icon: Icon, label }) => (
-                <NavLink key={path} path={path} icon={Icon} label={label} onClick={() => setSidebarOpen(false)} />
-              ))}
+            <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2 overflow-y-auto">
+              {visibleNav.map((item) => renderNav(item, () => setSidebarOpen(false)))}
             </nav>
             <div className="px-5 py-4 border-t border-white/10">
               <p className="text-xs text-blue-300">{user?.name}</p>
