@@ -2,10 +2,12 @@ const jwt = require('jsonwebtoken');
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  // Allow token via query string for browser-opened endpoints (e.g. PDF download)
+  // Bearer is the norm. A token via query string is only accepted on GET (e.g.
+  // opening a PDF in the browser) — query tokens leak into logs/history, so we
+  // never honor them on mutating verbs. (audit L-2)
   const token = (header && header.startsWith('Bearer '))
     ? header.split(' ')[1]
-    : req.query.token;
+    : (req.method === 'GET' ? req.query.token : undefined);
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -13,10 +15,13 @@ function authMiddleware(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload;
     // Cross-branch guard (schema-per-tenant): a branch-scoped token (branchSlug
-    // set, not a super-admin) may only be used on its own branch. Super-admins
-    // (isSuper) and apex requests (no req.branch) pass through.
-    if (req.branch && !payload.isSuper && payload.branchSlug && payload.branchSlug !== req.branch.slug) {
-      return res.status(403).json({ error: 'cross-branch access denied' });
+    // set, not a super-admin) is bound to its own branch. It must resolve to that
+    // branch — reject both a wrong branch AND no branch at all, so a branch token
+    // can't silently fall through to the public schema. (audit M-1/M-2)
+    if (!payload.isSuper && payload.branchSlug) {
+      if (!req.branch || payload.branchSlug !== req.branch.slug) {
+        return res.status(403).json({ error: 'cross-branch access denied' });
+      }
     }
     next();
   } catch {

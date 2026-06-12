@@ -13,6 +13,14 @@ class RepairError extends Error {
 
 const configured = () => !!(BASE && KEY);
 
+// Keep only printable chars in a header value (drop C0 controls 0-31 and DEL 127,
+// incl. CR/LF) so the actor name can't inject extra headers upstream (audit L-1).
+function safeHeader(v) {
+  return [...String(v || '')]
+    .filter((c) => { const n = c.charCodeAt(0); return n >= 32 && n !== 127; })
+    .join('').trim().slice(0, 120);
+}
+
 // Call repair-system integration. expectBlob=true returns the raw Response (for
 // streaming the Excel download); otherwise returns parsed JSON.
 async function callRepair(method, repairSlug, subpath, { actor, body, expectBlob } = {}) {
@@ -24,7 +32,7 @@ async function callRepair(method, repairSlug, subpath, { actor, body, expectBlob
       method,
       headers: {
         'X-Service-Key': KEY,
-        'X-Actor-Name': actor || '',
+        'X-Actor-Name': safeHeader(actor),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,

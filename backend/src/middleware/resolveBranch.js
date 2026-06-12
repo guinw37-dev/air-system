@@ -79,4 +79,11 @@ async function resolveBranch(req, res, next) {
   }
 }
 
-module.exports = { resolveBranch, leftmostLabel, lookupBranch, invalidateBranchCache };
+// Guard for pure per-tenant routes: refuse to run on the apex/public fallback so
+// a branch-less request can't read/write the public schema by accident. (audit M-1)
+function requireBranch(req, res, next) {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน (X-Branch)' });
+  next();
+}
+
+module.exports = { resolveBranch, requireBranch, leftmostLabel, lookupBranch, invalidateBranchCache };

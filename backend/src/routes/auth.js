@@ -4,13 +4,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const rateLimit = require('../middleware/rateLimit');
+const { serverError } = require('../utils/respond');
 
 // POST /api/auth/login
 // Per-branch auth (fully decoupled): on a branch subdomain (req.branch set) the
 // user is authenticated against THAT branch's own users table (req.db →
 // <schema>.users). On apex the user is a global super-admin from public.users.
 // A branch's users and another branch's users never interconnect.
-router.post('/login', async (req, res) => {
+// Throttle login to blunt brute-force / credential stuffing (audit H-2): 10
+// attempts / IP / minute. Successful logins are rare, so this never bites users.
+router.post('/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.status(400).json({ error: 'username and password required' });
@@ -37,7 +41,7 @@ router.post('/login', async (req, res) => {
     );
     res.json({ token, user: { id: user.id, name: user.name, role: user.role, branchSlug, isSuper } });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -52,7 +56,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
     res.json({ ...rows[0], branchSlug: req.user.branchSlug || null, isSuper: !!req.user.isSuper });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 

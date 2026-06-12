@@ -63,8 +63,15 @@ r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: nul
 assert.strictEqual(r2.nexted, true);
 ok('authMiddleware lets a super-admin onto any branch');
 
+// A branch token with no resolved branch must NOT fall through to public — it is
+// bound to its branch, so missing X-Branch is rejected, not silently allowed (M-2).
 r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: 'pts1', isSuper: false })}` }, query: {}, branch: null });
+assert.strictEqual(r2.status, 403);
+ok('authMiddleware blocks a branch token with no branch (no public fallback)');
+
+// A pure super-admin token (no branchSlug) on apex still passes.
+r2 = runAuth({ headers: { authorization: `Bearer ${sign({ id: 1, branchSlug: null, isSuper: true })}` }, query: {}, branch: null });
 assert.strictEqual(r2.nexted, true);
-ok('authMiddleware passes through on apex (no branch)');
+ok('authMiddleware passes a super-admin on apex (no branch)');
 
 console.log(`\n${passed} passed`);
