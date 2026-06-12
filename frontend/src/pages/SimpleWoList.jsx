@@ -205,13 +205,13 @@ export default function SimpleWoList() {
   const handleBatchSign = async (dataUrl) => {
     setSignLoading(true)
     try {
-      const count = selected.size
-      await api.post('/simple-wo/batch-sign', {
+      const { data } = await api.post('/simple-wo/batch-sign', {
         ids: [...selected],
         signature_data: dataUrl,
         signer_name: signerName,
       })
-      alert(`เซ็นแล้ว ${count} ใบ (${SLOT_LABEL[role]})`)
+      const skipMsg = data?.skipped ? ` · ข้าม ${data.skipped} ใบ (ยังไม่ถึงคิว/วางบิลแล้ว)` : ''
+      alert(`เซ็นแล้ว ${data?.signed ?? 0} ใบ (${SLOT_LABEL[role]})${skipMsg}`)
       setSigning(false)
       clearSelection()
       load()

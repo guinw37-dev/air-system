@@ -1,6 +1,6 @@
 const assert = require('assert');
 const { ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES, LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
-        ROLE_SLOT, canSignSlot, slotForRole, allSigned } = require('../src/utils/roles');
+        ROLE_SLOT, canSignSlot, slotForRole, allSigned, blockingSlot } = require('../src/utils/roles');
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; };
@@ -72,6 +72,21 @@ t('allSigned: needs all 4 visible slots filled', () => {
   assert.ok(!allSigned({}));
   // sig_department is NOT required
   assert.ok(allSigned({ ...full, sig_department: '' }));
+});
+
+t('blockingSlot: enforces team→supervisor→building→engineer order', () => {
+  const none = {};
+  // team is first — never blocked
+  assert.strictEqual(blockingSlot('team', none), null);
+  // supervisor needs team
+  assert.strictEqual(blockingSlot('supervisor', none), 'team');
+  assert.strictEqual(blockingSlot('supervisor', { sig_team: 'a' }), null);
+  // building needs team + supervisor
+  assert.strictEqual(blockingSlot('building', { sig_team: 'a' }), 'supervisor');
+  assert.strictEqual(blockingSlot('building', { sig_team: 'a', sig_supervisor: 'b' }), null);
+  // engineer needs all three
+  assert.strictEqual(blockingSlot('engineer', { sig_team: 'a', sig_supervisor: 'b' }), 'building');
+  assert.strictEqual(blockingSlot('engineer', { sig_team: 'a', sig_supervisor: 'b', sig_building: 'c' }), null);
 });
 
 console.log(`${pass} passed`);

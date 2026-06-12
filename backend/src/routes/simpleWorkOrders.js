@@ -7,7 +7,7 @@ const dayjs = require('dayjs');
 const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
-const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned } = require('../utils/roles');
+const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, blockingSlot, SLOT_TH } = require('../utils/roles');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -579,11 +579,16 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
   const slot = slotForRole(req.user.role);
   if (!slot) return res.status(403).json({ error: 'role นี้ไม่มีช่องเซ็น' });
   try {
-    const { rows } = await req.db('SELECT status FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const { rows } = await req.db(
+      `SELECT status, sig_team, sig_supervisor, sig_building, sig_engineer
+       FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     if (rows[0].status === 'approved') {
       return res.status(409).json({ error: 'วางบิลแล้ว (ล็อก) — เซ็นเพิ่มไม่ได้' });
     }
+    // Step chain: this slot can be signed only after every earlier slot is signed.
+    const blk = blockingSlot(slot, rows[0]);
+    if (blk) return res.status(409).json({ error: `ต้องรอ "${SLOT_TH[blk]}" เซ็นก่อน` });
     const { rows: upd } = await req.db(
       `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2, updated_at = NOW()
        WHERE id = $3 RETURNING id`,
@@ -604,11 +609,19 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
   const dataCol = `sig_${slot}`;
   const nameCol = `sig_${slot}_name`;
   try {
-    const { rowCount } = await req.db(
-      `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
-      [signature_data, signer_name || '', cleanIds]
-    );
-    res.json({ ok: true, signed: rowCount, slot });
+    // Step chain + lock: only sign the rows where every earlier slot is already
+    // signed and the ใบงาน isn't billed yet. Not-ready rows are skipped, not failed.
+    const { rows } = await req.db(
+      `SELECT id, status, sig_team, sig_supervisor, sig_building, sig_engineer
+       FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
+    const ready = rows.filter((r) => r.status !== 'approved' && !blockingSlot(slot, r)).map((r) => r.id);
+    const skipped = cleanIds.length - ready.length;
+    if (ready.length) {
+      await req.db(
+        `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
+        [signature_data, signer_name || '', ready]);
+    }
+    res.json({ ok: true, signed: ready.length, skipped, slot });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
