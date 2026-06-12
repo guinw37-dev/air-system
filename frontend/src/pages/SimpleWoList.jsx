@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Download, Camera, Trash2, FileText, PenLine, Printer } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
@@ -34,8 +34,14 @@ const statusBadge = (wo) => {
 // role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).
 const SLOT_LABEL = { technician: 'ช่างแอร์', checker: 'หัวหน้าช่างแอร์', approve_building: 'เจ้าหน้าที่ช่างอาคาร', approve_engineer: 'เจ้าหน้าวิศวกรรม' }
 
+// ?pending=<stage> quick views (from the ใบงาน sidebar group) — filter to ใบงาน
+// waiting at a given signing step.
+const PENDING_LABEL = { team: 'รอช่างแอร์เซ็น', supervisor: 'รอหัวหน้าช่างเซ็น', building: 'รอช่างอาคารเซ็น', engineer: 'รอวิศวกรรมเซ็น' }
+
 export default function SimpleWoList() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const pending = searchParams.get('pending') || ''   // '' | team | supervisor | building | engineer
   const { user } = useAuthStore()
 
   const role = user?.role
@@ -89,7 +95,9 @@ export default function SimpleWoList() {
       && (!fClient || r.client_name === fClient)
       && (!fPts || r.pts_zone === fPts)
       && (!fResult || r.result === fResult)
-      && (!fStatus || (r.status || 'submitted') === fStatus))
+      && (!fStatus || (r.status || 'submitted') === fStatus)
+      // ?pending: รออยู่ที่ขั้นนี้ = ขั้นถัดไปที่ยังไม่เซ็น และยังไม่วางบิล
+      && (!pending || (r.pending_stage === pending && (r.status || 'submitted') !== 'approved')))
     .sort((a, b) => {
       if (sortBy === 'wo_asc') return String(a.wo_number || '').localeCompare(String(b.wo_number || ''))
       if (sortBy === 'wo_desc') return String(b.wo_number || '').localeCompare(String(a.wo_number || ''))
@@ -245,6 +253,14 @@ export default function SimpleWoList() {
         >
           <Plus className="h-5 w-5" /> เปิดใบงานใหม่
         </button>
+
+        {/* Active "pending stage" quick view (from the sidebar) */}
+        {pending && (
+          <div className="card flex items-center justify-between gap-3 bg-primary-soft border-primary/30">
+            <span className="text-sm font-medium text-primary">กำลังดู: {PENDING_LABEL[pending] || pending} ({visibleRows.length})</span>
+            <button onClick={() => navigate('/simple-wo')} className="text-xs text-ink-muted hover:text-primary underline">ดูทั้งหมด</button>
+          </div>
+        )}
 
         {/* Filter + sort */}
         <div className="card flex flex-col gap-3">
