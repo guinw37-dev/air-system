@@ -42,6 +42,7 @@ export default function SimpleWoList() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pending = searchParams.get('pending') || ''   // '' | team | supervisor | building | engineer
+  const view = searchParams.get('view') || ''          // '' (default=งานค้าง) | ready (รอวางบิล) | all
   const { user } = useAuthStore()
 
   const role = user?.role
@@ -90,14 +91,25 @@ export default function SimpleWoList() {
   const ptsOptions = [...new Set(rows.map((r) => r.pts_zone).filter(Boolean))].sort()
 
   // Apply filters + sort to produce the rows actually rendered.
+  // View scope (sidebar): default = งานค้าง (ยังไม่วางบิล; ช่าง = เฉพาะของตัวเอง);
+  // ready = พร้อมวางบิล (เซ็นครบ ยังไม่วางบิล); all = ทุกใบ.
+  const isApproved = (r) => (r.status || 'submitted') === 'approved'
+  const inView = (r) => {
+    if (pending) return r.pending_stage === pending && !isApproved(r)
+    if (view === 'ready') return r.all_signed && !isApproved(r)
+    if (view === 'all') return true
+    // default: งานที่ยังไม่เสร็จ (ยังไม่วางบิล); ช่าง = เฉพาะใบที่ตัวเองสร้าง
+    if (isApproved(r)) return false
+    if (user?.role === 'technician') return String(r.created_by) === String(user?.id)
+    return true
+  }
   const visibleRows = rows
     .filter((r) => (!fType || r.work_type === fType)
       && (!fClient || r.client_name === fClient)
       && (!fPts || r.pts_zone === fPts)
       && (!fResult || r.result === fResult)
       && (!fStatus || (r.status || 'submitted') === fStatus)
-      // ?pending: รออยู่ที่ขั้นนี้ = ขั้นถัดไปที่ยังไม่เซ็น และยังไม่วางบิล
-      && (!pending || (r.pending_stage === pending && (r.status || 'submitted') !== 'approved')))
+      && inView(r))
     .sort((a, b) => {
       if (sortBy === 'wo_asc') return String(a.wo_number || '').localeCompare(String(b.wo_number || ''))
       if (sortBy === 'wo_desc') return String(b.wo_number || '').localeCompare(String(a.wo_number || ''))
@@ -254,13 +266,20 @@ export default function SimpleWoList() {
           <Plus className="h-5 w-5" /> เปิดใบงานใหม่
         </button>
 
-        {/* Active "pending stage" quick view (from the sidebar) */}
-        {pending && (
-          <div className="card flex items-center justify-between gap-3 bg-primary-soft border-primary/30">
-            <span className="text-sm font-medium text-primary">กำลังดู: {PENDING_LABEL[pending] || pending} ({visibleRows.length})</span>
-            <button onClick={() => navigate('/simple-wo')} className="text-xs text-ink-muted hover:text-primary underline">ดูทั้งหมด</button>
-          </div>
-        )}
+        {/* Active quick view (from the sidebar) */}
+        {(() => {
+          const label = pending ? PENDING_LABEL[pending]
+            : view === 'ready' ? 'รอวางบิล (เซ็นครบ)'
+            : view === 'all' ? 'ทั้งหมด'
+            : null
+          if (!label) return null
+          return (
+            <div className="card flex items-center justify-between gap-3 bg-primary-soft border-primary/30">
+              <span className="text-sm font-medium text-primary">กำลังดู: {label} ({visibleRows.length})</span>
+              <button onClick={() => navigate('/simple-wo')} className="text-xs text-ink-muted hover:text-primary underline">งานค้างของฉัน</button>
+            </div>
+          )
+        })()}
 
         {/* Filter + sort */}
         <div className="card flex flex-col gap-3">
@@ -337,10 +356,10 @@ export default function SimpleWoList() {
               <table className="w-full text-sm">
                 <thead className="bg-page border-b border-line">
                   <tr>
-                    <th className="py-3 px-4 w-10">
+                    <th className="py-2 px-2 w-12 text-center">
                       <input
                         type="checkbox"
-                        className="accent-primary h-4 w-4"
+                        className="accent-primary h-5 w-5 cursor-pointer align-middle"
                         checked={allSelected}
                         onChange={toggleAll}
                         aria-label="เลือกทั้งหมด"
@@ -390,13 +409,16 @@ export default function SimpleWoList() {
                         onClick={() => navigate(`/simple-wo/${wo.id}`)}
                         className={`hover:bg-primary-soft/40 cursor-pointer transition-colors ${checked ? 'bg-primary-soft/30' : ''}`}
                       >
-                        <td className="py-3 px-4 w-10">
+                        {/* whole cell is the tap target (easier to hit than a tiny box) */}
+                        <td
+                          className="w-12 text-center cursor-pointer"
+                          onClick={(e) => { e.stopPropagation(); toggleOne(wo.id) }}
+                        >
                           <input
                             type="checkbox"
-                            className="accent-primary h-4 w-4"
+                            className="accent-primary h-5 w-5 cursor-pointer align-middle pointer-events-none"
                             checked={checked}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={() => toggleOne(wo.id)}
+                            readOnly
                             aria-label={`เลือกใบงาน ${wo.wo_number || wo.id}`}
                           />
                         </td>

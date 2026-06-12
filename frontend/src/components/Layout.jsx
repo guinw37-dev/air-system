@@ -15,10 +15,12 @@ import Logo from './Logo'
 const NAV = [
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null,
     children: [
-      { to: '/simple-wo',                       label: 'ทั้งหมด' },
+      { to: '/simple-wo',                       label: 'งานค้าง (ยังไม่เสร็จ)' },
       { to: '/simple-wo?pending=supervisor',    label: 'รอหัวหน้าช่างเซ็น' },
       { to: '/simple-wo?pending=building',      label: 'รอช่างอาคารเซ็น' },
       { to: '/simple-wo?pending=engineer',      label: 'รอวิศวกรรมเซ็น' },
+      { to: '/simple-wo?view=ready',            label: 'รอวางบิล', roles: ['admin', 'super_admin'] },
+      { to: '/simple-wo?view=all',              label: 'ทั้งหมด' },
     ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
@@ -82,12 +84,13 @@ export default function Layout({ children, title, back, actions }) {
     )
   }
 
-  // Is a sub-link (with a ?pending=… query) the one currently shown?
+  // Is a sub-link (with a ?pending=…/?view=… query) the one currently shown?
   const subActive = (to) => {
     const [p, q] = to.split('?')
-    const want = new URLSearchParams(q || '').get('pending') || ''
-    const have = new URLSearchParams(location.search).get('pending') || ''
-    return location.pathname === p && want === have
+    const w = new URLSearchParams(q || ''), h = new URLSearchParams(location.search)
+    return location.pathname === p
+      && (w.get('pending') || '') === (h.get('pending') || '')
+      && (w.get('view') || '') === (h.get('view') || '')
   }
 
   // Collapsible nav group (e.g. ใบงาน → ทั้งหมด / รอแต่ละขั้นเซ็น). Open by default
@@ -95,6 +98,7 @@ export default function Layout({ children, title, back, actions }) {
   const NavGroup = ({ item, onNavigate }) => {
     const Icon = item.icon
     const [open, setOpen] = useState(isActive(item.path))
+    const children = item.children.filter((c) => !c.roles || c.roles.includes(user?.role))
     return (
       <div>
         <button
@@ -109,7 +113,7 @@ export default function Layout({ children, title, back, actions }) {
         </button>
         {open && (
           <div className="ml-4 mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-white/15 pl-2">
-            {item.children.map((c) => (
+            {children.map((c) => (
               <Link
                 key={c.to}
                 to={c.to}

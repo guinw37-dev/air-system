@@ -415,7 +415,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(`
       SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
-             s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status,
+             s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status, s.created_by,
              u.name AS created_by_name,
              (s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL
               AND s.sig_building IS NOT NULL AND s.sig_engineer IS NOT NULL) AS all_signed,
