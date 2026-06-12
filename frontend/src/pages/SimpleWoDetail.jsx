@@ -155,8 +155,11 @@ export default function SimpleWoDetail() {
   const gridRows = Array.isArray(wo.grid_rows) ? wo.grid_rows : []
   const gridCols = GRID_COLS[wo.work_type] || []
   // พร้อมวางบิล = เซ็นครบ 4 ช่อง และยังไม่วางบิล (approved)
-  const allSigned = ['team', 'supervisor', 'building', 'engineer'].every((s) => !!wo[`sig_${s}`])
+  const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer']
+  const allSigned = SIGN_ORDER.every((s) => !!wo[`sig_${s}`])
   const readyBill = allSigned && wo.status !== 'approved'
+  // Step chain: a slot is signable only after every earlier slot is signed.
+  const priorsSigned = (slot) => SIGN_ORDER.slice(0, SIGN_ORDER.indexOf(slot)).every((s) => !!wo[`sig_${s}`])
 
   return (
     <Layout
@@ -329,9 +332,12 @@ export default function SimpleWoDetail() {
         <div className="card">
           <h2 className="section-header mb-3">ลายเซ็น</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {SIG_DEFS.map(({ slot, label }) => {
-              const canSign = canSignSlot(slot) && wo.status !== 'approved'
+            {SIG_DEFS.map(({ slot, label }, i) => {
               const signed = !!wo[`sig_${slot}`]
+              const mine = canSignSlot(slot) && wo.status !== 'approved'
+              const ready = priorsSigned(slot)
+              const canSign = mine && ready
+              const prevLabel = SIG_DEFS[i - 1]?.label
               return (
                 <div key={slot} className="flex flex-col gap-1.5">
                   <SigBox label={label} name={wo[`sig_${slot}_name`]} data={wo[`sig_${slot}`]} />
@@ -340,6 +346,9 @@ export default function SimpleWoDetail() {
                       className="btn-secondary text-xs flex items-center justify-center gap-1 py-1.5">
                       <PenLine className="h-3.5 w-3.5" /> {signed ? 'เซ็นใหม่' : 'เซ็น'}
                     </button>
+                  )}
+                  {mine && !ready && !signed && (
+                    <span className="text-[11px] text-ink-muted text-center">รอ “{prevLabel}” เซ็นก่อน</span>
                   )}
                 </div>
               )

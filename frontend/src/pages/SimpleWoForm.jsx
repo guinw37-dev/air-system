@@ -56,7 +56,9 @@ export default function SimpleWoForm() {
 
   // Each role may sign ONLY its own signature slot (backend enforces this too);
   // other slots are read-only. admin/super do NOT sign at all (they manage + bill).
+  // Step chain: a slot is signable only after every earlier slot is signed.
   const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
+  const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer']
   const canSignSlot = (slot) => SLOT_FOR_ROLE[user?.role] === slot
 
   const [header, setHeader] = useState({
@@ -731,8 +733,11 @@ export default function SimpleWoForm() {
             { role: 'supervisor', label: 'หัวหน้าช่างแอร์' },
             { role: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
             { role: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
-          ].map(({ role, label }) => {
+          ].map(({ role, label }, i) => {
             const mine = canSignSlot(role)
+            const ready = SIGN_ORDER.slice(0, i).every((s) => !!signatures[s]?.data)  // priors signed
+            const canSign = mine && ready
+            const prevLabel = ['ช่างแอร์', 'หัวหน้าช่างแอร์', 'เจ้าหน้าที่ช่างอาคาร', 'เจ้าหน้าวิศวกรรม'][i - 1]
             return (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
               <label className="label flex items-center gap-2">{label}
@@ -740,19 +745,21 @@ export default function SimpleWoForm() {
               <input
                 className="input"
                 placeholder="ชื่อผู้ลงนาม"
-                disabled={!mine}
+                disabled={!canSign}
                 value={signatures[role].name}
                 onChange={(e) => setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], name: e.target.value } }))}
               />
               {signatures[role].data ? (
                 <div className="flex items-center gap-3">
                   <img src={signatures[role].data} alt="sig" className="h-16 w-32 object-contain border border-line rounded-lg bg-white" />
-                  {mine && <button type="button" onClick={() => setSigPad(role)} className="btn-secondary text-sm">เซ็นใหม่</button>}
+                  {canSign && <button type="button" onClick={() => setSigPad(role)} className="btn-secondary text-sm">เซ็นใหม่</button>}
                 </div>
-              ) : mine ? (
+              ) : canSign ? (
                 <button type="button" onClick={() => setSigPad(role)} className="btn-secondary flex items-center justify-center gap-1.5 self-start">
                   <PenLine className="h-4 w-4" /> เซ็น
                 </button>
+              ) : mine && !ready ? (
+                <span className="text-sm text-ink-muted">รอ “{prevLabel}” เซ็นก่อน</span>
               ) : (
                 <span className="text-sm text-ink-muted">— ยังไม่ได้เซ็น —</span>
               )}

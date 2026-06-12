@@ -51,6 +51,20 @@ const canSignSlot = (role, slot) => ROLE_SLOT[role] === slot;
 // The 4 visible signature slots that must ALL be filled before a ใบงาน is billable.
 const REQUIRED_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
 const allSigned = (wo) => REQUIRED_SLOTS.every((s) => !!(wo && wo[`sig_${s}`]));
+
+// Signatures are a STEP CHAIN — each slot can be signed only after every earlier
+// slot in this order is already signed: ช่างแอร์ → หัวหน้าช่าง → ช่างอาคาร → วิศวกรรม.
+const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer'];
+const SLOT_TH = { team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', engineer: 'เจ้าหน้าวิศวกรรม' };
+// First earlier slot still unsigned (the one blocking `slot`), or null if ready.
+function blockingSlot(slot, wo) {
+  const idx = SIGN_ORDER.indexOf(slot);
+  if (idx <= 0) return null;                 // ช่างแอร์ (first) or non-chain slot has no prerequisite
+  for (let i = 0; i < idx; i++) {
+    if (!wo || !wo[`sig_${SIGN_ORDER[i]}`]) return SIGN_ORDER[i];
+  }
+  return null;
+}
 // The slot a role signs (null for admin/super/none — they choose).
 const slotForRole = (role) => ROLE_SLOT[role] || null;
 
@@ -77,5 +91,6 @@ const REMAP_CASE_SQL = `CASE role
 module.exports = {
   ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES,
   SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, REQUIRED_SLOTS, allSigned,
+  SIGN_ORDER, SLOT_TH, blockingSlot,
   LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
 };
