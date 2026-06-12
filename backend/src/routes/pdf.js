@@ -4,6 +4,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { getReportData } = require('../services/reportBuilder');
 const { buildReportHtml } = require('../services/reportTemplates');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
+const { serverError } = require('../utils/respond');
 
 const PUBLIC_BASE = process.env.FRONTEND_URL || '';
 
@@ -49,7 +50,7 @@ router.get('/work-orders/:id', authMiddleware, async (req, res) => {
       throw err;
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -63,7 +64,7 @@ router.get('/work-orders/:id/preview', authMiddleware, async (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 

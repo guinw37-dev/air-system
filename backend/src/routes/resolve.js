@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { leftmostLabel, lookupBranch } = require('../middleware/resolveBranch');
+const { serverError } = require('../utils/respond');
 
 // PUBLIC — the SPA calls this on boot to learn which branch (ลูกค้า/สาขา) it is
 // running under, from the browser hostname. apex/www/IP/localhost → { apex:true }
@@ -18,7 +19,7 @@ router.get('/', async (req, res) => {
     if (!b) return res.status(404).json({ error: 'unknown branch' });
     res.json({ apex: false, slug: b.slug, name: b.name });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
