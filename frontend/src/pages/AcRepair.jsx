@@ -290,6 +290,7 @@ function PartsModal({ job, onClose, onDone }) {
   const [cart, setCart] = useState([])
   const [remark, setRemark] = useState('')
   const [noParts, setNoParts] = useState(false)
+  const [photo, setPhoto] = useState(null)
   const [saving, setSaving] = useState(false)
   useEffect(() => { api.get('/ac-repair/stock').then((r) => setStock(r.data || [])).catch(() => {}) }, [])
   const addItem = (code) => {
@@ -298,12 +299,22 @@ function PartsModal({ job, onClose, onDone }) {
   }
   const setQty = (code, qty) => setCart((c) => c.map((it) => it.code === code ? { ...it, qty } : it))
   const removeItem = (code) => setCart((c) => c.filter((it) => it.code !== code))
+  const total = cart.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.price) || 0), 0)
+  const pickPhoto = (e) => {
+    const f = e.target.files?.[0]; if (!f) return
+    const reader = new FileReader()
+    reader.onload = () => setPhoto({ base64: String(reader.result).split(',')[1], name: f.name })
+    reader.readAsDataURL(f)
+  }
   const submit = async () => {
     if (!remark.trim()) { alert('กรุณาระบุรายละเอียดการปิดงาน'); return }
     if (!noParts && cart.length === 0) { alert('เลือกอะไหล่ หรือเลือก "ไม่ใช้อะไหล่"'); return }
     setSaving(true)
     try {
-      await api.post(`/ac-repair/jobs/${job.id}/spare-parts`, { cartItems: noParts ? [] : cart, remark, noSparePart: noParts })
+      await api.post(`/ac-repair/jobs/${job.id}/spare-parts`, {
+        cartItems: noParts ? [] : cart, remark, noSparePart: noParts,
+        ...(photo ? { spareImageBase64: photo.base64, spareImageName: photo.name } : {}),
+      })
       onDone()
     } catch (e) { alert(e.response?.data?.error || 'เบิกอะไหล่/ปิดงานไม่สำเร็จ') } finally { setSaving(false) }
   }
@@ -324,13 +335,25 @@ function PartsModal({ job, onClose, onDone }) {
             {cart.map((it) => (
               <div key={it.code} className="flex items-center gap-2 text-sm">
                 <span className="flex-1 min-w-0 truncate">{it.code} · {it.name}</span>
-                <input type="number" min="1" className="input w-20" value={it.qty} onChange={(e) => setQty(it.code, e.target.value)} />
+                <span className="text-xs text-ink-muted shrink-0">{Number(it.price).toLocaleString()}฿</span>
+                <input type="number" min="1" className="input w-16" value={it.qty} onChange={(e) => setQty(it.code, e.target.value)} />
+                <span className="text-xs text-ink shrink-0 w-16 text-right">{((Number(it.qty) || 0) * (Number(it.price) || 0)).toLocaleString()}฿</span>
                 <button onClick={() => removeItem(it.code)} className="text-danger"><X className="h-4 w-4" /></button>
               </div>
             ))}
+            {cart.length > 0 && (
+              <div className="flex justify-between text-sm font-medium border-t border-line pt-2">
+                <span>รวม {cart.length} รายการ</span><span className="text-primary">{total.toLocaleString()} ฿</span>
+              </div>
+            )}
           </>
         )}
-        <div><label className="label">รายละเอียดการปิดงาน *</label><textarea className="input" rows={2} value={remark} onChange={(e) => setRemark(e.target.value)} /></div>
+        <div><label className="label">รายละเอียดการปิดงาน / การเบิก *</label><textarea className="input" rows={2} value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="อะไหล่ที่เปลี่ยน / สาเหตุ / รายละเอียด" /></div>
+        <div>
+          <label className="label">รูปการเบิกอะไหล่ (ถ้ามี)</label>
+          <input type="file" accept="image/*" onChange={pickPhoto} className="text-sm" />
+          {photo && <p className="text-xs text-ink-muted mt-1">แนบ: {photo.name}</p>}
+        </div>
         <div className="flex gap-2 mt-1">
           <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
           <button onClick={submit} disabled={saving} className="btn-primary flex-1">{saving ? 'กำลังปิดงาน...' : 'ปิดงาน'}</button>
