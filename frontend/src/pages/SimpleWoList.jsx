@@ -85,11 +85,18 @@ export default function SimpleWoList() {
   const [coverOpen, setCoverOpen] = useState(false)
   const [cover, setCover] = useState(null)
 
+  const [error, setError] = useState('')
   const load = () => {
-    setLoading(true)
+    setLoading(true); setError('')
     api.get('/simple-wo')
       .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setRows([]))
+      .catch((e) => {
+        setRows([])
+        // Don't show an empty "ไม่มีใบงาน" when the request actually FAILED — surface it.
+        setError(e.response?.status === 400
+          ? 'ยังไม่ได้เลือกสาขา — เข้าผ่านลิงก์สาขา (subdomain) หรือเลือกสาขาก่อน'
+          : (e.response?.data?.error || 'โหลดใบงานไม่สำเร็จ — ลองใหม่อีกครั้ง'))
+      })
       .finally(() => setLoading(false))
   }
 
@@ -293,6 +300,14 @@ export default function SimpleWoList() {
             </button>
           ))}
         </div>
+
+        {/* Load error — so a failed fetch never looks like "ไม่มีใบงาน" */}
+        {error && (
+          <div className="card flex items-center justify-between gap-3 bg-danger-soft border-danger/30">
+            <span className="text-sm text-danger">{error}</span>
+            <button onClick={load} className="btn-secondary text-xs">ลองใหม่</button>
+          </div>
+        )}
 
         {/* Active quick view (from the sidebar) */}
         {(() => {
