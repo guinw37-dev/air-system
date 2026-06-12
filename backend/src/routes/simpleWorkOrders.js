@@ -7,6 +7,7 @@ const dayjs = require('dayjs');
 const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned } = require('../utils/roles');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -39,6 +40,26 @@ async function notifyWo(req, { woId, type, message, toRoles, toUserId }) {
 
 const PUBLIC_BASE = process.env.FRONTEND_URL || '';
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+
+// Resolve the sig_* values to persist on create/edit. Each role may only set the
+// slot mapped to its role (technician→team, checker→supervisor,
+// approve_building→building, approve_engineer→engineer); admin/super may set any.
+// Slots the user can't sign keep their existing value (edit) or stay empty
+// (create) — this stops one role forging another's signature on the form.
+// `cur` = current DB row (edit) or {} (create).
+function resolveSigs(role, b, cur = {}) {
+  const out = {};
+  for (const slot of SIG_SLOTS) {
+    if (canSignSlot(role, slot)) {
+      out[`sig_${slot}`] = b[`sig_${slot}`] || null;
+      out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
+    } else {
+      out[`sig_${slot}`] = cur[`sig_${slot}`] || null;
+      out[`sig_${slot}_name`] = cur[`sig_${slot}_name`] || null;
+    }
+  }
+  return out;
+}
 
 // ── photo upload (multer → /uploads/photos/simple/...) ──────────────────────
 const storage = multer.diskStorage({
@@ -321,43 +342,44 @@ router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
+  const sig = resolveSigs(req.user.role, b);
   const client = await req.tx();
   try {
     await client.query('BEGIN');
     const wo_number = await genWoNumber(client);
     const { rows } = await client.query(`
       INSERT INTO simple_work_orders (
-        wo_number, created_by, tech_name, work_date, client_name, building, floor, room,
+        wo_number, created_by, tech_name, work_date, client_name, pts_zone, building, floor, room,
         asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
         team_comment, photo_urls, gallery_urls, ac_info,
         sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
         sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
         grid_rows, recommendation, location, ac_type, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
       RETURNING id, wo_number
     `, [
       wo_number, req.user.id, b.tech_name || null, b.work_date || null,
-      b.client_name || (req.branch ? req.branch.name : null),
+      b.client_name || (req.branch ? req.branch.name : null), b.pts_zone || null,
       b.building || null, b.floor || null, b.room || null, b.asset_code || null,
       b.work_type || 'major', b.power_system || null,
       JSON.stringify(b.checklist_values || {}), b.result || null,
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
       JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
-      b.sig_engineer || null, b.sig_engineer_name || null,
-      b.sig_department || null, b.sig_department_name || null,
-      b.sig_team || null, b.sig_team_name || null,
-      b.sig_supervisor || null, b.sig_supervisor_name || null,
-      b.sig_building || null, b.sig_building_name || null,
+      sig.sig_engineer, sig.sig_engineer_name,
+      sig.sig_department, sig.sig_department_name,
+      sig.sig_team, sig.sig_team_name,
+      sig.sig_supervisor, sig.sig_supervisor_name,
+      sig.sig_building, sig.sig_building_name,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
       b.location || null, b.ac_type || null,
     ]);
     await client.query('COMMIT');
-    // New ใบงาน starts as 'submitted' → alert checkers/approvers/admins to review.
+    // New ใบงาน starts as 'submitted' → alert the signing roles (หัวหน้าช่าง/ช่างอาคาร/วิศวกรรม).
     await notifyWo(req, {
       woId: rows[0].id, type: 'wo_submitted',
-      message: `ใบงาน ${rows[0].wo_number} รอตรวจ`,
-      toRoles: ['checker', 'approver', 'admin'],
+      message: `ใบงาน ${rows[0].wo_number} รอเซ็น`,
+      toRoles: ['checker', 'approve_building', 'approve_engineer', 'admin'],
     });
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -377,8 +399,10 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(`
       SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
-             s.building, s.asset_code, s.work_type, s.result, s.status,
+             s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status,
              u.name AS created_by_name,
+             (s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL
+              AND s.sig_building IS NOT NULL AND s.sig_engineer IS NOT NULL) AS all_signed,
              jsonb_array_length(COALESCE(s.photo_urls,'[]'::jsonb)) AS photo_count
       FROM simple_work_orders s
       LEFT JOIN users u ON s.created_by = u.id
@@ -431,7 +455,11 @@ router.put('/:id', authMiddleware, async (req, res) => {
   if (verr) return res.status(400).json({ error: verr });
   try {
     const { rows } = await req.db(
-      'SELECT created_by, status FROM simple_work_orders WHERE id = $1', [req.params.id]
+      `SELECT created_by, status,
+              sig_engineer, sig_engineer_name, sig_department, sig_department_name,
+              sig_team, sig_team_name, sig_supervisor, sig_supervisor_name,
+              sig_building, sig_building_name
+       FROM simple_work_orders WHERE id = $1`, [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const privileged = ['admin', 'super_admin'].includes(req.user.role);
@@ -442,6 +470,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (rows[0].status === 'approved' && !privileged) {
       return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ส่งกลับก่อนจึงแก้ได้' });
     }
+    // Only the user's own signature slot may be (re)written; others keep their value.
+    const sig = resolveSigs(req.user.role, b, rows[0]);
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
@@ -450,7 +480,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
-        grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, updated_at=NOW()
+        grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, pts_zone=$33, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -460,14 +490,14 @@ router.put('/:id', authMiddleware, async (req, res) => {
       JSON.stringify(b.checklist_values || {}), b.result || null,
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
-      b.sig_engineer || null, b.sig_engineer_name || null,
-      b.sig_department || null, b.sig_department_name || null,
-      b.sig_team || null, b.sig_team_name || null,
+      sig.sig_engineer, sig.sig_engineer_name,
+      sig.sig_department, sig.sig_department_name,
+      sig.sig_team, sig.sig_team_name,
       JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
-      b.sig_building || null, b.sig_building_name || null,
-      b.sig_supervisor || null, b.sig_supervisor_name || null,
+      sig.sig_building, sig.sig_building_name,
+      sig.sig_supervisor, sig.sig_supervisor_name,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
-      b.location || null, b.ac_type || null,
+      b.location || null, b.ac_type || null, b.pts_zone || null,
     ]);
     res.json(upd[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -492,14 +522,18 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── POST /api/simple-wo/:id/transition — approval workflow ──────────────────
-// status: submitted → (checked) → approved · rejected. Checker step is optional —
-// approver/admin can approve straight from submitted (skip). approved = locked.
+// ── POST /api/simple-wo/:id/transition — review workflow ────────────────────
+// No manual check/approve step: a ใบงาน becomes "พร้อมวางบิล" automatically once
+// all 4 signatures are present (derived, not a stored status). status here is
+// just: submitted ⇄ rejected, plus approved = วางบิลแล้ว (locked, set by billing).
+//  • reject   — a reviewer sends it back to แก้ (signatures stay).
+//  • resubmit — the tech sends a rejected ใบงาน back for signing/review.
+//  • reopen   — admin unlocks a วางบิลแล้ว / rejected ใบงาน.
+const REVIEW_ROLES = ['checker', 'approve_building', 'approve_engineer', 'approver', 'admin', 'super_admin'];
 const TRANSITIONS = {
-  check:   { roles: ['checker', 'admin', 'super_admin'],              from: ['submitted'],            to: 'checked' },
-  approve: { roles: ['approver', 'admin', 'super_admin'],             from: ['submitted', 'checked'], to: 'approved' },
-  reject:  { roles: ['checker', 'approver', 'admin', 'super_admin'],  from: ['submitted', 'checked'], to: 'rejected' },
-  reopen:  { roles: ['admin', 'super_admin'],                         from: ['approved', 'rejected'], to: 'submitted' },
+  reject:   { roles: REVIEW_ROLES,                                     from: ['submitted'],            to: 'rejected' },
+  reopen:   { roles: ['admin', 'super_admin'],                         from: ['approved', 'rejected'], to: 'submitted' },
+  resubmit: { roles: ['technician', 'checker', 'admin', 'super_admin'], from: ['rejected'],            to: 'submitted' },
 };
 router.post('/:id/transition', authMiddleware, async (req, res) => {
   const { action, reason } = req.body || {};
@@ -514,40 +548,54 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
       return res.status(409).json({ error: `สถานะ "${wo.status}" ทำ "${action}" ไม่ได้` });
     }
     let sql, params;
-    if (action === 'check') {
-      sql = `UPDATE simple_work_orders SET status='checked', checked_by=$2, checked_at=NOW(), updated_at=NOW() WHERE id=$1`;
-      params = [req.params.id, req.user.id];
-    } else if (action === 'approve') {
-      sql = `UPDATE simple_work_orders SET status='approved', approved_by=$2, approved_at=NOW(), updated_at=NOW() WHERE id=$1`;
-      params = [req.params.id, req.user.id];
-    } else if (action === 'reject') {
+    if (action === 'reject') {
       sql = `UPDATE simple_work_orders SET status='rejected', reject_reason=$2, rejected_at=NOW(), updated_at=NOW() WHERE id=$1`;
       params = [req.params.id, reason || null];
-    } else { // reopen — clear the approval/check stamps so the flow restarts cleanly
+    } else { // reopen / resubmit — clear the bill/check stamps so the flow restarts cleanly
       sql = `UPDATE simple_work_orders SET status='submitted', approved_by=NULL, approved_at=NULL,
              checked_by=NULL, checked_at=NULL, reject_reason=NULL, rejected_at=NULL, updated_at=NOW() WHERE id=$1`;
       params = [req.params.id];
     }
     await req.db(sql, params);
     // Notify the right people about the transition (best-effort).
-    if (action === 'check') {
-      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_checked',
-        message: `ใบงาน ${wo.wo_number} ตรวจแล้ว รออนุมัติ`, toRoles: ['approver', 'admin'] });
-    } else if (action === 'approve') {
-      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_approved',
-        message: `ใบงาน ${wo.wo_number} อนุมัติแล้ว`, toUserId: wo.created_by });
-    } else if (action === 'reject') {
+    if (action === 'reject') {
       await notifyWo(req, { woId: Number(req.params.id), type: 'wo_rejected',
         message: `ใบงาน ${wo.wo_number} ถูกส่งกลับ: ${reason || '-'}`, toUserId: wo.created_by });
+    } else if (action === 'resubmit') {
+      await notifyWo(req, { woId: Number(req.params.id), type: 'wo_submitted',
+        message: `ใบงาน ${wo.wo_number} แก้ไขแล้ว ส่งกลับมาตรวจ`, toRoles: ['checker', 'approve_building', 'approve_engineer', 'admin'] });
     }
     res.json({ ok: true, status: t.to });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
-const ROLE_SLOT = { technician: 'team', supervisor: 'supervisor', building: 'building', approver: 'engineer' };
+// ── POST /api/simple-wo/:id/sign — sign ONE ใบงาน (own slot) ─────────────────
+// Decouples signing from the full edit (PUT), which is restricted to the creator
+// /admin. checker / approve_* roles sign their own slot here without being the
+// creator. admin/super may NOT sign. Once วางบิลแล้ว (approved=locked) no more signing.
+router.post('/:id/sign', authMiddleware, async (req, res) => {
+  const { signature_data, signer_name } = req.body || {};
+  if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
+  const slot = slotForRole(req.user.role);
+  if (!slot) return res.status(403).json({ error: 'role นี้ไม่มีช่องเซ็น' });
+  try {
+    const { rows } = await req.db('SELECT status FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    if (rows[0].status === 'approved') {
+      return res.status(409).json({ error: 'วางบิลแล้ว (ล็อก) — เซ็นเพิ่มไม่ได้' });
+    }
+    const { rows: upd } = await req.db(
+      `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2, updated_at = NOW()
+       WHERE id = $3 RETURNING id`,
+      [signature_data, signer_name || req.user.name || '', req.params.id]
+    );
+    res.json({ ok: true, slot, id: upd[0].id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/simple-wo/batch-sign — sign many WOs at once (own slot only) ───
 router.post('/batch-sign', authMiddleware, async (req, res) => {
-  const slot = ROLE_SLOT[req.user.role];
+  const slot = slotForRole(req.user.role);
   if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });
   const { ids = [], signature_data, signer_name } = req.body || {};
   const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
@@ -574,14 +622,23 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   const ov = cover && typeof cover === 'object' ? cover : {};
   try {
-    // Billing covers only APPROVED ใบงาน — block if any selected WO isn't approved.
+    // วางบิลได้เฉพาะใบที่ "เซ็นครบ 4 ช่อง" (พร้อมวางบิล). The act of billing locks
+    // each ใบงาน (status='approved' = วางบิลแล้ว) so it can't be edited afterwards.
     const { rows: st } = await req.db(
-      `SELECT id, wo_number, status FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
-    const notApproved = st.filter((r) => r.status !== 'approved');
-    if (notApproved.length) {
+      `SELECT id, wo_number, status, sig_team, sig_supervisor, sig_building, sig_engineer
+       FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
+    const notReady = st.filter((r) => !allSigned(r));
+    if (notReady.length) {
       return res.status(409).json({
-        error: `วางบิลได้เฉพาะใบที่อนุมัติแล้ว — ยังไม่อนุมัติ ${notApproved.length} ใบ: ${notApproved.map((r) => r.wo_number || r.id).join(', ')}`,
+        error: `วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง — ยังเซ็นไม่ครบ ${notReady.length} ใบ: ${notReady.map((r) => r.wo_number || r.id).join(', ')}`,
       });
+    }
+    // Lock (mark วางบิลแล้ว) the ones not already billed.
+    const toLock = st.filter((r) => r.status !== 'approved').map((r) => r.id);
+    if (toLock.length) {
+      await req.db(
+        `UPDATE simple_work_orders SET status='approved', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id = ANY($2)`,
+        [req.user.id, toLock]);
     }
     const dataArray = [];
     for (const id of cleanIds) {

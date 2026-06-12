@@ -95,7 +95,7 @@ export default function WorkOrderDetail() {
   const role = user?.role
   const isTech         = role === 'technician'
   const isCentralAdmin = role === 'admin'
-  const isApprover     = role === 'approver'
+  const isApprover     = ['approver', 'approve_building', 'approve_engineer'].includes(role)
   const isAdmin        = role === 'admin'
   const isChecker      = role === 'checker'
   const canEdit        = ['draft', 'in_progress'].includes(wo.status)

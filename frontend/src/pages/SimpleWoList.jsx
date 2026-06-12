@@ -18,15 +18,21 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
-// Approval workflow status. approved = locked + billable.
+// Status. "พร้อมวางบิล" is DERIVED (all 4 signed, not yet billed). approved = วางบิลแล้ว.
 const STATUS_LABEL = {
-  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
-  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
-  approved:  { label: 'อนุมัติ',  color: 'badge-success' },
+  submitted: { label: 'รอเซ็น',  color: 'badge-warn' },
+  checked:   { label: 'รอเซ็น',  color: 'badge-warn' },
+  approved:  { label: 'วางบิลแล้ว', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
 }
+// Derived status shown in the list (uses the all_signed flag from the API).
+const statusBadge = (wo) => {
+  if ((wo.status || 'submitted') !== 'approved' && wo.all_signed) return { label: 'พร้อมวางบิล', color: 'badge-success' }
+  return STATUS_LABEL[wo.status || 'submitted']
+}
 
-const SLOT_LABEL = { technician: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', approver: 'เจ้าหน้าวิศวกรรม' }
+// role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).
+const SLOT_LABEL = { technician: 'ช่างแอร์', checker: 'หัวหน้าช่างแอร์', approve_building: 'เจ้าหน้าที่ช่างอาคาร', approve_engineer: 'เจ้าหน้าวิศวกรรม' }
 
 export default function SimpleWoList() {
   const navigate = useNavigate()
@@ -42,6 +48,7 @@ export default function SimpleWoList() {
   // List filter + sort (client-side)
   const [fType, setFType] = useState('')     // '' | major | minor | fan
   const [fClient, setFClient] = useState('') // '' | client_name
+  const [fPts, setFPts] = useState('')       // '' | pts_zone
   const [fResult, setFResult] = useState('') // '' | ok | not_ok
   const [fStatus, setFStatus] = useState('') // '' | submitted | checked | approved | rejected
   const [sortBy, setSortBy] = useState('date_desc') // date_desc|date_asc|wo_asc|wo_desc
@@ -72,13 +79,15 @@ export default function SimpleWoList() {
 
   useEffect(() => { load() }, [])
 
-  // Distinct client names for the filter dropdown.
+  // Distinct client names / PTS zones for the filter dropdowns.
   const clientOptions = [...new Set(rows.map((r) => r.client_name).filter(Boolean))].sort()
+  const ptsOptions = [...new Set(rows.map((r) => r.pts_zone).filter(Boolean))].sort()
 
   // Apply filters + sort to produce the rows actually rendered.
   const visibleRows = rows
     .filter((r) => (!fType || r.work_type === fType)
       && (!fClient || r.client_name === fClient)
+      && (!fPts || r.pts_zone === fPts)
       && (!fResult || r.result === fResult)
       && (!fStatus || (r.status || 'submitted') === fStatus))
     .sort((a, b) => {
@@ -89,8 +98,8 @@ export default function SimpleWoList() {
       return sortBy === 'date_asc' ? da - db : db - da
     })
 
-  const hasFilter = fType || fClient || fResult || fStatus
-  const clearFilters = () => { setFType(''); setFClient(''); setFResult(''); setFStatus('') }
+  const hasFilter = fType || fClient || fPts || fResult || fStatus
+  const clearFilters = () => { setFType(''); setFClient(''); setFPts(''); setFResult(''); setFStatus('') }
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -132,10 +141,10 @@ export default function SimpleWoList() {
   // Open the editable cover sheet, prefilling from the selected rows.
   const openBillModal = () => {
     const sel = rows.filter((r) => selected.has(r.id))
-    // วางบิลได้เฉพาะใบที่อนุมัติแล้ว (lock).
-    const notApproved = sel.filter((r) => (r.status || 'submitted') !== 'approved')
-    if (notApproved.length) {
-      alert(`วางบิลได้เฉพาะใบที่อนุมัติแล้ว — ยังไม่อนุมัติ ${notApproved.length} ใบ:\n${notApproved.map((r) => r.wo_number || r.id).join(', ')}`)
+    // วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง (พร้อมวางบิล). การวางบิลจะ lock ใบงาน.
+    const notReady = sel.filter((r) => !r.all_signed)
+    if (notReady.length) {
+      alert(`วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง — ยังเซ็นไม่ครบ ${notReady.length} ใบ:\n${notReady.map((r) => r.wo_number || r.id).join(', ')}`)
       return
     }
     const clients = [...new Set(sel.map((r) => r.client_name).filter(Boolean))]
@@ -247,14 +256,13 @@ export default function SimpleWoList() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <div>
               <label className="label">สถานะ</label>
               <select className="input" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
                 <option value="">ทั้งหมด</option>
-                <option value="submitted">รอตรวจ</option>
-                <option value="checked">ตรวจแล้ว</option>
-                <option value="approved">อนุมัติ</option>
+                <option value="submitted">รอเซ็น</option>
+                <option value="approved">วางบิลแล้ว</option>
                 <option value="rejected">ส่งกลับ</option>
               </select>
             </div>
@@ -272,6 +280,13 @@ export default function SimpleWoList() {
               <select className="input" value={fClient} onChange={(e) => setFClient(e.target.value)}>
                 <option value="">ทั้งหมด</option>
                 {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">สัญญา/โซน</label>
+              <select className="input" value={fPts} onChange={(e) => setFPts(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                {ptsOptions.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
@@ -373,7 +388,10 @@ export default function SimpleWoList() {
                         <td className="py-3 px-4 text-ink-muted text-xs">{dateVal ? dayjs(dateVal).format('DD/MM/YY') : '-'}</td>
                         <td className="py-3 px-4 text-ink">{wo.tech_name || '-'}</td>
                         <td className="py-3 px-4 text-ink">
-                          <p>{wo.client_name || '-'}</p>
+                          <p className="flex items-center gap-1.5">
+                            {wo.client_name || '-'}
+                            {wo.pts_zone && <span className="badge bg-primary-soft text-primary text-[11px]">{wo.pts_zone}</span>}
+                          </p>
                           {wo.building && <p className="text-xs text-ink-muted">{wo.building}</p>}
                         </td>
                         <td className="py-3 px-4 text-ink-muted">{wo.asset_code || '-'}</td>
@@ -381,7 +399,7 @@ export default function SimpleWoList() {
                           <span className={`badge ${t.color}`}>{t.label}</span>
                         </td>
                         <td className="py-3 px-4">
-                          {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s ? <span className={`badge ${s.color}`}>{s.label}</span> : <span className="text-ink-muted text-xs">-</span> })()}
+                          {(() => { const s = statusBadge(wo); return s ? <span className={`badge ${s.color}`}>{s.label}</span> : <span className="text-ink-muted text-xs">-</span> })()}
                         </td>
                         <td className="py-3 px-4">
                           {r ? <span className={`badge ${r.color}`}>{r.label}</span> : <span className="text-ink-muted text-xs">-</span>}

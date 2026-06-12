@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Trash2, Pencil, Check, CheckCheck, Undo2, RotateCcw } from 'lucide-react'
+import { FileText, Trash2, Pencil, Undo2, RotateCcw, PenLine, Send } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
+import SignaturePad from '../components/SignaturePad'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { useAuthStore } from '../store/auth'
 
-// Approval workflow status. approved = locked + billable.
+// Each role signs ONE slot on a ใบงาน (backend enforces it too); admin/super any.
+const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
+const SIG_DEFS = [
+  { slot: 'team',       label: 'ช่างแอร์' },
+  { slot: 'supervisor', label: 'หัวหน้าช่างแอร์' },
+  { slot: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
+  { slot: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
+]
+
+// Status. "พร้อมวางบิล" is DERIVED (all 4 signed) not stored. approved = วางบิลแล้ว (ล็อก).
 const STATUS_LABEL = {
-  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
-  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
-  approved:  { label: 'อนุมัติแล้ว (ล็อก)', color: 'badge-success' },
+  submitted: { label: 'รอเซ็น',  color: 'badge-warn' },
+  checked:   { label: 'รอเซ็น',  color: 'badge-warn' },
+  approved:  { label: 'วางบิลแล้ว (ล็อก)', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับให้แก้',  color: 'badge-danger' },
 }
 
@@ -45,12 +55,29 @@ export default function SimpleWoDetail() {
   const { user } = useAuthStore()
   const role = user?.role
   const privileged = role === 'admin' || role === 'super_admin'
+  const canSignSlot = (slot) => SLOT_FOR_ROLE[role] === slot   // admin/super do not sign
 
   const [wo, setWo] = useState(null)
   const [schema, setSchema] = useState({ sections: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [signSlot, setSignSlot] = useState(null)   // slot being signed (modal open)
+  const [signName, setSignName] = useState('')
+
+  // Sign one slot via the dedicated sign endpoint (no full edit needed). Then refresh.
+  const submitSign = async (dataUrl) => {
+    setBusy(true)
+    try {
+      await api.post(`/simple-wo/${id}/sign`, { slot: signSlot, signature_data: dataUrl, signer_name: signName || user?.name || '' })
+      setSignSlot(null)
+      const r = await api.get(`/simple-wo/${id}`)
+      setWo(r.data)
+    } catch (err) {
+      alert(err.response?.data?.error || 'เซ็นไม่สำเร็จ')
+    } finally { setBusy(false) }
+  }
+  const openSign = (slot) => { setSignName(user?.name || ''); setSignSlot(slot) }
 
   // Run an approval-workflow transition then refresh the WO.
   const transition = async (action) => {
@@ -127,6 +154,9 @@ export default function SimpleWoDetail() {
   const isGrid = wo.work_type === 'minor' || wo.work_type === 'fan'
   const gridRows = Array.isArray(wo.grid_rows) ? wo.grid_rows : []
   const gridCols = GRID_COLS[wo.work_type] || []
+  // พร้อมวางบิล = เซ็นครบ 4 ช่อง และยังไม่วางบิล (approved)
+  const allSigned = ['team', 'supervisor', 'building', 'engineer'].every((s) => !!wo[`sig_${s}`])
+  const readyBill = allSigned && wo.status !== 'approved'
 
   return (
     <Layout
@@ -144,7 +174,9 @@ export default function SimpleWoDetail() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="badge badge-primary text-sm px-3 py-1">{wo.wo_number || `#${id}`}</span>
           <div className="flex items-center gap-2">
-            {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
+            {readyBill
+              ? <span className="badge badge-success">พร้อมวางบิล</span>
+              : (() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
             {result && <span className={`badge ${result.color}`}>{result.label}</span>}
           </div>
         </div>
@@ -160,6 +192,7 @@ export default function SimpleWoDetail() {
           <InfoRow label="ช่าง" value={wo.tech_name} />
           <InfoRow label="วันที่" value={dateVal ? dayjs(dateVal).format('DD/MM/YYYY') : '-'} />
           <InfoRow label="ลูกค้า" value={wo.client_name} />
+          {wo.pts_zone && <InfoRow label="สัญญา/โซน" value={wo.pts_zone} />}
           <InfoRow label="สถานที่" value={wo.location || wo.client_name} />
           <InfoRow label="อาคาร" value={wo.building} />
           <InfoRow label="ชั้น" value={wo.floor} />
@@ -292,37 +325,43 @@ export default function SimpleWoDetail() {
           </div>
         )}
 
-        {/* Signatures */}
+        {/* Signatures — each role signs its own slot here (no need to open edit) */}
         <div className="card">
           <h2 className="section-header mb-3">ลายเซ็น</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <SigBox label="ช่างแอร์" name={wo.sig_team_name} data={wo.sig_team} />
-            <SigBox label="หัวหน้าช่างแอร์" name={wo.sig_supervisor_name} data={wo.sig_supervisor} />
-            <SigBox label="เจ้าหน้าที่ช่างอาคาร" name={wo.sig_building_name} data={wo.sig_building} />
-            <SigBox label="เจ้าหน้าวิศวกรรม" name={wo.sig_engineer_name} data={wo.sig_engineer} />
+            {SIG_DEFS.map(({ slot, label }) => {
+              const canSign = canSignSlot(slot) && wo.status !== 'approved'
+              const signed = !!wo[`sig_${slot}`]
+              return (
+                <div key={slot} className="flex flex-col gap-1.5">
+                  <SigBox label={label} name={wo[`sig_${slot}_name`]} data={wo[`sig_${slot}`]} />
+                  {canSign && (
+                    <button onClick={() => openSign(slot)} disabled={busy}
+                      className="btn-secondary text-xs flex items-center justify-center gap-1 py-1.5">
+                      <PenLine className="h-3.5 w-3.5" /> {signed ? 'เซ็นใหม่' : 'เซ็น'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
         {/* ── Approval workflow ── */}
         {(() => {
           const status = wo.status || 'submitted'
-          const canCheck   = status === 'submitted' && ['checker', 'admin', 'super_admin'].includes(role)
-          const canApprove = ['submitted', 'checked'].includes(status) && ['approver', 'admin', 'super_admin'].includes(role)
-          const canReject  = ['submitted', 'checked'].includes(status) && ['checker', 'approver', 'admin', 'super_admin'].includes(role)
-          const canReopen  = ['approved', 'rejected'].includes(status) && privileged
-          if (!(canCheck || canApprove || canReject || canReopen)) return null
+          const REVIEW = ['checker', 'approve_building', 'approve_engineer', 'approver', 'admin', 'super_admin']
+          const canReject   = status === 'submitted' && REVIEW.includes(role)
+          const canReopen   = ['approved', 'rejected'].includes(status) && privileged
+          const canResubmit = status === 'rejected' && ['technician', 'checker', 'admin', 'super_admin'].includes(role)
+          if (!(canReject || canReopen || canResubmit)) return null
           return (
             <div className="card flex flex-col gap-2">
-              <h2 className="section-header">ขั้นตอนอนุมัติ</h2>
+              <h2 className="section-header">ขั้นตอนงาน</h2>
               <div className="flex flex-wrap gap-2">
-                {canCheck && (
-                  <button onClick={() => transition('check')} disabled={busy} className="btn-secondary flex items-center gap-1.5">
-                    <Check className="h-4 w-4" /> ตรวจผ่าน
-                  </button>
-                )}
-                {canApprove && (
-                  <button onClick={() => transition('approve')} disabled={busy} className="btn-primary flex items-center gap-1.5">
-                    <CheckCheck className="h-4 w-4" /> อนุมัติ{status === 'submitted' ? ' (ข้ามตรวจ)' : ''}
+                {canResubmit && (
+                  <button onClick={() => transition('resubmit')} disabled={busy} className="btn-primary flex items-center gap-1.5">
+                    <Send className="h-4 w-4" /> แก้แล้ว ส่งกลับมาตรวจ
                   </button>
                 )}
                 {canReject && (
@@ -336,6 +375,7 @@ export default function SimpleWoDetail() {
                   </button>
                 )}
               </div>
+              {canResubmit && <p className="text-xs text-ink-muted">แก้ไขใบงานให้เรียบร้อยก่อน แล้วกด “ส่งกลับมาตรวจ”</p>}
             </div>
           )
         })()}
@@ -365,6 +405,24 @@ export default function SimpleWoDetail() {
           </button>
         )}
       </div>
+
+      {/* Sign one slot (decoupled from edit) */}
+      {signSlot && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSignSlot(null)} />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 max-h-[92vh] overflow-y-auto">
+            <h3 className="font-semibold text-ink mb-3">
+              เซ็น — {SIG_DEFS.find((d) => d.slot === signSlot)?.label}
+            </h3>
+            <div className="mb-3">
+              <label className="label">ชื่อผู้ลงนาม</label>
+              <input className="input" placeholder="ชื่อผู้ลงนาม" value={signName} onChange={(e) => setSignName(e.target.value)} />
+            </div>
+            <SignaturePad onSave={submitSign} onCancel={() => setSignSlot(null)} />
+            {busy && <p className="text-xs text-ink-muted mt-2 text-center">กำลังบันทึก...</p>}
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

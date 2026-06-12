@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      VARCHAR(50) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role          VARCHAR(20) NOT NULL CHECK (role IN (
-                  'admin','approver','checker','technician'
+                  'admin','approve_engineer','approve_building','checker','technician','approver'
                 )),
   phone         VARCHAR(20),
   active        BOOLEAN DEFAULT true,
@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   tech_name    VARCHAR(150),
   work_date    DATE,
   client_name  VARCHAR(200),
+  pts_zone     VARCHAR(50),     -- สัญญา/โซนใน รพ.เดียว (เช่น PTS1, PTS2) — แยกทีม/สัญญา
   location     VARCHAR(200),    -- สถานที่ (e.g. คลินิกในเครือ); blank = same as client_name
   building     VARCHAR(100),
   floor        VARCHAR(50),

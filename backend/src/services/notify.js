@@ -37,7 +37,7 @@ async function notifyTransition(client, wo, to, { reason, branchSlug } = {}) {
     await notifyUsers(client, await userIdsByRole(client, ['admin']),
       { ...base, type: 'pending_admin', message: `ใบงาน ${orderNo} รอตรวจ (Admin)` });
   } else if (to === 'pending_approval') {
-    await notifyUsers(client, await userIdsByRole(client, 'approver'),
+    await notifyUsers(client, await userIdsByRole(client, ['approver', 'approve_building', 'approve_engineer']),
       { ...base, type: 'pending_approval', message: `ใบงาน ${orderNo} รออนุมัติ` });
   } else if (to === 'approved') {
     await notifyUsers(client, await assigneeIds(client, wo.id),
