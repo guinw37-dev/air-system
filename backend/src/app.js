@@ -29,6 +29,7 @@ function originAllowed(origin) {
     const host = new URL(origin).hostname;
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (host === 'tw-carework.online' || host.endsWith('.tw-carework.online')) return true;
+    if (host.endsWith('.sslip.io')) return true;   // Coolify-generated dev domains
   } catch { /* malformed origin → deny */ }
   return false;
 }
