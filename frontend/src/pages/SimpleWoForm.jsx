@@ -54,6 +54,12 @@ export default function SimpleWoForm() {
   const isEdit = !!id
   const { user } = useAuthStore()
 
+  // Each role may sign ONLY its own slot (backend enforces this too). Other
+  // slots are read-only on the form. admin/super_admin may sign any.
+  const ROLE_SLOT = { technician: 'team', supervisor: 'supervisor', building: 'building', approver: 'engineer' }
+  const canSignSlot = (slot) =>
+    user?.role === 'admin' || user?.role === 'super_admin' || ROLE_SLOT[user?.role] === slot
+
   const [header, setHeader] = useState({
     tech_name: '',
     work_date: '',
@@ -714,27 +720,34 @@ export default function SimpleWoForm() {
             { role: 'supervisor', label: 'หัวหน้าช่างแอร์' },
             { role: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
             { role: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
-          ].map(({ role, label }) => (
+          ].map(({ role, label }) => {
+            const mine = canSignSlot(role)
+            return (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
-              <label className="label">{label}</label>
+              <label className="label flex items-center gap-2">{label}
+                {!mine && <span className="text-[11px] font-normal text-ink-muted">(เซ็นได้เฉพาะช่องของคุณ)</span>}</label>
               <input
                 className="input"
                 placeholder="ชื่อผู้ลงนาม"
+                disabled={!mine}
                 value={signatures[role].name}
                 onChange={(e) => setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], name: e.target.value } }))}
               />
               {signatures[role].data ? (
                 <div className="flex items-center gap-3">
                   <img src={signatures[role].data} alt="sig" className="h-16 w-32 object-contain border border-line rounded-lg bg-white" />
-                  <button type="button" onClick={() => setSigPad(role)} className="btn-secondary text-sm">เซ็นใหม่</button>
+                  {mine && <button type="button" onClick={() => setSigPad(role)} className="btn-secondary text-sm">เซ็นใหม่</button>}
                 </div>
-              ) : (
+              ) : mine ? (
                 <button type="button" onClick={() => setSigPad(role)} className="btn-secondary flex items-center justify-center gap-1.5 self-start">
                   <PenLine className="h-4 w-4" /> เซ็น
                 </button>
+              ) : (
+                <span className="text-sm text-ink-muted">— ยังไม่ได้เซ็น —</span>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {error && (

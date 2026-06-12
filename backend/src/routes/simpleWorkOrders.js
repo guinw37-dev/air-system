@@ -40,6 +40,33 @@ async function notifyWo(req, { woId, type, message, toRoles, toUserId }) {
 const PUBLIC_BASE = process.env.FRONTEND_URL || '';
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 
+// ── Signature slots — each role may fill ONLY its own slot ───────────────────
+// A technician signs the "team" (ช่างแอร์) slot, a supervisor the supervisor
+// slot, etc. admin/super_admin may fill any. On create/edit a non-privileged
+// user's input for slots they don't own is dropped: the slot keeps its existing
+// value (edit) or stays empty (create). This stops a tech from forging the
+// engineer / หัวหน้าช่าง / ช่างอาคาร signature on the form.
+const SIG_SLOTS = ['engineer', 'department', 'team', 'supervisor', 'building'];
+const ROLE_SLOT = { technician: 'team', supervisor: 'supervisor', building: 'building', approver: 'engineer' };
+const canSignSlot = (role, slot) =>
+  role === 'admin' || role === 'super_admin' || ROLE_SLOT[role] === slot;
+
+// Resolve the sig_* values to persist. `cur` = current DB row (edit) or {} (create).
+// Allowed slots take the submitted value; others fall back to the existing value.
+function resolveSigs(role, b, cur = {}) {
+  const out = {};
+  for (const slot of SIG_SLOTS) {
+    if (canSignSlot(role, slot)) {
+      out[`sig_${slot}`] = b[`sig_${slot}`] || null;
+      out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
+    } else {
+      out[`sig_${slot}`] = cur[`sig_${slot}`] || null;
+      out[`sig_${slot}_name`] = cur[`sig_${slot}_name`] || null;
+    }
+  }
+  return out;
+}
+
 // ── photo upload (multer → /uploads/photos/simple/...) ──────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -321,6 +348,7 @@ router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
+  const sig = resolveSigs(req.user.role, b);
   const client = await req.tx();
   try {
     await client.query('BEGIN');
@@ -344,11 +372,11 @@ router.post('/', authMiddleware, async (req, res) => {
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
       JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
-      b.sig_engineer || null, b.sig_engineer_name || null,
-      b.sig_department || null, b.sig_department_name || null,
-      b.sig_team || null, b.sig_team_name || null,
-      b.sig_supervisor || null, b.sig_supervisor_name || null,
-      b.sig_building || null, b.sig_building_name || null,
+      sig.sig_engineer, sig.sig_engineer_name,
+      sig.sig_department, sig.sig_department_name,
+      sig.sig_team, sig.sig_team_name,
+      sig.sig_supervisor, sig.sig_supervisor_name,
+      sig.sig_building, sig.sig_building_name,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
       b.location || null, b.ac_type || null,
     ]);
@@ -431,7 +459,11 @@ router.put('/:id', authMiddleware, async (req, res) => {
   if (verr) return res.status(400).json({ error: verr });
   try {
     const { rows } = await req.db(
-      'SELECT created_by, status FROM simple_work_orders WHERE id = $1', [req.params.id]
+      `SELECT created_by, status,
+              sig_engineer, sig_engineer_name, sig_department, sig_department_name,
+              sig_team, sig_team_name, sig_supervisor, sig_supervisor_name,
+              sig_building, sig_building_name
+       FROM simple_work_orders WHERE id = $1`, [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const privileged = ['admin', 'super_admin'].includes(req.user.role);
@@ -442,6 +474,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (rows[0].status === 'approved' && !privileged) {
       return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ส่งกลับก่อนจึงแก้ได้' });
     }
+    // Only the user's own signature slot may be (re)written; others keep their value.
+    const sig = resolveSigs(req.user.role, b, rows[0]);
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
@@ -460,12 +494,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
       JSON.stringify(b.checklist_values || {}), b.result || null,
       b.start_time || null, b.end_time || null,
       JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
-      b.sig_engineer || null, b.sig_engineer_name || null,
-      b.sig_department || null, b.sig_department_name || null,
-      b.sig_team || null, b.sig_team_name || null,
+      sig.sig_engineer, sig.sig_engineer_name,
+      sig.sig_department, sig.sig_department_name,
+      sig.sig_team, sig.sig_team_name,
       JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
-      b.sig_building || null, b.sig_building_name || null,
-      b.sig_supervisor || null, b.sig_supervisor_name || null,
+      sig.sig_building, sig.sig_building_name,
+      sig.sig_supervisor, sig.sig_supervisor_name,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
       b.location || null, b.ac_type || null,
     ]);
@@ -544,8 +578,7 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── POST /api/simple-wo/batch-sign — sign many WOs at once ──────────────────
-const ROLE_SLOT = { technician: 'team', supervisor: 'supervisor', building: 'building', approver: 'engineer' };
+// ── POST /api/simple-wo/batch-sign — sign many WOs at once (own slot only) ───
 router.post('/batch-sign', authMiddleware, async (req, res) => {
   const slot = ROLE_SLOT[req.user.role];
   if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });
