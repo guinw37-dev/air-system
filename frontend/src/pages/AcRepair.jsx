@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Wrench, Play, CheckCircle2, PackagePlus, Star, Download, RefreshCw, AlertTriangle, X } from 'lucide-react'
+import { Wrench, Play, CheckCircle2, PackagePlus, Star, Download, RefreshCw, AlertTriangle, X, Building2 } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import api from '../api/client'
@@ -44,6 +44,8 @@ export default function AcRepair() {
   useEffect(() => { load() }, [])
   const done = () => { setModal(null); load() }
 
+  // apex Super Dev: งานมาจากหลาย รพ. (แต่ละ job มี _hospital/_repair_slug)
+  const aggregate = jobs.some((j) => j._hospital)
   // งานค้างนานสุดขึ้นก่อน (SLA focus) + นับตามสถานะ
   const sorted = [...jobs].sort((a, b) => new Date(a.register_time || 0) - new Date(b.register_time || 0))
   const counts = {
@@ -70,8 +72,8 @@ export default function AcRepair() {
     }>
       <div className="p-4 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-ink-muted flex items-center gap-1.5"><Wrench className="h-4 w-4" /> งาน AC จากระบบแจ้งซ่อม</p>
-          <button onClick={exportExcel} disabled={busy} className="btn-secondary text-sm flex items-center gap-1.5"><Download className="h-4 w-4" /> ส่งออก Excel</button>
+          <p className="text-sm text-ink-muted flex items-center gap-1.5"><Wrench className="h-4 w-4" /> งาน AC จากระบบแจ้งซ่อม{aggregate ? ' · ทุกโรงพยาบาล' : ''}</p>
+          {!aggregate && <button onClick={exportExcel} disabled={busy} className="btn-secondary text-sm flex items-center gap-1.5"><Download className="h-4 w-4" /> ส่งออก Excel</button>}
         </div>
 
         {/* สรุปงาน (dashboard) */}
@@ -119,6 +121,7 @@ export default function AcRepair() {
                       <span className={`badge ${s.color}`}>{s.label}</span>
                     </div>
                   </div>
+                  {j._hospital && <div className="text-xs font-medium text-primary flex items-center gap-1"><Building2 className="h-3.5 w-3.5" /> {j._hospital}</div>}
                   <div className="text-sm text-ink">{loc(j) || '-'}</div>
                   <div className="text-sm text-ink-muted">{j.description || j.job_detail || '-'}</div>
                   <div className="text-xs text-ink-muted flex items-center gap-2 flex-wrap">
@@ -182,6 +185,7 @@ function StartModal({ job, onClose, onDone }) {
         action: 'START_WORK',
         statusWork: mode === 'budget' ? 'Pending Budget' : 'Start Working',
         workDesc: desc,
+        repairSlug: job._repair_slug,
         ...(mode === 'budget' ? { budgetRequested: budget } : {}),
       })
       onDone()
@@ -225,7 +229,7 @@ function ClearModal({ job, onClose, onDone }) {
     setSaving(true)
     try {
       await api.put(`/ac-repair/jobs/${job.id}/status`, {
-        action: 'CLEAR', clearDesc: desc,
+        action: 'CLEAR', clearDesc: desc, repairSlug: job._repair_slug,
         ...(photo ? { afterImageBase64: photo.base64, afterImageName: photo.name } : {}),
       })
       onDone()
@@ -254,7 +258,7 @@ function EvalModal({ job, onClose, onDone }) {
   const submit = async () => {
     setSaving(true)
     try {
-      await api.post(`/ac-repair/jobs/${job.id}/evaluation`, { ...scores, suggestions: sug })
+      await api.post(`/ac-repair/jobs/${job.id}/evaluation`, { ...scores, suggestions: sug, repairSlug: job._repair_slug })
       onDone()
     } catch (e) { alert(e.response?.data?.error || 'ประเมินไม่สำเร็จ') } finally { setSaving(false) }
   }
@@ -291,7 +295,7 @@ function PartsModal({ job, onClose, onDone }) {
   const [remark, setRemark] = useState('')
   const [noParts, setNoParts] = useState(false)
   const [saving, setSaving] = useState(false)
-  useEffect(() => { api.get('/ac-repair/stock').then((r) => setStock(r.data || [])).catch(() => {}) }, [])
+  useEffect(() => { api.get('/ac-repair/stock', { params: job._repair_slug ? { repair_slug: job._repair_slug } : {} }).then((r) => setStock(r.data || [])).catch(() => {}) }, [])
   const addItem = (code) => {
     const s = stock.find((x) => x.code === code); if (!s || cart.some((c) => c.code === code)) return
     setCart((c) => [...c, { code: s.code, name: s.name, qty: 1, price: Number(s.price) || 0 }])
@@ -303,7 +307,7 @@ function PartsModal({ job, onClose, onDone }) {
     if (!noParts && cart.length === 0) { alert('เลือกอะไหล่ หรือเลือก "ไม่ใช้อะไหล่"'); return }
     setSaving(true)
     try {
-      await api.post(`/ac-repair/jobs/${job.id}/spare-parts`, { cartItems: noParts ? [] : cart, remark, noSparePart: noParts })
+      await api.post(`/ac-repair/jobs/${job.id}/spare-parts`, { cartItems: noParts ? [] : cart, remark, noSparePart: noParts, repairSlug: job._repair_slug })
       onDone()
     } catch (e) { alert(e.response?.data?.error || 'เบิกอะไหล่/ปิดงานไม่สำเร็จ') } finally { setSaving(false) }
   }
