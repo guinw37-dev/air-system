@@ -18,17 +18,26 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
-// Status. "พร้อมวางบิล" is DERIVED (all 4 signed, not yet billed). approved = วางบิลแล้ว.
 const STATUS_LABEL = {
   submitted: { label: 'รอเซ็น',  color: 'badge-warn' },
   checked:   { label: 'รอเซ็น',  color: 'badge-warn' },
   approved:  { label: 'วางบิลแล้ว', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
 }
-// Derived status shown in the list (uses the all_signed flag from the API).
+// Status shown in the list — derived from the signing chain (pending_stage from
+// the API = first unsigned slot). Tells the user which signature is missing.
+const STAGE_BADGE = {
+  team:       { label: 'ยังไม่เสร็จ',         color: 'badge-warn' },                  // ขาด 4 (ยังไม่เซ็นเลย)
+  supervisor: { label: 'รอหัวหน้าตรวจงาน',     color: 'badge-warn' },                  // ขาด 3
+  building:   { label: 'รอช่างอาคารตรวจงาน',   color: 'bg-indigo-50 text-indigo-600' }, // ขาด 2
+  engineer:   { label: 'รอวิศวกรรมตรวจงาน',    color: 'bg-indigo-50 text-indigo-600' }, // ขาด 1
+  done:       { label: 'รอวางบิล',             color: 'badge-success' },               // เซ็นครบ
+}
 const statusBadge = (wo) => {
-  if ((wo.status || 'submitted') !== 'approved' && wo.all_signed) return { label: 'พร้อมวางบิล', color: 'badge-success' }
-  return STATUS_LABEL[wo.status || 'submitted']
+  const st = wo.status || 'submitted'
+  if (st === 'approved') return STATUS_LABEL.approved   // วางบิลแล้ว (ล็อก)
+  if (st === 'rejected') return STATUS_LABEL.rejected   // ส่งกลับให้แก้
+  return STAGE_BADGE[wo.pending_stage] || STATUS_LABEL[st]
 }
 
 // role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).
@@ -76,11 +85,18 @@ export default function SimpleWoList() {
   const [coverOpen, setCoverOpen] = useState(false)
   const [cover, setCover] = useState(null)
 
+  const [error, setError] = useState('')
   const load = () => {
-    setLoading(true)
+    setLoading(true); setError('')
     api.get('/simple-wo')
       .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setRows([]))
+      .catch((e) => {
+        setRows([])
+        // Don't show an empty "ไม่มีใบงาน" when the request actually FAILED — surface it.
+        setError(e.response?.status === 400
+          ? 'ยังไม่ได้เลือกสาขา — เข้าผ่านลิงก์สาขา (subdomain) หรือเลือกสาขาก่อน'
+          : (e.response?.data?.error || 'โหลดใบงานไม่สำเร็จ — ลองใหม่อีกครั้ง'))
+      })
       .finally(() => setLoading(false))
   }
 
@@ -284,6 +300,14 @@ export default function SimpleWoList() {
             </button>
           ))}
         </div>
+
+        {/* Load error — so a failed fetch never looks like "ไม่มีใบงาน" */}
+        {error && (
+          <div className="card flex items-center justify-between gap-3 bg-danger-soft border-danger/30">
+            <span className="text-sm text-danger">{error}</span>
+            <button onClick={load} className="btn-secondary text-xs">ลองใหม่</button>
+          </div>
+        )}
 
         {/* Active quick view (from the sidebar) */}
         {(() => {

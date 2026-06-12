@@ -18,6 +18,20 @@ function devBranchOverride() {
   return env && SLUG_RE.test(env) ? env : null
 }
 
+// On a real production subdomain the leftmost label IS the branch slug
+// (phayathai-sriracha.tw-carework.online → "phayathai-sriracha"). Deterministic,
+// no network — used so a flaky /resolve-host can't drop the branch and 400 every
+// API call. Restricted to *.tw-carework.online (sslip.io/IP hosts use ?branch).
+function subdomainSlug() {
+  try {
+    const host = window.location.hostname.toLowerCase()
+    if (!host.endsWith('.tw-carework.online')) return null
+    const label = host.split('.')[0]
+    if (['www', 'api', 'app'].includes(label)) return null
+    return SLUG_RE.test(label) ? label : null
+  } catch { return null }
+}
+
 export const useTenantStore = create((set, get) => ({
   resolved: false,
   isBranch: false,
@@ -27,6 +41,10 @@ export const useTenantStore = create((set, get) => ({
   async resolve() {
     if (get().resolved) return
     const override = devBranchOverride()
+    // Deterministic fallback: ?branch override, else the production subdomain label.
+    const fallback = override || subdomainSlug()
+    // Set the branch optimistically so X-Branch is sent even if /resolve-host is slow.
+    if (fallback) set({ isBranch: true, slug: fallback, name: fallback })
     try {
       const params = override ? { branch: override } : { hostname: window.location.hostname }
       const { data } = await axios.get(`${BACKEND}/api/resolve-host`, { params })
@@ -34,8 +52,11 @@ export const useTenantStore = create((set, get) => ({
         set({ resolved: true, isBranch: true, slug: data.slug, name: data.name })
         return
       }
-    } catch { /* unknown branch / network → apex */ }
-    set({ resolved: true, isBranch: false, slug: null, name: null })
+    } catch { /* network/hiccup → keep the deterministic fallback below */ }
+    // /resolve-host said apex or failed: keep the fallback branch if we have one,
+    // so a transient failure on a real subdomain never drops the branch (→ 400s).
+    if (fallback) set({ resolved: true, isBranch: true, slug: fallback, name: get().name || fallback })
+    else set({ resolved: true, isBranch: false, slug: null, name: null })
   },
 
   // Super-admin only: re-point the SPA at another branch (sets X-Branch).

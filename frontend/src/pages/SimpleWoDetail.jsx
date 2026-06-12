@@ -160,6 +160,15 @@ export default function SimpleWoDetail() {
   const readyBill = allSigned && wo.status !== 'approved'
   // Step chain: a slot is signable only after every earlier slot is signed.
   const priorsSigned = (slot) => SIGN_ORDER.slice(0, SIGN_ORDER.indexOf(slot)).every((s) => !!wo[`sig_${s}`])
+  // Which signature the ใบงาน is currently waiting on (first unsigned slot).
+  const pendingStage = SIGN_ORDER.find((s) => !wo[`sig_${s}`]) || 'done'
+  const STAGE_BADGE = {
+    team:       { label: 'ยังไม่เสร็จ',       color: 'badge-warn' },
+    supervisor: { label: 'รอหัวหน้าตรวจงาน',   color: 'badge-warn' },
+    building:   { label: 'รอช่างอาคารตรวจงาน', color: 'bg-indigo-50 text-indigo-600' },
+    engineer:   { label: 'รอวิศวกรรมตรวจงาน',  color: 'bg-indigo-50 text-indigo-600' },
+    done:       { label: 'รอวางบิล',           color: 'badge-success' },
+  }
 
   return (
     <Layout
@@ -177,9 +186,13 @@ export default function SimpleWoDetail() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="badge badge-primary text-sm px-3 py-1">{wo.wo_number || `#${id}`}</span>
           <div className="flex items-center gap-2">
-            {readyBill
-              ? <span className="badge badge-success">พร้อมวางบิล</span>
-              : (() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
+            {(() => {
+              const st = wo.status || 'submitted'
+              const s = st === 'approved' ? STATUS_LABEL.approved
+                : st === 'rejected' ? STATUS_LABEL.rejected
+                : (STAGE_BADGE[pendingStage] || STATUS_LABEL[st])
+              return s && <span className={`badge ${s.color}`}>{s.label}</span>
+            })()}
             {result && <span className={`badge ${result.color}`}>{result.label}</span>}
           </div>
         </div>
