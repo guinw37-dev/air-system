@@ -266,6 +266,25 @@ export default function SimpleWoList() {
           <Plus className="h-5 w-5" /> เปิดใบงานใหม่
         </button>
 
+        {/* Quick view tabs (งานค้าง / ทั้งหมด / รอวางบิล) */}
+        <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
+          {[
+            { label: 'งานค้าง', to: '/simple-wo', active: !pending && !view },
+            { label: 'ใบงานทั้งหมด', to: '/simple-wo?view=all', active: view === 'all' },
+            ...(canBill ? [{ label: 'รอวางบิล', to: '/simple-wo?view=ready', active: view === 'ready' }] : []),
+          ].map((t) => (
+            <button
+              key={t.to}
+              onClick={() => navigate(t.to)}
+              className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                t.active ? 'bg-primary text-white shadow-sm' : 'bg-white text-ink-muted border border-line hover:border-primary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Active quick view (from the sidebar) */}
         {(() => {
           const label = pending ? PENDING_LABEL[pending]
