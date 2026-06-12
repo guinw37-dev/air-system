@@ -26,7 +26,8 @@ const STATUS_LABEL = {
   rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
 }
 
-const SLOT_LABEL = { technician: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', approver: 'เจ้าหน้าวิศวกรรม' }
+// role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).
+const SLOT_LABEL = { technician: 'ช่างแอร์', checker: 'หัวหน้าช่างแอร์', approve_building: 'เจ้าหน้าที่ช่างอาคาร', approve_engineer: 'เจ้าหน้าวิศวกรรม' }
 
 export default function SimpleWoList() {
   const navigate = useNavigate()
@@ -42,6 +43,7 @@ export default function SimpleWoList() {
   // List filter + sort (client-side)
   const [fType, setFType] = useState('')     // '' | major | minor | fan
   const [fClient, setFClient] = useState('') // '' | client_name
+  const [fPts, setFPts] = useState('')       // '' | pts_zone
   const [fResult, setFResult] = useState('') // '' | ok | not_ok
   const [fStatus, setFStatus] = useState('') // '' | submitted | checked | approved | rejected
   const [sortBy, setSortBy] = useState('date_desc') // date_desc|date_asc|wo_asc|wo_desc
@@ -72,13 +74,15 @@ export default function SimpleWoList() {
 
   useEffect(() => { load() }, [])
 
-  // Distinct client names for the filter dropdown.
+  // Distinct client names / PTS zones for the filter dropdowns.
   const clientOptions = [...new Set(rows.map((r) => r.client_name).filter(Boolean))].sort()
+  const ptsOptions = [...new Set(rows.map((r) => r.pts_zone).filter(Boolean))].sort()
 
   // Apply filters + sort to produce the rows actually rendered.
   const visibleRows = rows
     .filter((r) => (!fType || r.work_type === fType)
       && (!fClient || r.client_name === fClient)
+      && (!fPts || r.pts_zone === fPts)
       && (!fResult || r.result === fResult)
       && (!fStatus || (r.status || 'submitted') === fStatus))
     .sort((a, b) => {
@@ -89,8 +93,8 @@ export default function SimpleWoList() {
       return sortBy === 'date_asc' ? da - db : db - da
     })
 
-  const hasFilter = fType || fClient || fResult || fStatus
-  const clearFilters = () => { setFType(''); setFClient(''); setFResult(''); setFStatus('') }
+  const hasFilter = fType || fClient || fPts || fResult || fStatus
+  const clearFilters = () => { setFType(''); setFClient(''); setFPts(''); setFResult(''); setFStatus('') }
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -247,7 +251,7 @@ export default function SimpleWoList() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <div>
               <label className="label">สถานะ</label>
               <select className="input" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
@@ -272,6 +276,13 @@ export default function SimpleWoList() {
               <select className="input" value={fClient} onChange={(e) => setFClient(e.target.value)}>
                 <option value="">ทั้งหมด</option>
                 {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">สัญญา/โซน</label>
+              <select className="input" value={fPts} onChange={(e) => setFPts(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                {ptsOptions.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
@@ -373,7 +384,10 @@ export default function SimpleWoList() {
                         <td className="py-3 px-4 text-ink-muted text-xs">{dateVal ? dayjs(dateVal).format('DD/MM/YY') : '-'}</td>
                         <td className="py-3 px-4 text-ink">{wo.tech_name || '-'}</td>
                         <td className="py-3 px-4 text-ink">
-                          <p>{wo.client_name || '-'}</p>
+                          <p className="flex items-center gap-1.5">
+                            {wo.client_name || '-'}
+                            {wo.pts_zone && <span className="badge bg-primary-soft text-primary text-[11px]">{wo.pts_zone}</span>}
+                          </p>
                           {wo.building && <p className="text-xs text-ink-muted">{wo.building}</p>}
                         </td>
                         <td className="py-3 px-4 text-ink-muted">{wo.asset_code || '-'}</td>

@@ -1,37 +1,63 @@
 // ============================================================
-// roles.js — single source of truth for the 5-role model + hierarchy.
+// roles.js — single source of truth for the role model + hierarchy.
 //
-//   Super Dev   super_admin  apex/public, cross-branch, owner only
-//   Admin Dep.  admin        branch-local, full within the branch
-//   Approve Dev approver     branch, approves work orders
-//   Checker Dev checker      branch, supervisor / inspection
-//   Technician  technician   branch, field tech
+//   Super Dev        super_admin       apex/public, cross-branch, owner only
+//   Admin Dep.       admin             branch-local, full within the branch
+//   Approve Engineer approve_engineer  branch, signs วิศวกรรม + approves
+//   Approve Building approve_building  branch, signs ช่างอาคาร + approves
+//   Checker Dev      checker           branch, signs หัวหน้าช่างแอร์ + inspects
+//   Technician       technician        branch, field tech, signs ช่างแอร์
+//
+// Each branch signing role owns exactly ONE signature slot on a ใบงาน. The two
+// approve_* roles inherit the old "approver" workflow rights (approve / reject).
+// The legacy single 'approver' (Approve Dev) is retired → remapped to
+// approve_engineer; it stays in ROLE_RANK only so existing tokens don't break.
 //
 // Hierarchy rule: a user may only create / edit / delete a target whose rank is
 // <= their own, and may never assign a role of higher rank than their own.
 // Creating or editing a super_admin additionally requires a password step-up
-// (see master.js). Legacy roles (central_admin/supervisor/building/field_tech)
-// are retired and remapped to the new set on migration.
+// (see master.js). Legacy roles are remapped to the new set on migration.
 // ============================================================
 
 const ROLE_RANK = {
-  super_admin: 100,
-  admin:       80,
-  approver:    60,
-  checker:     60,
-  technician:  40,
+  super_admin:      100,
+  admin:            80,
+  approve_engineer: 60,
+  approve_building: 60,
+  checker:          60,
+  technician:       40,
+  approver:         60, // legacy (Approve Dev) — kept so old accounts/tokens resolve
 };
 
 const ALL_ROLES    = Object.keys(ROLE_RANK);
 const SUPER_ROLES  = ['super_admin'];
-const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician'];
+// Roles assignable inside a branch (the user-management dropdown). 'approver' is
+// intentionally absent — it is legacy and no longer offered for new users.
+const BRANCH_ROLES = ['admin', 'approve_engineer', 'approve_building', 'checker', 'technician'];
+
+// ── Signature slots — each role owns ONE slot on a ใบงาน ─────────────────────
+// Slot keys match the sig_<slot> columns on simple_work_orders.
+const SIG_SLOTS = ['team', 'supervisor', 'building', 'engineer', 'department'];
+const ROLE_SLOT = {
+  technician:       'team',        // ช่างแอร์
+  checker:          'supervisor',  // หัวหน้าช่างแอร์
+  approve_building: 'building',     // เจ้าหน้าที่ช่างอาคาร
+  approve_engineer: 'engineer',    // เจ้าหน้าวิศวกรรม
+  approver:         'engineer',    // legacy alias
+};
+// admin / super_admin may sign any slot; others only the slot mapped to them.
+const canSignSlot = (role, slot) =>
+  role === 'admin' || role === 'super_admin' || ROLE_SLOT[role] === slot;
+// The slot a role signs (null for admin/super/none — they choose).
+const slotForRole = (role) => ROLE_SLOT[role] || null;
 
 // Retired roles → their replacement in the new model.
 const LEGACY_ROLE_MAP = {
   central_admin: 'admin',
   supervisor:    'checker',
-  building:      'technician',
+  building:      'approve_building',
   field_tech:    'technician',
+  approver:      'approve_engineer',
 };
 
 const rankOf = (role) => ROLE_RANK[role] || 0;
@@ -40,11 +66,13 @@ const rankOf = (role) => ROLE_RANK[role] || 0;
 const REMAP_CASE_SQL = `CASE role
   WHEN 'central_admin' THEN 'admin'
   WHEN 'supervisor'    THEN 'checker'
-  WHEN 'building'      THEN 'technician'
+  WHEN 'building'      THEN 'approve_building'
   WHEN 'field_tech'    THEN 'technician'
+  WHEN 'approver'      THEN 'approve_engineer'
   ELSE role END`;
 
 module.exports = {
   ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES,
+  SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole,
   LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
 };

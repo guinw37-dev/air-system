@@ -5,33 +5,39 @@ import api from '../api/client'
 import { useTenantStore } from '../store/tenant'
 import { useAuthStore } from '../store/auth'
 
-// Role model (mirrors backend master.js):
-//  Super Dev   = super_admin — apex/public, cross-branch, owner only.
-//  Admin Dep.  = admin       — branch-local, full within the branch.
-//  Approve Dev.= approver    — branch, approves work orders.
-//  Checker Dev.= checker      — branch, supervisor / inspection.
-//  Technician  = technician   — branch, field tech.
+// Role model (mirrors backend utils/roles.js). Each branch signing role owns one
+// signature slot on a ใบงาน:
+//  Super Dev        = super_admin      — apex/public, cross-branch, owner only.
+//  Admin Dep.       = admin            — branch-local, full within the branch.
+//  Approve Engineer = approve_engineer — signs เจ้าหน้าวิศวกรรม + approves.
+//  Approve Building = approve_building — signs เจ้าหน้าที่ช่างอาคาร + approves.
+//  Checker Dev.     = checker          — signs หัวหน้าช่างแอร์ + inspects.
+//  Technician       = technician       — field tech, signs ช่างแอร์.
 // On apex (super context) you may only create Super Devs; branch roles are
 // created INSIDE that branch (เข้าจัดการ → ผู้ใช้งาน).
-const BRANCH_ROLES = ['admin', 'approver', 'checker', 'technician']
+const BRANCH_ROLES = ['admin', 'approve_engineer', 'approve_building', 'checker', 'technician']
 const SUPER_ROLES  = ['super_admin']
 // Hierarchy rank (mirrors backend utils/roles.js). A user can only manage roles
 // at or below their own rank, and can't assign a role above it.
-const ROLE_RANK = { super_admin: 100, admin: 80, approver: 60, checker: 60, technician: 40 }
+const ROLE_RANK = { super_admin: 100, admin: 80, approve_engineer: 60, approve_building: 60, checker: 60, technician: 40, approver: 60 }
 const rankOf = (r) => ROLE_RANK[r] || 0
 const ROLE_COLOR = {
-  super_admin:   'badge-danger',
-  admin:         'badge-primary',
-  approver:      'badge-warn',
-  checker:       'bg-primary-soft text-primary',
-  technician:    'badge-gray',
+  super_admin:      'badge-danger',
+  admin:            'badge-primary',
+  approve_engineer: 'badge-warn',
+  approve_building: 'badge-warn',
+  checker:          'bg-primary-soft text-primary',
+  technician:       'badge-gray',
+  approver:         'badge-warn',
 }
 const ROLE_TH = {
-  super_admin:   'Super Dev — ผู้ดูแลระบบ',
-  admin:         'Admin Dep. — ผู้จัดการสาขา',
-  approver:      'Approve Dev. — ผู้อนุมัติงาน',
-  checker:       'Checker Dev. — ผู้ตรวจสอบ',
-  technician:    'Technician — ช่าง',
+  super_admin:      'Super Dev — ผู้ดูแลระบบ',
+  admin:            'Admin Dep. — ผู้จัดการสาขา',
+  approve_engineer: 'Approve Engineer — วิศวกรรม',
+  approve_building: 'Approve Building — ช่างอาคาร',
+  checker:          'Checker Dev. — หัวหน้าช่างแอร์',
+  technician:       'Technician — ช่าง',
+  approver:         'Approve Dev. (เดิม)',
 }
 
 function Modal({ title, onClose, children }) {

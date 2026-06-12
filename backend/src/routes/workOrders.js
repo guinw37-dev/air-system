@@ -399,7 +399,7 @@ router.post('/:id/admin-approve', authMiddleware, requireRole('checker'), async 
 });
 
 // ── POST /api/work-orders/:id/final-approve — pending_approval → approved ───
-router.post('/:id/final-approve', authMiddleware, requireRole('approver'), async (req, res) => {
+router.post('/:id/final-approve', authMiddleware, requireRole('approver', 'approve_building', 'approve_engineer'), async (req, res) => {
   const wo = await getWO(req.db, req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
   const t = checkTransition(wo.status, 'approved', req.user.role);
@@ -454,7 +454,7 @@ async function advancePmCycle(client, woId, type) {
 }
 
 // ── POST /api/work-orders/:id/reject ────────────────────────────────────────
-router.post('/:id/reject', authMiddleware, requireRole('checker', 'approver'), async (req, res) => {
+router.post('/:id/reject', authMiddleware, requireRole('checker', 'approver', 'approve_building', 'approve_engineer'), async (req, res) => {
   const { reason } = req.body;
   const wo = await getWO(req.db, req.params.id);
   if (!wo) return res.status(404).json({ error: 'Not found' });
@@ -564,7 +564,7 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
   const allowedSigners = {
     area_owner:    ['technician', 'checker'],
     central_admin: ['checker'],
-    approver:      ['approver'],
+    approver:      ['approver', 'approve_building', 'approve_engineer'],
   };
   if (!allowedSigners[role].includes(req.user.role)) {
     return res.status(403).json({ error: `role ${req.user.role} ลงลายเซ็น ${role} ไม่ได้` });

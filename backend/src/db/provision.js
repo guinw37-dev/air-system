@@ -32,18 +32,21 @@ async function migratePublic(client) {
     // else the user is local to that branch.
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
-    // 5-role model: remap any retired legacy role to the new set, THEN tighten the
-    // CHECK (must remap first — adding the constraint fails on stale legacy rows).
+    // Role model: remap retired legacy roles (incl. single 'approver' → approve_engineer)
+    // to the new set, THEN tighten the CHECK (must remap first — adding the
+    // constraint fails on stale legacy rows). 'approver' stays in the CHECK as a
+    // safety net for any token mid-flight, but is no longer assignable.
     await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
-      WHERE role IN ('central_admin','supervisor','building','field_tech')`);
+      WHERE role IN ('central_admin','supervisor','building','field_tech','approver')`);
     await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
-      'super_admin','admin','approver','checker','technician'))`);
+      'super_admin','admin','approve_engineer','approve_building','checker','technician','approver'))`);
     // Legacy public.simple_work_orders (pre-schema-per-tenant rows still edited on
     // apex) needs the same new columns or saving an apex WO 500s with
     // 'column "location" does not exist'. IF EXISTS → skip if the table is absent.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS pts_zone VARCHAR(50)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
     // Approval-workflow audit columns (legacy public.simple_work_orders edited on apex).
     for (const col of ['checked_by INT', 'checked_at TIMESTAMPTZ', 'approved_by INT',
@@ -70,6 +73,7 @@ async function provisionBranchSchema(schemaName) {
     // BRANCH_SQL then ships the columns); adds them on an existing table.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ac_type  VARCHAR(30)`);
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS pts_zone VARCHAR(50)`);
     // Approval-workflow audit columns (status already exists, default 'submitted').
     for (const col of ['checked_by INT', 'checked_at TIMESTAMPTZ', 'approved_by INT',
                        'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
@@ -86,13 +90,14 @@ async function provisionBranchSchema(schemaName) {
     // varchar length is metadata-only (no table rewrite). Runs after the drops.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
     await c.query(BRANCH_SQL);
-    // Retire legacy roles on existing branch users + tighten the CHECK (CREATE
-    // TABLE IF NOT EXISTS above won't alter an already-present users table).
+    // Retire legacy roles on existing branch users (incl. single 'approver' →
+    // approve_engineer) + tighten the CHECK (CREATE TABLE IF NOT EXISTS above
+    // won't alter an already-present users table).
     await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
-      WHERE role IN ('central_admin','supervisor','building','field_tech')`);
+      WHERE role IN ('central_admin','supervisor','building','field_tech','approver')`);
     await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
-      'admin','approver','checker','technician'))`);
+      'admin','approve_engineer','approve_building','checker','technician','approver'))`);
     return schema;
   } finally {
     c.release();

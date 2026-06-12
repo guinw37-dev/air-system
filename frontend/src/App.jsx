@@ -102,7 +102,7 @@ export default function App() {
         } />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
         <Route path="/deductions" element={
-          <RequireAuth><RequireRole roles={['admin', 'approver', 'checker']}><Deductions /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={['admin', 'approver', 'approve_building', 'approve_engineer', 'checker']}><Deductions /></RequireRole></RequireAuth>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -4,7 +4,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 
 // Monthly service-fee deduction notes (per month, within a branch). Schema-per-
 // tenant: req.db scopes every row to the current branch — no client_id.
-const canEdit = requireRole('admin', 'approver', 'super_admin');
+const canEdit = requireRole('admin', 'approver', 'approve_building', 'approve_engineer', 'super_admin');
 
 // POST /api/deductions { month: 'YYYY-MM', notes }
 router.post('/', authMiddleware, canEdit, async (req, res) => {
