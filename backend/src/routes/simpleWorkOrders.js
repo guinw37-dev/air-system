@@ -11,6 +11,7 @@ const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, blockingSlot,
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
+const { serverError } = require('../utils/respond');
 
 // Fan out an in-app notification for a simple-wo event. Recipients are branch
 // users (by role and/or a specific id) read from req.db (<schema>.users); rows
@@ -80,10 +81,13 @@ async function genWoNumber(client) {
   const be = dayjs().year() + 543;
   const mm = dayjs().format('MM');
   const prefix = `WO-${be}-${mm}-`;
+  // Derive the next running number from the MAX existing suffix, not COUNT(*):
+  // COUNT breaks when a ใบงาน is deleted (count drops → regenerates an existing number).
   const { rows } = await client.query(
-    'SELECT COUNT(*) FROM simple_work_orders WHERE wo_number LIKE $1', [`${prefix}%`]
+    `SELECT COALESCE(MAX(CAST(RIGHT(wo_number, 4) AS INTEGER)), 0) AS maxn
+       FROM simple_work_orders WHERE wo_number LIKE $1`, [`${prefix}%`]
   );
-  return `${prefix}${String(parseInt(rows[0].count, 10) + 1).padStart(4, '0')}`;
+  return `${prefix}${String(rows[0].maxn + 1).padStart(4, '0')}`;
 }
 
 // ── POST /api/simple-wo/upload — single photo → { url } ─────────────────────
@@ -122,7 +126,7 @@ router.get('/form-schema', authMiddleware, async (req, res) => {
       .filter((k) => byCat.has(k))
       .map((k) => ({ key: k, label: CAT_LABEL[k] || k, fields: byCat.get(k) }));
     res.json({ work_type: wt, sections });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── Customer list — the branch IS the customer. On a branch return just it; on
@@ -133,7 +137,7 @@ router.get('/clients', authMiddleware, async (req, res) => {
     if (req.branch) return res.json([{ id: req.branch.id, name: req.branch.name }]);
     const { rows } = await pool.query('SELECT id, name FROM clients WHERE active = true ORDER BY name');
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 router.post('/clients', authMiddleware, async (req, res) => {
   const name = (req.body && req.body.name ? String(req.body.name) : '').trim();
@@ -334,7 +338,7 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
     res.end(buf);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── POST /api/simple-wo — create + submit ───────────────────────────────────
@@ -345,36 +349,48 @@ router.post('/', authMiddleware, async (req, res) => {
   const sig = resolveSigs(req.user.role, b);
   const client = await req.tx();
   try {
-    await client.query('BEGIN');
-    const wo_number = await genWoNumber(client);
-    const { rows } = await client.query(`
-      INSERT INTO simple_work_orders (
-        wo_number, created_by, tech_name, work_date, client_name, pts_zone, building, floor, room,
-        asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
-        team_comment, photo_urls, gallery_urls, ac_info,
-        sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
-        sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
-        grid_rows, recommendation, location, ac_type, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
-      RETURNING id, wo_number
-    `, [
-      wo_number, req.user.id, b.tech_name || null, b.work_date || null,
-      b.client_name || (req.branch ? req.branch.name : null), b.pts_zone || null,
-      b.building || null, b.floor || null, b.room || null, b.asset_code || null,
-      b.work_type || 'major', b.power_system || null,
-      JSON.stringify(b.checklist_values || {}), b.result || null,
-      b.start_time || null, b.end_time || null,
-      JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
-      JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
-      sig.sig_engineer, sig.sig_engineer_name,
-      sig.sig_department, sig.sig_department_name,
-      sig.sig_team, sig.sig_team_name,
-      sig.sig_supervisor, sig.sig_supervisor_name,
-      sig.sig_building, sig.sig_building_name,
-      JSON.stringify(b.grid_rows || []), b.recommendation || null,
-      b.location || null, b.ac_type || null,
-    ]);
-    await client.query('COMMIT');
+    // Two concurrent creates can derive the same wo_number; on a unique-constraint
+    // collision (23505), retry with a freshly recomputed number a few times.
+    let rows;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await client.query('BEGIN');
+        const wo_number = await genWoNumber(client);
+        ({ rows } = await client.query(`
+          INSERT INTO simple_work_orders (
+            wo_number, created_by, tech_name, work_date, client_name, pts_zone, building, floor, room,
+            asset_code, work_type, power_system, checklist_values, result, start_time, end_time,
+            team_comment, photo_urls, gallery_urls, ac_info,
+            sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
+            sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
+            grid_rows, recommendation, location, ac_type, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
+          RETURNING id, wo_number
+        `, [
+          wo_number, req.user.id, b.tech_name || null, b.work_date || null,
+          b.client_name || (req.branch ? req.branch.name : null), b.pts_zone || null,
+          b.building || null, b.floor || null, b.room || null, b.asset_code || null,
+          b.work_type || 'major', b.power_system || null,
+          JSON.stringify(b.checklist_values || {}), b.result || null,
+          b.start_time || null, b.end_time || null,
+          JSON.stringify(b.team_comment || {}), JSON.stringify(b.photo_urls || []),
+          JSON.stringify(b.gallery_urls || []), JSON.stringify(b.ac_info || {}),
+          sig.sig_engineer, sig.sig_engineer_name,
+          sig.sig_department, sig.sig_department_name,
+          sig.sig_team, sig.sig_team_name,
+          sig.sig_supervisor, sig.sig_supervisor_name,
+          sig.sig_building, sig.sig_building_name,
+          JSON.stringify(b.grid_rows || []), b.recommendation || null,
+          b.location || null, b.ac_type || null,
+        ]));
+        await client.query('COMMIT');
+        break;
+      } catch (e) {
+        await client.query('ROLLBACK');
+        if (e.code === '23505' && e.constraint === 'simple_work_orders_wo_number_key' && attempt < 4) continue;
+        throw e;
+      }
+    }
     // New ใบงาน starts as 'submitted' → alert the signing roles (หัวหน้าช่าง/ช่างอาคาร/วิศวกรรม).
     await notifyWo(req, {
       woId: rows[0].id, type: 'wo_submitted',
@@ -383,8 +399,8 @@ router.post('/', authMiddleware, async (req, res) => {
     });
     res.status(201).json(rows[0]);
   } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    // The transaction is already rolled back inside the retry loop; just report.
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -411,7 +427,7 @@ router.get('/', authMiddleware, async (req, res) => {
       LIMIT $${i++} OFFSET $${i++}
     `, params);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
@@ -423,7 +439,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     `, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── GET /api/simple-wo/:id/pdf ──────────────────────────────────────────────
@@ -445,7 +461,7 @@ router.get('/:id/pdf', authMiddleware, async (req, res) => {
       }
       throw err;
     }
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── PUT /api/simple-wo/:id — edit ───────────────────────────────────────────
@@ -500,7 +516,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       b.location || null, b.ac_type || null, b.pts_zone || null,
     ]);
     res.json(upd[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── DELETE /api/simple-wo/:id — soft delete (recoverable) ───────────────────
@@ -519,7 +535,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     }
     await req.db('UPDATE simple_work_orders SET deleted_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── POST /api/simple-wo/:id/transition — review workflow ────────────────────
@@ -566,7 +582,7 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
         message: `ใบงาน ${wo.wo_number} แก้ไขแล้ว ส่งกลับมาตรวจ`, toRoles: ['checker', 'approve_building', 'approve_engineer', 'admin'] });
     }
     res.json({ ok: true, status: t.to });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── POST /api/simple-wo/:id/sign — sign ONE ใบงาน (own slot) ─────────────────
@@ -578,24 +594,30 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
   const slot = slotForRole(req.user.role);
   if (!slot) return res.status(403).json({ error: 'role นี้ไม่มีช่องเซ็น' });
+  // One transaction with a row lock: read status + the chain, validate, then write
+  // atomically so a concurrent reject/sign can't slip the chain check (audit M-4).
+  const client = await req.tx();
   try {
-    const { rows } = await req.db(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `SELECT status, sig_team, sig_supervisor, sig_building, sig_engineer
-       FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+       FROM simple_work_orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [req.params.id]);
+    if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'ไม่พบใบงาน' }); }
     if (rows[0].status === 'approved') {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'วางบิลแล้ว (ล็อก) — เซ็นเพิ่มไม่ได้' });
     }
-    // Step chain: this slot can be signed only after every earlier slot is signed.
     const blk = blockingSlot(slot, rows[0]);
-    if (blk) return res.status(409).json({ error: `ต้องรอ "${SLOT_TH[blk]}" เซ็นก่อน` });
-    const { rows: upd } = await req.db(
+    if (blk) { await client.query('ROLLBACK'); return res.status(409).json({ error: `ต้องรอ "${SLOT_TH[blk]}" เซ็นก่อน` }); }
+    const { rows: upd } = await client.query(
       `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2, updated_at = NOW()
        WHERE id = $3 RETURNING id`,
       [signature_data, signer_name || req.user.name || '', req.params.id]
     );
+    await client.query('COMMIT');
     res.json({ ok: true, slot, id: upd[0].id });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { await client.query('ROLLBACK'); serverError(res, err); }
+  finally { client.release(); }
 });
 
 // ── POST /api/simple-wo/batch-sign — sign many WOs at once (own slot only) ───
@@ -608,21 +630,27 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
   const dataCol = `sig_${slot}`;
   const nameCol = `sig_${slot}_name`;
+  // Lock the selected rows, evaluate the chain, then update — all in one tx so a
+  // concurrent change can't break the per-row chain check (audit M-4).
+  const client = await req.tx();
   try {
-    // Step chain + lock: only sign the rows where every earlier slot is already
-    // signed and the ใบงาน isn't billed yet. Not-ready rows are skipped, not failed.
-    const { rows } = await req.db(
+    await client.query('BEGIN');
+    // Step chain + lock: only sign rows where every earlier slot is already signed
+    // and the ใบงาน isn't billed yet. Not-ready rows are skipped, not failed.
+    const { rows } = await client.query(
       `SELECT id, status, sig_team, sig_supervisor, sig_building, sig_engineer
-       FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
+       FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL FOR UPDATE`, [cleanIds]);
     const ready = rows.filter((r) => r.status !== 'approved' && !blockingSlot(slot, r)).map((r) => r.id);
     const skipped = cleanIds.length - ready.length;
     if (ready.length) {
-      await req.db(
+      await client.query(
         `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
         [signature_data, signer_name || '', ready]);
     }
+    await client.query('COMMIT');
     res.json({ ok: true, signed: ready.length, skipped, slot });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { await client.query('ROLLBACK'); serverError(res, err); }
+  finally { client.release(); }
 });
 
 // ── POST /api/simple-wo/batch-pdf — billing cover + each WO report ───────────
@@ -646,13 +674,7 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
         error: `วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง — ยังเซ็นไม่ครบ ${notReady.length} ใบ: ${notReady.map((r) => r.wo_number || r.id).join(', ')}`,
       });
     }
-    // Lock (mark วางบิลแล้ว) the ones not already billed.
     const toLock = st.filter((r) => r.status !== 'approved').map((r) => r.id);
-    if (toLock.length) {
-      await req.db(
-        `UPDATE simple_work_orders SET status='approved', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id = ANY($2)`,
-        [req.user.id, toLock]);
-    }
     const dataArray = [];
     for (const id of cleanIds) {
       const d = await getSimpleReportData(id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
@@ -677,21 +699,30 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
     // one browser (concurrently) and merge → photos are included, yet wall-clock
     // ≈ the slowest single WO, not the sum, so we stay under the proxy timeout.
     const htmls = [buildSimpleBatchCoverHtml(dataArray, meta), ...dataArray.map((d) => buildSimpleReportHtml(d))];
+    // Produce the document FIRST, then lock — if rendering blows up we must not
+    // leave the ใบงาน billed (approved) with no bill out (audit M-5).
+    let pdf = null, fallbackHtml = null;
     try {
-      const pdf = await renderAndMerge(htmls, { landscape: false });
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${meta.doc_no}.pdf"`);
-      return res.end(pdf);
+      pdf = await renderAndMerge(htmls, { landscape: false });
     } catch (err) {
-      if (err instanceof PdfUnavailableError) {
-        // Chrome unavailable → single combined HTML (no photos) as a readable fallback.
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('X-PDF-Fallback', 'html');
-        return res.send(buildSimpleBatchHtml(dataArray, meta));
-      }
-      throw err;
+      if (err instanceof PdfUnavailableError) fallbackHtml = buildSimpleBatchHtml(dataArray, meta); // Chrome down → HTML
+      else throw err;
     }
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Document is ready → lock (mark วางบิลแล้ว) the ones not already billed.
+    if (toLock.length) {
+      await req.db(
+        `UPDATE simple_work_orders SET status='approved', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id = ANY($2)`,
+        [req.user.id, toLock]);
+    }
+    if (fallbackHtml) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-PDF-Fallback', 'html');
+      return res.send(fallbackHtml);
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${meta.doc_no}.pdf"`);
+    return res.end(pdf);
+  } catch (err) { serverError(res, err); }
 });
 
 module.exports = router;

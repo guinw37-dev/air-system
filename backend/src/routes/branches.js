@@ -6,6 +6,7 @@ const { slugToSchema } = require('../utils/schema');
 const { provisionBranchSchema } = require('../db/provision');
 const { invalidateBranchCache } = require('../middleware/resolveBranch');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { serverError } = require('../utils/respond');
 
 // Super-admin back-office for branches (สาขา). Each branch is fully isolated:
 // its own Postgres schema + its own users. Only global super-admins (apex) may
@@ -20,7 +21,7 @@ router.get('/public', async (req, res) => {
       `SELECT slug, subdomain, name, card_image FROM clients
        WHERE active = true AND slug IS NOT NULL AND schema_name IS NOT NULL ORDER BY name`);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // GET /api/branches — list the registry (super-admin)
@@ -29,7 +30,7 @@ router.get('/', authMiddleware, superOnly, async (req, res) => {
     const { rows } = await pool.query(
       'SELECT id, code, name, slug, subdomain, schema_name, card_image, active, created_at FROM clients ORDER BY code');
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // GET /api/branches/:id/qr?url=<branchUrl> — QR code (data URI) for direct entry.
@@ -40,7 +41,7 @@ router.get('/:id/qr', authMiddleware, superOnly, async (req, res) => {
   try {
     const qr = await QRCode.toDataURL(String(url), { width: 320, margin: 1 });
     res.json({ qr });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // POST /api/branches — provision a new branch (registry row + schema), and
@@ -78,7 +79,7 @@ router.post('/', authMiddleware, superOnly, async (req, res) => {
       admin = ar[0];
     }
     res.status(201).json({ branch, admin });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // POST /api/branches/:slug/adopt-user { userId } — move a public.users account
@@ -109,7 +110,7 @@ router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => 
       [usr.name, usr.username, usr.password_hash, role, usr.phone, usr.active]);
     await pool.query('DELETE FROM users WHERE id = $1', [userId]);
     res.json({ ok: true, movedTo: schema });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // PATCH /api/branches/:id — edit name/code/subdomain/card image, or toggle
@@ -136,7 +137,7 @@ router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
     invalidateBranchCache(rows[0].slug);
     invalidateBranchCache(rows[0].subdomain);
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 module.exports = router;

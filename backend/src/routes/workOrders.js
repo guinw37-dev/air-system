@@ -10,6 +10,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 const { requireWoRole } = require('../middleware/woAccess');
 const { checkTransition, HTTP_FOR_CODE, logTransition, isEditable } = require('../services/woStateMachine');
 const { notifyTransition } = require('../services/notify');
+const { serverError } = require('../utils/respond');
 
 // Schema-per-tenant: work_orders + children live in the request's branch schema,
 // reached via req.db (reads) / req.tx (transactions). No client_id columns.
@@ -67,7 +68,7 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json(wo);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally {
     client.release();
   }
@@ -101,7 +102,7 @@ router.get('/', authMiddleware, async (req, res) => {
       LIMIT $${i++} OFFSET $${i++}
     `, params);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── GET /api/work-orders/:id — detail + children ────────────────────────────
@@ -150,7 +151,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     `, [req.params.id]);
 
     res.json({ ...rows[0], assignees, items, inspections, photos, signatures: sigs });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── GET /api/work-orders/:id/history ────────────────────────────────────────
@@ -199,7 +200,7 @@ router.put('/:id/units', authMiddleware,
     res.json(rows);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally {
     client.release();
   }
@@ -268,7 +269,7 @@ router.put('/:id/inspection', authMiddleware,
     res.json(rows);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally {
     client.release();
   }
@@ -315,7 +316,7 @@ router.patch('/:id/start', authMiddleware, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -371,7 +372,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -394,7 +395,7 @@ router.post('/:id/admin-approve', authMiddleware, requireRole('checker'), async 
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -419,7 +420,7 @@ router.post('/:id/final-approve', authMiddleware, requireRole('approver', 'appro
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -473,7 +474,7 @@ router.post('/:id/reject', authMiddleware, requireRole('checker', 'approver', 'a
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -496,7 +497,7 @@ router.post('/:id/resubmit', authMiddleware, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   } finally { client.release(); }
 });
 
@@ -517,7 +518,7 @@ router.post('/:id/sign-token', authMiddleware,
         [req.params.id, tokenHash, expiresAt]
       );
       res.status(201).json({ token, sign_path: `/sign/${token}`, expires_at: expiresAt });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { serverError(res, err); }
   }
 );
 
@@ -552,7 +553,7 @@ router.post('/:id/repair-request', authMiddleware,
     `, [chk[0].unit_id, req.params.id, work_order_unit_id, problem.trim(), req.user.id]);
     await req.db('UPDATE work_order_units SET has_repair = true WHERE id = $1', [work_order_unit_id]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── Signatures ──────────────────────────────────────────────────────────────
@@ -581,7 +582,7 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
       RETURNING *
     `, [req.params.id, req.user.id, role, signer_name || null, signature_data]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── Photos (nested under work order) ────────────────────────────────────────
@@ -646,7 +647,7 @@ router.post('/:id/photos', authMiddleware,
       return res.status(200).json(won[0]);
     }
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // GET /api/work-orders/:id/photos — grouped by work_order_unit_id

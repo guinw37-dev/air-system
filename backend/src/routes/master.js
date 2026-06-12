@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const bcrypt = require('bcryptjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { BRANCH_ROLES, SUPER_ROLES, rankOf } = require('../utils/roles');
+const { serverError } = require('../utils/respond');
 
 // Master data CRUD. Schema-per-tenant split:
 //   GLOBAL (public, on pool): clients (branch registry), users (super-admins),
@@ -28,7 +29,7 @@ router.post('/clients', authMiddleware, canRegistry, async (req, res) => {
     const { rows } = await pool.query(
       'INSERT INTO clients (code, name) VALUES ($1,$2) RETURNING *', [code, name]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/clients/:id', authMiddleware, canRegistry, async (req, res) => {
@@ -39,7 +40,7 @@ router.put('/clients/:id', authMiddleware, canRegistry, async (req, res) => {
       [code, name, active !== false, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.delete('/clients/:id', authMiddleware, canRegistry, async (req, res) => {
@@ -60,7 +61,7 @@ router.post('/sites', authMiddleware, canEdit, async (req, res) => {
     const { rows } = await req.db(
       'INSERT INTO sites (code, name) VALUES ($1,$2) RETURNING *', [code || null, name]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/sites/:id', authMiddleware, canEdit, async (req, res) => {
@@ -93,7 +94,7 @@ router.post('/buildings', authMiddleware, canEdit, async (req, res) => {
       'INSERT INTO buildings (site_id, name, code) VALUES ($1,$2,$3) RETURNING *',
       [site_id, name, code || null]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/buildings/:id', authMiddleware, canEdit, async (req, res) => {
@@ -124,7 +125,7 @@ router.post('/floors', authMiddleware, canEdit, async (req, res) => {
   try {
     const { rows } = await req.db('INSERT INTO floors (building_id, name) VALUES ($1,$2) RETURNING *', [building_id, name]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/floors/:id', authMiddleware, canEdit, async (req, res) => {
@@ -153,7 +154,7 @@ router.post('/rooms', authMiddleware, canEdit, async (req, res) => {
   try {
     const { rows } = await req.db('INSERT INTO rooms (floor_id, name) VALUES ($1,$2) RETURNING *', [floor_id, name]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/rooms/:id', authMiddleware, canEdit, async (req, res) => {
@@ -234,7 +235,7 @@ router.get('/units/:id/history', authMiddleware, async (req, res) => {
     `, [req.params.id]);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -262,7 +263,7 @@ router.post('/units', authMiddleware, canEdit, async (req, res) => {
       status || null, last_major_clean_date || null,
     ]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/units/:id', authMiddleware, canEdit, async (req, res) => {
@@ -285,7 +286,7 @@ router.put('/units/:id', authMiddleware, canEdit, async (req, res) => {
     ]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.delete('/units/:id', authMiddleware, canDelete, async (req, res) => {
@@ -382,7 +383,7 @@ router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async
       'INSERT INTO users (name, username, password_hash, role, phone) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, username, role, phone',
       [name, username, hash, role, phone || null]);
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
@@ -419,7 +420,7 @@ router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), as
     }
     const { rows } = await db('SELECT id, name, username, role, phone, active FROM users WHERE id=$1', [req.params.id]);
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // DELETE a user. Hierarchy applies; a Super Dev may only be removed by another
@@ -443,7 +444,7 @@ router.delete('/users/:id', authMiddleware, requireRole('admin', 'super_admin'),
     }
     await db('DELETE FROM users WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // ── Unit timeline / stats (PER-BRANCH) ──────────────────────────────────────
@@ -463,7 +464,7 @@ router.get('/units/:id/timeline', authMiddleware, async (req, res) => {
       ...repairs.rows.map((r) => ({ kind: 'repair', date: r.date, ...r })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
     res.json(events);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 router.get('/units/:id/stats', authMiddleware, async (req, res) => {
@@ -487,7 +488,7 @@ router.get('/units/:id/stats', authMiddleware, async (req, res) => {
     const byType = {};
     for (const r of counts.rows) byType[r.type] = r.n;
     res.json({ counts: byType, trend: trend.rows, parts: [] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 module.exports = router;
