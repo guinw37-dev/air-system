@@ -18,12 +18,17 @@ const RESULT_LABEL = {
   not_ok: { label: 'ไม่เรียบร้อย', color: 'badge-danger' },
 }
 
-// Approval workflow status. approved = locked + billable.
+// Status. "พร้อมวางบิล" is DERIVED (all 4 signed, not yet billed). approved = วางบิลแล้ว.
 const STATUS_LABEL = {
-  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
-  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
-  approved:  { label: 'อนุมัติ',  color: 'badge-success' },
+  submitted: { label: 'รอเซ็น',  color: 'badge-warn' },
+  checked:   { label: 'รอเซ็น',  color: 'badge-warn' },
+  approved:  { label: 'วางบิลแล้ว', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
+}
+// Derived status shown in the list (uses the all_signed flag from the API).
+const statusBadge = (wo) => {
+  if ((wo.status || 'submitted') !== 'approved' && wo.all_signed) return { label: 'พร้อมวางบิล', color: 'badge-success' }
+  return STATUS_LABEL[wo.status || 'submitted']
 }
 
 // role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).
@@ -136,10 +141,10 @@ export default function SimpleWoList() {
   // Open the editable cover sheet, prefilling from the selected rows.
   const openBillModal = () => {
     const sel = rows.filter((r) => selected.has(r.id))
-    // วางบิลได้เฉพาะใบที่อนุมัติแล้ว (lock).
-    const notApproved = sel.filter((r) => (r.status || 'submitted') !== 'approved')
-    if (notApproved.length) {
-      alert(`วางบิลได้เฉพาะใบที่อนุมัติแล้ว — ยังไม่อนุมัติ ${notApproved.length} ใบ:\n${notApproved.map((r) => r.wo_number || r.id).join(', ')}`)
+    // วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง (พร้อมวางบิล). การวางบิลจะ lock ใบงาน.
+    const notReady = sel.filter((r) => !r.all_signed)
+    if (notReady.length) {
+      alert(`วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง — ยังเซ็นไม่ครบ ${notReady.length} ใบ:\n${notReady.map((r) => r.wo_number || r.id).join(', ')}`)
       return
     }
     const clients = [...new Set(sel.map((r) => r.client_name).filter(Boolean))]
@@ -256,9 +261,8 @@ export default function SimpleWoList() {
               <label className="label">สถานะ</label>
               <select className="input" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
                 <option value="">ทั้งหมด</option>
-                <option value="submitted">รอตรวจ</option>
-                <option value="checked">ตรวจแล้ว</option>
-                <option value="approved">อนุมัติ</option>
+                <option value="submitted">รอเซ็น</option>
+                <option value="approved">วางบิลแล้ว</option>
                 <option value="rejected">ส่งกลับ</option>
               </select>
             </div>
@@ -395,7 +399,7 @@ export default function SimpleWoList() {
                           <span className={`badge ${t.color}`}>{t.label}</span>
                         </td>
                         <td className="py-3 px-4">
-                          {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s ? <span className={`badge ${s.color}`}>{s.label}</span> : <span className="text-ink-muted text-xs">-</span> })()}
+                          {(() => { const s = statusBadge(wo); return s ? <span className={`badge ${s.color}`}>{s.label}</span> : <span className="text-ink-muted text-xs">-</span> })()}
                         </td>
                         <td className="py-3 px-4">
                           {r ? <span className={`badge ${r.color}`}>{r.label}</span> : <span className="text-ink-muted text-xs">-</span>}

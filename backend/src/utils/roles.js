@@ -45,9 +45,12 @@ const ROLE_SLOT = {
   approve_engineer: 'engineer',    // เจ้าหน้าวิศวกรรม
   approver:         'engineer',    // legacy alias
 };
-// admin / super_admin may sign any slot; others only the slot mapped to them.
-const canSignSlot = (role, slot) =>
-  role === 'admin' || role === 'super_admin' || ROLE_SLOT[role] === slot;
+// A role may sign ONLY the slot mapped to it. admin / super_admin do NOT sign at
+// all (they manage + bill) — signing is reserved for the field/approval roles.
+const canSignSlot = (role, slot) => ROLE_SLOT[role] === slot;
+// The 4 visible signature slots that must ALL be filled before a ใบงาน is billable.
+const REQUIRED_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
+const allSigned = (wo) => REQUIRED_SLOTS.every((s) => !!(wo && wo[`sig_${s}`]));
 // The slot a role signs (null for admin/super/none — they choose).
 const slotForRole = (role) => ROLE_SLOT[role] || null;
 
@@ -73,6 +76,6 @@ const REMAP_CASE_SQL = `CASE role
 
 module.exports = {
   ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES,
-  SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole,
+  SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, REQUIRED_SLOTS, allSigned,
   LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
 };

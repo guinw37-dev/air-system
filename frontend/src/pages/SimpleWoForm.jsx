@@ -55,10 +55,9 @@ export default function SimpleWoForm() {
   const { user } = useAuthStore()
 
   // Each role may sign ONLY its own signature slot (backend enforces this too);
-  // other slots are read-only on the form. admin/super may sign any.
+  // other slots are read-only. admin/super do NOT sign at all (they manage + bill).
   const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
-  const isPriv = user?.role === 'admin' || user?.role === 'super_admin'
-  const canSignSlot = (slot) => isPriv || SLOT_FOR_ROLE[user?.role] === slot
+  const canSignSlot = (slot) => SLOT_FOR_ROLE[user?.role] === slot
 
   const [header, setHeader] = useState({
     tech_name: '',

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Trash2, Pencil, Check, CheckCheck, Undo2, RotateCcw, PenLine, Send } from 'lucide-react'
+import { FileText, Trash2, Pencil, Undo2, RotateCcw, PenLine, Send } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
@@ -17,11 +17,11 @@ const SIG_DEFS = [
   { slot: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
 ]
 
-// Approval workflow status. approved = locked + billable.
+// Status. "พร้อมวางบิล" is DERIVED (all 4 signed) not stored. approved = วางบิลแล้ว (ล็อก).
 const STATUS_LABEL = {
-  submitted: { label: 'รอตรวจ',  color: 'badge-warn' },
-  checked:   { label: 'ตรวจแล้ว', color: 'badge-primary' },
-  approved:  { label: 'อนุมัติแล้ว (ล็อก)', color: 'badge-success' },
+  submitted: { label: 'รอเซ็น',  color: 'badge-warn' },
+  checked:   { label: 'รอเซ็น',  color: 'badge-warn' },
+  approved:  { label: 'วางบิลแล้ว (ล็อก)', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับให้แก้',  color: 'badge-danger' },
 }
 
@@ -55,7 +55,7 @@ export default function SimpleWoDetail() {
   const { user } = useAuthStore()
   const role = user?.role
   const privileged = role === 'admin' || role === 'super_admin'
-  const canSignSlot = (slot) => privileged || SLOT_FOR_ROLE[role] === slot
+  const canSignSlot = (slot) => SLOT_FOR_ROLE[role] === slot   // admin/super do not sign
 
   const [wo, setWo] = useState(null)
   const [schema, setSchema] = useState({ sections: [] })
@@ -154,6 +154,9 @@ export default function SimpleWoDetail() {
   const isGrid = wo.work_type === 'minor' || wo.work_type === 'fan'
   const gridRows = Array.isArray(wo.grid_rows) ? wo.grid_rows : []
   const gridCols = GRID_COLS[wo.work_type] || []
+  // พร้อมวางบิล = เซ็นครบ 4 ช่อง และยังไม่วางบิล (approved)
+  const allSigned = ['team', 'supervisor', 'building', 'engineer'].every((s) => !!wo[`sig_${s}`])
+  const readyBill = allSigned && wo.status !== 'approved'
 
   return (
     <Layout
@@ -171,7 +174,9 @@ export default function SimpleWoDetail() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="badge badge-primary text-sm px-3 py-1">{wo.wo_number || `#${id}`}</span>
           <div className="flex items-center gap-2">
-            {(() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
+            {readyBill
+              ? <span className="badge badge-success">พร้อมวางบิล</span>
+              : (() => { const s = STATUS_LABEL[wo.status || 'submitted']; return s && <span className={`badge ${s.color}`}>{s.label}</span> })()}
             {result && <span className={`badge ${result.color}`}>{result.label}</span>}
           </div>
         </div>
@@ -325,7 +330,7 @@ export default function SimpleWoDetail() {
           <h2 className="section-header mb-3">ลายเซ็น</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {SIG_DEFS.map(({ slot, label }) => {
-              const canSign = canSignSlot(slot) && (wo.status !== 'approved' || privileged)
+              const canSign = canSignSlot(slot) && wo.status !== 'approved'
               const signed = !!wo[`sig_${slot}`]
               return (
                 <div key={slot} className="flex flex-col gap-1.5">
@@ -345,27 +350,15 @@ export default function SimpleWoDetail() {
         {/* ── Approval workflow ── */}
         {(() => {
           const status = wo.status || 'submitted'
-          const APPROVE = ['approve_building', 'approve_engineer', 'approver', 'admin', 'super_admin']
-          const canCheck    = status === 'submitted' && ['checker', 'admin', 'super_admin'].includes(role)
-          const canApprove  = ['submitted', 'checked'].includes(status) && APPROVE.includes(role)
-          const canReject   = ['submitted', 'checked'].includes(status) && ['checker', ...APPROVE].includes(role)
+          const REVIEW = ['checker', 'approve_building', 'approve_engineer', 'approver', 'admin', 'super_admin']
+          const canReject   = status === 'submitted' && REVIEW.includes(role)
           const canReopen   = ['approved', 'rejected'].includes(status) && privileged
           const canResubmit = status === 'rejected' && ['technician', 'checker', 'admin', 'super_admin'].includes(role)
-          if (!(canCheck || canApprove || canReject || canReopen || canResubmit)) return null
+          if (!(canReject || canReopen || canResubmit)) return null
           return (
             <div className="card flex flex-col gap-2">
-              <h2 className="section-header">ขั้นตอนอนุมัติ</h2>
+              <h2 className="section-header">ขั้นตอนงาน</h2>
               <div className="flex flex-wrap gap-2">
-                {canCheck && (
-                  <button onClick={() => transition('check')} disabled={busy} className="btn-secondary flex items-center gap-1.5">
-                    <Check className="h-4 w-4" /> ตรวจผ่าน
-                  </button>
-                )}
-                {canApprove && (
-                  <button onClick={() => transition('approve')} disabled={busy} className="btn-primary flex items-center gap-1.5">
-                    <CheckCheck className="h-4 w-4" /> อนุมัติ{status === 'submitted' ? ' (ข้ามตรวจ)' : ''}
-                  </button>
-                )}
                 {canResubmit && (
                   <button onClick={() => transition('resubmit')} disabled={busy} className="btn-primary flex items-center gap-1.5">
                     <Send className="h-4 w-4" /> แก้แล้ว ส่งกลับมาตรวจ

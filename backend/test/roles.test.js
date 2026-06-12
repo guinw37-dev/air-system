@@ -1,6 +1,6 @@
 const assert = require('assert');
 const { ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES, LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
-        ROLE_SLOT, canSignSlot, slotForRole } = require('../src/utils/roles');
+        ROLE_SLOT, canSignSlot, slotForRole, allSigned } = require('../src/utils/roles');
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; };
@@ -57,11 +57,21 @@ t('each branch role signs exactly its own slot', () => {
   assert.ok(canSignSlot('approve_engineer', 'engineer'));
   assert.ok(!canSignSlot('approve_engineer', 'building'));
   assert.ok(!canSignSlot('checker', 'building'));
-  // admin / super may sign any slot
-  assert.ok(canSignSlot('admin', 'engineer'));
-  assert.ok(canSignSlot('super_admin', 'building'));
-  // no signing slot for a role without one
+  // admin / super_admin do NOT sign any slot (they manage + bill)
+  assert.ok(!canSignSlot('admin', 'engineer'));
+  assert.ok(!canSignSlot('super_admin', 'building'));
+  // no signing slot for admin/super
   assert.strictEqual(slotForRole('admin'), null);
+});
+
+t('allSigned: needs all 4 visible slots filled', () => {
+  const full = { sig_team: 'a', sig_supervisor: 'b', sig_building: 'c', sig_engineer: 'd' };
+  assert.ok(allSigned(full));
+  assert.ok(!allSigned({ ...full, sig_engineer: '' }));   // one missing → not billable
+  assert.ok(!allSigned({ sig_team: 'a' }));
+  assert.ok(!allSigned({}));
+  // sig_department is NOT required
+  assert.ok(allSigned({ ...full, sig_department: '' }));
 });
 
 console.log(`${pass} passed`);
