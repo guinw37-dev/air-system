@@ -32,13 +32,13 @@ async function migratePublic(client) {
     // else the user is local to that branch.
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
-    // Role model: remap retired legacy roles (incl. single 'approver' → approve_engineer)
-    // to the new set, THEN tighten the CHECK (must remap first — adding the
-    // constraint fails on stale legacy rows). 'approver' stays in the CHECK as a
-    // safety net for any token mid-flight, but is no longer assignable.
+    // Role model: DROP the old CHECK FIRST, then remap retired legacy roles (incl.
+    // single 'approver' → approve_engineer), then ADD the new CHECK. Order matters —
+    // the remap produces values (approve_engineer/approve_building) the OLD CHECK
+    // forbids, so updating before dropping would violate users_role_check.
+    await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
       WHERE role IN ('central_admin','supervisor','building','field_tech','approver')`);
-    await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
       'super_admin','admin','approve_engineer','approve_building','checker','technician','approver'))`);
     // Legacy public.simple_work_orders (pre-schema-per-tenant rows still edited on
@@ -91,11 +91,11 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
     await c.query(BRANCH_SQL);
     // Retire legacy roles on existing branch users (incl. single 'approver' →
-    // approve_engineer) + tighten the CHECK (CREATE TABLE IF NOT EXISTS above
-    // won't alter an already-present users table).
+    // approve_engineer). DROP the old CHECK FIRST — the remap produces values the
+    // old CHECK forbids, so updating before dropping would violate users_role_check.
+    await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`UPDATE users SET role = ${REMAP_CASE_SQL}
       WHERE role IN ('central_admin','supervisor','building','field_tech','approver')`);
-    await c.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await c.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (
       'admin','approve_engineer','approve_building','checker','technician','approver'))`);
     return schema;
