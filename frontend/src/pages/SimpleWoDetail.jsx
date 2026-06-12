@@ -170,14 +170,19 @@ export default function SimpleWoDetail() {
     done:       { label: 'รอวางบิล',           color: 'badge-success' },
   }
 
+  // PDF มีให้ดาวน์โหลดเฉพาะใบที่วางบิลแล้ว (approved)
+  const billed = wo.status === 'approved'
+
   return (
     <Layout
       title={wo.wo_number || `ใบงาน #${id}`}
       back="/simple-wo"
       actions={
-        <button onClick={downloadPdf} disabled={busy} className="p-1 rounded-lg text-ink-muted hover:bg-page">
-          <FileText className="h-5 w-5" />
-        </button>
+        billed ? (
+          <button onClick={downloadPdf} disabled={busy} className="p-1 rounded-lg text-ink-muted hover:bg-page">
+            <FileText className="h-5 w-5" />
+          </button>
+        ) : null
       }
     >
       <div className="px-4 pt-4 pb-8 flex flex-col gap-4 max-w-2xl mx-auto w-full">
@@ -412,9 +417,11 @@ export default function SimpleWoDetail() {
             <Pencil className="h-4 w-4" /> แก้ไขใบงาน
           </button>
         )}
-        <button onClick={downloadPdf} disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2">
-          <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
-        </button>
+        {billed && (
+          <button onClick={downloadPdf} disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2">
+            <FileText className="h-5 w-5" /> ดาวน์โหลด PDF
+          </button>
+        )}
 
         {/* Delete */}
         {!(wo.status === 'approved' && !privileged) && (
