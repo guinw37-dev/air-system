@@ -63,6 +63,22 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'air-system', time: new Date() });
 });
 
-app.listen(PORT, () => {
-  console.log(`Air System API running on port ${PORT}`);
+// Boot-time DB migration — apply public + every branch schema (idempotent) so a
+// deploy never leaves a tenant missing a newly-added column/role. Best-effort:
+// a migration hiccup logs loudly but still lets the API come up.
+async function migrateOnBoot() {
+  try {
+    const { migratePublic, migrateBranchSchemas } = require('./db/provision');
+    await migratePublic();
+    const n = await migrateBranchSchemas();
+    console.log(`✓ boot migration done (public + ${n} branch schemas)`);
+  } catch (err) {
+    console.error('⚠ boot migration failed (continuing):', err.message);
+  }
+}
+
+migrateOnBoot().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`Air System API running on port ${PORT}`);
+  });
 });
