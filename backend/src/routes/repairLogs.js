@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { serverError } = require('../utils/respond');
 const dayjs = require('dayjs');
 
 // Schema-per-tenant: req.db scopes every row to the current branch — no client_id.
@@ -36,7 +37,7 @@ router.get('/', authMiddleware, async (req, res) => {
     `, params);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -60,7 +61,7 @@ router.post('/', authMiddleware, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบ unit' });
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -78,7 +79,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -120,7 +121,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
     res.json({ ...rows[0], pm_updated: status === 'done' && !!cleaning_type });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 

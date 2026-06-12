@@ -4,6 +4,7 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { serverError } = require('../utils/respond');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -255,7 +256,7 @@ router.post('/ac-data', authMiddleware, requireRole('admin', 'super_admin'), upl
     const summary = await importWorkbook(req.db, wb);
     res.json(summary);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 
@@ -269,7 +270,7 @@ router.post('/ac-data/server', authMiddleware, requireRole('admin', 'super_admin
     const summary = await importWorkbook(req.db, wb);
     res.json(summary);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err);
   }
 });
 

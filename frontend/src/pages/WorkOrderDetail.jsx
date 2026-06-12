@@ -263,10 +263,15 @@ export default function WorkOrderDetail() {
     } finally { setSavingSig(false) }
   }
 
-  const downloadPdf = () => {
-    const base = uploadsBase || ''
-    const token = useAuthStore.getState().token
-    window.open(`${base}/api/pdf/work-orders/${id}?token=${token}`, '_blank')
+  const downloadPdf = async () => {
+    try {
+      // Via axios so the X-Branch header is sent (a raw window.open ?token= URL
+      // omits it → 403/wrong schema for a branch user).
+      const res = await api.get(`/pdf/work-orders/${id}`, { responseType: 'blob' })
+      window.open(URL.createObjectURL(res.data), '_blank')
+    } catch {
+      alert('เปิด PDF ไม่สำเร็จ')
+    }
   }
 
   const filteredUnitList = unitList.filter((u) =>

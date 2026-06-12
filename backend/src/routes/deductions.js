@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { serverError } = require('../utils/respond');
 
 // Monthly service-fee deduction notes (per month, within a branch). Schema-per-
 // tenant: req.db scopes every row to the current branch — no client_id.
@@ -17,7 +18,7 @@ router.post('/', authMiddleware, canEdit, async (req, res) => {
       [month, notes || null, req.user.id]
     );
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // GET /api/deductions?year=
@@ -34,7 +35,7 @@ router.get('/', authMiddleware, async (req, res) => {
       params
     );
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 // PUT /api/deductions/:id { notes }
@@ -47,7 +48,7 @@ router.put('/:id', authMiddleware, canEdit, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { serverError(res, err); }
 });
 
 module.exports = router;

@@ -51,13 +51,17 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads
 function resolveSigs(role, b, cur = {}) {
   const out = {};
   for (const slot of SIG_SLOTS) {
-    if (canSignSlot(role, slot)) {
-      out[`sig_${slot}`] = b[`sig_${slot}`] || null;
-      out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
-    } else {
+    const keep = () => {
       out[`sig_${slot}`] = cur[`sig_${slot}`] || null;
       out[`sig_${slot}_name`] = cur[`sig_${slot}_name`] || null;
-    }
+    };
+    if (!canSignSlot(role, slot)) { keep(); continue; }       // not this role's slot
+    const adding = !!b[`sig_${slot}`] && !cur[`sig_${slot}`]; // a NEW signature in this slot
+    // Enforce the step chain on the form path too (same as /sign): a brand-new
+    // signature is only accepted once every earlier slot is already signed.
+    if (adding && blockingSlot(slot, cur)) { keep(); continue; }
+    out[`sig_${slot}`] = b[`sig_${slot}`] || null;
+    out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
   }
   return out;
 }

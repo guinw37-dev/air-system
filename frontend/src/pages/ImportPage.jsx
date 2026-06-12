@@ -22,10 +22,18 @@ export default function ImportPage() {
     setResult(null)
   }
 
-  const downloadTemplate = () => {
-    const token = useAuthStore.getState().token
-    const base = uploadsBase || ''
-    window.open(`${base}/api/import/template/ac-data?token=${token}`, '_blank')
+  const downloadTemplate = async () => {
+    try {
+      // Via axios so X-Branch is sent (a raw window.open ?token= URL omits it →
+      // requireBranch 400 for a branch user).
+      const res = await api.get('/import/template/ac-data', { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'template-ac-data.xlsx'
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    } catch {
+      alert('ดาวน์โหลด template ไม่สำเร็จ')
+    }
   }
 
   const doImport = async () => {
