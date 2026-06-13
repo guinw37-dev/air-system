@@ -156,18 +156,28 @@ export default function SimpleWoDetail() {
   const gridCols = GRID_COLS[wo.work_type] || []
   // พร้อมวางบิล = เซ็นครบ 4 ช่อง และยังไม่วางบิล (approved)
   const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer']
-  const allSigned = SIGN_ORDER.every((s) => !!wo[`sig_${s}`])
+  // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
+  const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
+  const signed = (s) => !!wo[`sig_${s}`]
+  const allSigned = SIGN_ORDER.every(signed)
   const readyBill = allSigned && wo.status !== 'approved'
-  // Step chain: a slot is signable only after every earlier slot is signed.
-  const priorsSigned = (slot) => SIGN_ORDER.slice(0, SIGN_ORDER.indexOf(slot)).every((s) => !!wo[`sig_${s}`])
-  // Which signature the ใบงาน is currently waiting on (first unsigned slot).
-  const pendingStage = SIGN_ORDER.find((s) => !wo[`sig_${s}`]) || 'done'
+  // A slot is signable once its prerequisites are signed.
+  const priorsSigned = (slot) => (SIG_PREREQ[slot] || []).every(signed)
+  // Which signature the ใบงาน is waiting on (building+engineer = parallel pair).
+  const pendingStage =
+    !signed('team') ? 'team'
+      : !signed('supervisor') ? 'supervisor'
+      : (!signed('building') && !signed('engineer')) ? 'building_engineer'
+      : !signed('building') ? 'building'
+      : !signed('engineer') ? 'engineer'
+      : 'done'
   const STAGE_BADGE = {
-    team:       { label: 'ยังไม่เสร็จ',       color: 'badge-warn' },
-    supervisor: { label: 'รอหัวหน้าตรวจงาน',   color: 'badge-warn' },
-    building:   { label: 'รอช่างอาคารตรวจงาน', color: 'bg-indigo-50 text-indigo-600' },
-    engineer:   { label: 'รอวิศวกรรมตรวจงาน',  color: 'bg-indigo-50 text-indigo-600' },
-    done:       { label: 'รอวางบิล',           color: 'badge-success' },
+    team:              { label: 'ยังไม่เสร็จ',       color: 'badge-warn' },
+    supervisor:        { label: 'รอหัวหน้าตรวจงาน',   color: 'badge-warn' },
+    building_engineer: { label: 'รออาคาร+วิศวกรรม',  color: 'bg-indigo-50 text-indigo-600' },
+    building:          { label: 'รอช่างอาคารตรวจงาน', color: 'bg-indigo-50 text-indigo-600' },
+    engineer:          { label: 'รอวิศวกรรมตรวจงาน',  color: 'bg-indigo-50 text-indigo-600' },
+    done:              { label: 'รอวางบิล',           color: 'badge-success' },
   }
 
   // PDF มีให้ดาวน์โหลดเฉพาะใบที่วางบิลแล้ว (approved)
@@ -350,22 +360,24 @@ export default function SimpleWoDetail() {
         <div className="card">
           <h2 className="section-header mb-3">ลายเซ็น</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {SIG_DEFS.map(({ slot, label }, i) => {
-              const signed = !!wo[`sig_${slot}`]
+            {SIG_DEFS.map(({ slot, label }) => {
+              const isSigned = !!wo[`sig_${slot}`]
               const mine = canSignSlot(slot) && wo.status !== 'approved'
               const ready = priorsSigned(slot)
               const canSign = mine && ready
-              const prevLabel = SIG_DEFS[i - 1]?.label
+              // the prerequisite still missing (e.g. engineer waits on หัวหน้าช่าง, not ช่างอาคาร)
+              const blockSlot = (SIG_PREREQ[slot] || []).find((p) => !signed(p))
+              const prevLabel = SIG_DEFS.find((d) => d.slot === blockSlot)?.label
               return (
                 <div key={slot} className="flex flex-col gap-1.5">
                   <SigBox label={label} name={wo[`sig_${slot}_name`]} data={wo[`sig_${slot}`]} />
                   {canSign && (
                     <button onClick={() => openSign(slot)} disabled={busy}
                       className="btn-secondary text-xs flex items-center justify-center gap-1 py-1.5">
-                      <PenLine className="h-3.5 w-3.5" /> {signed ? 'เซ็นใหม่' : 'เซ็น'}
+                      <PenLine className="h-3.5 w-3.5" /> {isSigned ? 'เซ็นใหม่' : 'เซ็น'}
                     </button>
                   )}
-                  {mine && !ready && !signed && (
+                  {mine && !ready && !isSigned && (
                     <span className="text-[11px] text-ink-muted text-center">รอ “{prevLabel}” เซ็นก่อน</span>
                   )}
                 </div>

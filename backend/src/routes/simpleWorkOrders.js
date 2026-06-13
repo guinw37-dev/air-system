@@ -426,6 +426,7 @@ router.get('/', authMiddleware, async (req, res) => {
              CASE
                WHEN s.sig_team       IS NULL THEN 'team'
                WHEN s.sig_supervisor IS NULL THEN 'supervisor'
+               WHEN s.sig_building IS NULL AND s.sig_engineer IS NULL THEN 'building_engineer'
                WHEN s.sig_building   IS NULL THEN 'building'
                WHEN s.sig_engineer   IS NULL THEN 'engineer'
                ELSE 'done'
