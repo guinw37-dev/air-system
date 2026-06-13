@@ -58,7 +58,8 @@ export default function SimpleWoForm() {
   // other slots are read-only. admin/super do NOT sign at all (they manage + bill).
   // Step chain: a slot is signable only after every earlier slot is signed.
   const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
-  const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer']
+  // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
+  const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
   const canSignSlot = (slot) => SLOT_FOR_ROLE[user?.role] === slot
 
   const [header, setHeader] = useState({
@@ -733,11 +734,13 @@ export default function SimpleWoForm() {
             { role: 'supervisor', label: 'หัวหน้าช่างแอร์' },
             { role: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
             { role: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
-          ].map(({ role, label }, i) => {
+          ].map(({ role, label }) => {
             const mine = canSignSlot(role)
-            const ready = SIGN_ORDER.slice(0, i).every((s) => !!signatures[s]?.data)  // priors signed
+            // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ — ต้องการแค่ ช่างแอร์ + หัวหน้า
+            const ready = (SIG_PREREQ[role] || []).every((p) => !!signatures[p]?.data)
             const canSign = mine && ready
-            const prevLabel = ['ช่างแอร์', 'หัวหน้าช่างแอร์', 'เจ้าหน้าที่ช่างอาคาร', 'เจ้าหน้าวิศวกรรม'][i - 1]
+            const blockSlot = (SIG_PREREQ[role] || []).find((p) => !signatures[p]?.data)
+            const prevLabel = { team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', engineer: 'เจ้าหน้าวิศวกรรม' }[blockSlot]
             return (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
               <label className="label flex items-center gap-2">{label}

@@ -74,19 +74,22 @@ t('allSigned: needs all 4 visible slots filled', () => {
   assert.ok(allSigned({ ...full, sig_department: '' }));
 });
 
-t('blockingSlot: enforces team→supervisor→building→engineer order', () => {
+t('blockingSlot: team→supervisor→{building,engineer parallel}', () => {
   const none = {};
   // team is first — never blocked
   assert.strictEqual(blockingSlot('team', none), null);
   // supervisor needs team
   assert.strictEqual(blockingSlot('supervisor', none), 'team');
   assert.strictEqual(blockingSlot('supervisor', { sig_team: 'a' }), null);
-  // building needs team + supervisor
+  // building + engineer each need team + supervisor — but NOT each other (parallel)
+  const ts = { sig_team: 'a', sig_supervisor: 'b' };
   assert.strictEqual(blockingSlot('building', { sig_team: 'a' }), 'supervisor');
-  assert.strictEqual(blockingSlot('building', { sig_team: 'a', sig_supervisor: 'b' }), null);
-  // engineer needs all three
-  assert.strictEqual(blockingSlot('engineer', { sig_team: 'a', sig_supervisor: 'b' }), 'building');
-  assert.strictEqual(blockingSlot('engineer', { sig_team: 'a', sig_supervisor: 'b', sig_building: 'c' }), null);
+  assert.strictEqual(blockingSlot('engineer', { sig_team: 'a' }), 'supervisor');
+  assert.strictEqual(blockingSlot('building', ts), null);   // ready after team+supervisor
+  assert.strictEqual(blockingSlot('engineer', ts), null);   // ready too — no wait on building
+  // signing one of the pair does not gate the other
+  assert.strictEqual(blockingSlot('engineer', { ...ts, sig_building: 'c' }), null);
+  assert.strictEqual(blockingSlot('building', { ...ts, sig_engineer: 'd' }), null);
 });
 
 console.log(`${pass} passed`);

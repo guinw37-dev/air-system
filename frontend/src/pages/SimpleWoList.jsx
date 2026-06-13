@@ -27,11 +27,12 @@ const STATUS_LABEL = {
 // Status shown in the list — derived from the signing chain (pending_stage from
 // the API = first unsigned slot). Tells the user which signature is missing.
 const STAGE_BADGE = {
-  team:       { label: 'ยังไม่เสร็จ',         color: 'badge-warn' },                  // ขาด 4 (ยังไม่เซ็นเลย)
-  supervisor: { label: 'รอหัวหน้าตรวจงาน',     color: 'badge-warn' },                  // ขาด 3
-  building:   { label: 'รอช่างอาคารตรวจงาน',   color: 'bg-indigo-50 text-indigo-600' }, // ขาด 2
-  engineer:   { label: 'รอวิศวกรรมตรวจงาน',    color: 'bg-indigo-50 text-indigo-600' }, // ขาด 1
-  done:       { label: 'รอวางบิล',             color: 'badge-success' },               // เซ็นครบ
+  team:              { label: 'ยังไม่เสร็จ',          color: 'badge-warn' },                  // ยังไม่เซ็นเลย
+  supervisor:        { label: 'รอหัวหน้าตรวจงาน',      color: 'badge-warn' },
+  building_engineer: { label: 'รออาคาร+วิศวกรรม',     color: 'bg-indigo-50 text-indigo-600' }, // 2 ช่องนี้เซ็นพร้อมกันได้
+  building:          { label: 'รอช่างอาคารตรวจงาน',    color: 'bg-indigo-50 text-indigo-600' },
+  engineer:          { label: 'รอวิศวกรรมตรวจงาน',     color: 'bg-indigo-50 text-indigo-600' },
+  done:              { label: 'รอวางบิล',              color: 'badge-success' },
 }
 const statusBadge = (wo) => {
   const st = wo.status || 'submitted'
@@ -110,8 +111,15 @@ export default function SimpleWoList() {
   // View scope (sidebar): default = งานค้าง (ยังไม่วางบิล; ช่าง = เฉพาะของตัวเอง);
   // ready = พร้อมวางบิล (เซ็นครบ ยังไม่วางบิล); all = ทุกใบ.
   const isApproved = (r) => (r.status || 'submitted') === 'approved'
+  // building/engineer are a parallel pair: a job waiting on both has stage
+  // 'building_engineer' — include it in either's quick view.
+  const matchesPending = (r) => {
+    if (pending === 'building') return ['building', 'building_engineer'].includes(r.pending_stage)
+    if (pending === 'engineer') return ['engineer', 'building_engineer'].includes(r.pending_stage)
+    return r.pending_stage === pending
+  }
   const inView = (r) => {
-    if (pending) return r.pending_stage === pending && !isApproved(r)
+    if (pending) return matchesPending(r) && !isApproved(r)
     if (view === 'ready') return r.all_signed && !isApproved(r)
     if (view === 'all') return true
     // default: งานที่ยังไม่เสร็จ (ยังไม่วางบิล); ช่าง = เฉพาะใบที่ตัวเองสร้าง
