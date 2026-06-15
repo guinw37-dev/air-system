@@ -64,14 +64,20 @@ t('each branch role signs exactly its own slot', () => {
   assert.strictEqual(slotForRole('admin'), null);
 });
 
-t('allSigned: needs all 4 visible slots filled', () => {
-  const full = { sig_team: 'a', sig_supervisor: 'b', sig_building: 'c', sig_engineer: 'd' };
-  assert.ok(allSigned(full));
-  assert.ok(!allSigned({ ...full, sig_engineer: '' }));   // one missing → not billable
-  assert.ok(!allSigned({ sig_team: 'a' }));
+t('allSigned: team + supervisor + ONE of {building,engineer}', () => {
+  const ts = { sig_team: 'a', sig_supervisor: 'b' };
+  // either of the approve pair completes it (sign in place of each other)
+  assert.ok(allSigned({ ...ts, sig_building: 'c' }));
+  assert.ok(allSigned({ ...ts, sig_engineer: 'd' }));
+  assert.ok(allSigned({ ...ts, sig_building: 'c', sig_engineer: 'd' }));
+  // neither of the pair → not yet
+  assert.ok(!allSigned(ts));
+  // missing team or supervisor → not billable even with both approves
+  assert.ok(!allSigned({ sig_supervisor: 'b', sig_building: 'c' }));
+  assert.ok(!allSigned({ sig_team: 'a', sig_building: 'c' }));
   assert.ok(!allSigned({}));
-  // sig_department is NOT required
-  assert.ok(allSigned({ ...full, sig_department: '' }));
+  // sig_department is irrelevant
+  assert.ok(allSigned({ ...ts, sig_building: 'c', sig_department: '' }));
 });
 
 t('blockingSlot: team→supervisor→{building,engineer parallel}', () => {

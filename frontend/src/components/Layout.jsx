@@ -15,12 +15,11 @@ import Logo from './Logo'
 const NAV = [
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null,
     children: [
-      { to: '/simple-wo',                       label: 'งานค้าง (ยังไม่เสร็จ)' },
-      { to: '/simple-wo?pending=supervisor',    label: 'รอหัวหน้าช่างเซ็น' },
-      { to: '/simple-wo?pending=building',      label: 'รอช่างอาคารเซ็น' },
-      { to: '/simple-wo?pending=engineer',      label: 'รอวิศวกรรมเซ็น' },
-      { to: '/simple-wo?view=ready',            label: 'รอวางบิล', roles: ['admin', 'super_admin'] },
-      { to: '/simple-wo?view=all',              label: 'ทั้งหมด' },
+      { to: '/simple-wo',                              label: 'งานค้าง (ยังไม่เสร็จ)' },
+      { to: '/simple-wo?pending=supervisor',           label: 'รอหัวหน้าช่างเซ็น' },
+      { to: '/simple-wo?pending=building_engineer',     label: 'รออาคาร/วิศวกรรมเซ็น' },
+      { to: '/simple-wo?view=ready',                   label: 'รอวางบิล', roles: ['admin', 'super_admin'] },
+      { to: '/simple-wo?view=all',                     label: 'ทั้งหมด' },
     ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
