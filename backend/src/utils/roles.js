@@ -48,9 +48,12 @@ const ROLE_SLOT = {
 // A role may sign ONLY the slot mapped to it. admin / super_admin do NOT sign at
 // all (they manage + bill) — signing is reserved for the field/approval roles.
 const canSignSlot = (role, slot) => ROLE_SLOT[role] === slot;
-// The 4 visible signature slots that must ALL be filled before a ใบงาน is billable.
+// A ใบงาน is "เซ็นครบ" (billable) when ช่างแอร์ + หัวหน้าช่าง have signed AND at
+// least ONE of ช่างอาคาร / วิศวกรรม has signed — the approve pair sign in place of
+// each other, so only 3 signatures are required (the 2nd of the pair is optional).
 const REQUIRED_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
-const allSigned = (wo) => REQUIRED_SLOTS.every((s) => !!(wo && wo[`sig_${s}`]));
+const allSigned = (wo) =>
+  !!(wo && wo.sig_team && wo.sig_supervisor && (wo.sig_building || wo.sig_engineer));
 
 // Signing order (display) + per-slot prerequisites. The chain is:
 //   ช่างแอร์ → หัวหน้าช่าง → { ช่างอาคาร , วิศวกรรม }
