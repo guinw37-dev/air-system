@@ -208,6 +208,47 @@ CREATE TABLE IF NOT EXISTS repair_logs (
   updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
+-- Source-of-truth for AC repair work in air-system. repair_job_id/number are
+-- optional cross-references for jobs seeded from repair-system; once imported
+-- the record is fully owned here (no sync back).
+-- Flow: Register → Assign → Work On → Clear → Close | Cancel
+CREATE TABLE IF NOT EXISTS ac_repair_jobs (
+  id                SERIAL PRIMARY KEY,
+  job_number        TEXT UNIQUE NOT NULL,   -- AC-{BE_YEAR}-{MM}-{NNN}
+  -- Optional cross-reference (read-only after import)
+  repair_job_id     INT,
+  repair_job_number TEXT,
+  -- Location / requester (mirrors repair-system jobs columns)
+  building          TEXT NOT NULL DEFAULT '',
+  floor             TEXT NOT NULL DEFAULT '',
+  department        TEXT NOT NULL DEFAULT '',
+  requester         TEXT NOT NULL DEFAULT '',
+  telephone         TEXT          DEFAULT '',
+  description       TEXT NOT NULL DEFAULT '',
+  file_url          TEXT          DEFAULT '-',
+  -- Technician / work detail
+  assign_name       TEXT,
+  issue_type        TEXT,
+  job_detail        TEXT,
+  work_desc         TEXT,
+  after_image_url   TEXT,
+  -- Status flow
+  status            TEXT NOT NULL DEFAULT 'Register',
+  cancel_reason     TEXT          DEFAULT '',
+  cancel_time       TIMESTAMPTZ,
+  -- Timestamps
+  register_time     TIMESTAMPTZ DEFAULT NOW(),
+  assign_time       TIMESTAMPTZ,
+  start_time        TIMESTAMPTZ,
+  clear_time        TIMESTAMPTZ,
+  close_time        TIMESTAMPTZ,
+  created_by        INT
+);
+CREATE INDEX IF NOT EXISTS idx_acr_status        ON ac_repair_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_acr_register_time ON ac_repair_jobs(register_time);
+CREATE INDEX IF NOT EXISTS idx_acr_repair_job    ON ac_repair_jobs(repair_job_id);
+
 -- ── หักเงินค่าบริการรายเดือน ────────────────────────────────
 CREATE TABLE IF NOT EXISTS deduction_notes (
   id         SERIAL PRIMARY KEY,

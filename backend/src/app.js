@@ -66,7 +66,10 @@ app.use('/api/branches', require('./routes/branches'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', requireBranch, require('./routes/workOrders'));
 app.use('/api/simple-wo',   requireBranch, require('./routes/simpleWorkOrders'));
-app.use('/api/ac-repair',   require('./routes/acRepair'));   // remote view of repair-system AC jobs
+// Inbound auto-import webhook from repair-system — PUBLIC (shared-secret guarded),
+// branch resolved from the body's repairSlug, so NOT behind requireBranch.
+app.use('/api/ac-repair-webhook', require('./routes/acRepairWebhook'));
+app.use('/api/ac-repair-jobs', requireBranch, require('./routes/acRepairJobs'));
 app.use('/api/repair-logs', requireBranch, require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
 app.use('/api/import',      requireBranch, require('./routes/import'));
