@@ -28,8 +28,10 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', form)
       setAuth(data.token, data.user)
-      // Super-admin (apex login) picks a branch first; branch users go straight in.
-      navigate(data.user?.isSuper && !tenant.isBranch ? '/select-branch' : '/')
+      // Everyone lands on the dashboard ('/' → Home → /dashboard). It self-guards:
+      // a super-admin on apex sees the all-branch view (and can click into one);
+      // a branch user sees their branch summary.
+      navigate('/')
     } catch (err) {
       setError(err.response?.data?.error || 'เกิดข้อผิดพลาด')
     } finally {
