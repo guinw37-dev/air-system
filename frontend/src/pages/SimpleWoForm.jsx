@@ -147,7 +147,7 @@ export default function SimpleWoForm() {
             end_time: w.end_time ? String(w.end_time).slice(0, 5) : '',
             result: w.result || 'ok',
           })
-          setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '', ...(w.ac_info || {}) })
+          setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '', serial: '', ...(w.ac_info || {}) })
           setChecklistValues(w.checklist_values || {})
           setGridRows(Array.isArray(w.grid_rows) ? w.grid_rows : [])
           setRecommendation(w.recommendation || '')
@@ -302,7 +302,7 @@ export default function SimpleWoForm() {
       end_time: '',
       result: 'ok',
     })
-    setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '' })
+    setAcInfo({ detail: '', location: '', kind: '', brand: '', model: '', cooling_size: '', serial: '' })
     setChecklistValues({})
     setGridRows([])
     setRecommendation('')
@@ -513,6 +513,7 @@ export default function SimpleWoForm() {
               <label className="label">ขนาดทำความเย็น (BTU)</label>
               <input className="input" inputMode="decimal" value={acInfo.cooling_size} onChange={(e) => setAc({ cooling_size: e.target.value })} />
             </div>
+            <Text label="หมายเลขเครื่อง (Nameplate)" value={acInfo.serial} onChange={(v) => setAc({ serial: v })} />
           </div>
 
           {/* kind segmented */}

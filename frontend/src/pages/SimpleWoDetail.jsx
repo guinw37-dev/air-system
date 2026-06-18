@@ -286,6 +286,7 @@ export default function SimpleWoDetail() {
           <InfoRow label="ยี่ห้อ" value={ac.brand} />
           <InfoRow label="รุ่น" value={ac.model} />
           <InfoRow label="ขนาดทำความเย็น (BTU)" value={ac.cooling_size} />
+          <InfoRow label="หมายเลขเครื่อง (Nameplate)" value={ac.serial} />
         </div>
         )}
 
