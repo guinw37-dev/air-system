@@ -63,6 +63,8 @@ app.use(resolveBranch);
 // branch-aware on apex (user mgmt / super-dev aggregate) so they self-guard.
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/branches', require('./routes/branches'));
+// Dashboard self-guards (branch → that branch; apex+super → aggregate all).
+app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', requireBranch, require('./routes/workOrders'));
 app.use('/api/simple-wo',   requireBranch, require('./routes/simpleWorkOrders'));

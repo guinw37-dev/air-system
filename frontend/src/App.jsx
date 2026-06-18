@@ -24,6 +24,7 @@ import AcRepair from './pages/AcRepair'
 import Branches from './pages/Branches'
 import Landing from './pages/Landing'
 import SelectBranch from './pages/SelectBranch'
+import Dashboard from './pages/Dashboard'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -37,12 +38,14 @@ function RequireRole({ children, roles }) {
 }
 
 // Apex root shows the branch landing when no one is logged in; everywhere else
-// (a branch, or an authenticated session) goes to the dashboard.
+// (a branch, or an authenticated session) goes to the dashboard. The dashboard
+// self-guards on branch context (branch summary vs super-admin all-branch view),
+// so this is safe even for a super-admin sitting on apex (no X-Branch).
 function Home() {
   const token = useAuthStore((s) => s.token)
   const isBranch = useTenantStore((s) => s.isBranch)
   if (!isBranch && !token) return <Landing />
-  return <Navigate to="/simple-wo" replace />
+  return <Navigate to="/dashboard" replace />
 }
 
 export default function App() {
@@ -69,6 +72,7 @@ export default function App() {
         <Route path="/sign/:token" element={<SignPage />} />
 
         <Route path="/" element={<Home />} />
+        <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/select-branch" element={<RequireAuth><SelectBranch /></RequireAuth>} />
 
         {/* Work Orders — phase-2 routes */}

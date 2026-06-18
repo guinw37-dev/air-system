@@ -13,6 +13,7 @@ import Logo from './Logo'
 // Trimmed nav. Hidden entries (Dashboard, PM Schedule, PM Plan, ติดตามการล้าง,
 // อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
+  { path: '/dashboard',    icon: LayoutDashboard,  label: 'ภาพรวม',         roles: null },
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null,
     children: [
       { to: '/simple-wo',                              label: 'งานค้าง (ยังไม่เสร็จ)' },
