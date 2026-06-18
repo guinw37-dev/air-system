@@ -1,364 +1,638 @@
-import { useEffect, useState } from 'react'
-import { Wrench, Play, CheckCircle2, PackagePlus, Star, Download, RefreshCw, AlertTriangle, X } from 'lucide-react'
-import dayjs from 'dayjs'
-import Layout from '../components/Layout'
-import api from '../api/client'
+import { useState, useEffect, useCallback, useRef } from 'react';
+import api from '../api/client';
+import { useAuthStore } from '../store/auth';
+import Layout from '../components/Layout';
 
-// Air technician's view onto repair-system AC jobs (remote — data lives in
-// repair-system). Mirrors the repair-system flow so it feels like the แจ้งซ่อม web:
-// Assign → เริ่มงาน(เลย/ขอรองบ) → ปิดงาน(Clear) → ประเมิน(Clear1) → เบิกอะไหล่+ปิด(Close).
-// Acting on a job updates the one shared record, so the building team sees it.
-const STATUS = {
-  Assign:    { label: 'รอเริ่มงาน',       color: 'badge-warn' },
-  'Work On': { label: 'กำลังซ่อม',        color: 'badge-primary' },
-  Clear:     { label: 'ซ่อมเสร็จ รอประเมิน', color: 'bg-indigo-50 text-indigo-600' },
-  Clear1:    { label: 'ประเมินแล้ว รอปิด',  color: 'bg-indigo-50 text-indigo-600' },
-}
-const loc = (j) => [j.building, j.floor, j.department].filter((x) => x && x !== 'ไม่ระบุ').join(' / ')
+// ── Constants ────────────────────────────────────────────────────────────────
+const STATUS_LABEL = {
+  Register:  'แจ้งซ่อม',
+  Assign:    'รับงาน',
+  'Work On': 'กำลังซ่อม',
+  Clear:     'ซ่อมเสร็จ',
+  Close:     'ปิดงาน',
+  Cancel:    'ยกเลิก',
+};
+const STATUS_COLOR = {
+  Register:  'bg-gray-100 text-gray-700 border-gray-300',
+  Assign:    'bg-blue-100 text-blue-800 border-blue-300',
+  'Work On': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  Clear:     'bg-teal-100 text-teal-800 border-teal-300',
+  Close:     'bg-green-100 text-green-800 border-green-300',
+  Cancel:    'bg-red-100 text-red-700 border-red-300',
+};
+const ALL_STATUSES = ['Register', 'Assign', 'Work On', 'Clear', 'Close', 'Cancel'];
+const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On', 'Clear'];
 
-// SLA / งานค้าง — อายุนับจากเวลาแจ้ง. เกิน 48ชม.=แดง, 24ชม.=เหลือง.
-function aging(j) {
-  const t = j.register_time || j.assign_time
-  if (!t) return null
-  const hrs = (Date.now() - new Date(t).getTime()) / 3.6e6
-  const d = Math.floor(hrs / 24), h = Math.floor(hrs % 24)
-  const label = d > 0 ? `ค้าง ${d} วัน ${h} ชม.` : `ค้าง ${h} ชม.`
-  const color = hrs >= 48 ? 'text-danger' : hrs >= 24 ? 'text-amber-500' : 'text-ink-muted'
-  return { label, color, hrs }
-}
-
-export default function AcRepair() {
-  const [jobs, setJobs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [modal, setModal] = useState(null) // { kind: 'start'|'clear'|'eval'|'parts', job }
-
-  const load = () => {
-    setLoading(true); setError('')
-    api.get('/ac-repair/jobs')
-      .then((r) => setJobs(Array.isArray(r.data) ? r.data : []))
-      .catch((e) => { setError(e.response?.data?.error || 'โหลดงานไม่สำเร็จ'); setJobs([]) })
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
-  const done = () => { setModal(null); load() }
-
-  // งานค้างนานสุดขึ้นก่อน (SLA focus) + นับตามสถานะ
-  const sorted = [...jobs].sort((a, b) => new Date(a.register_time || 0) - new Date(b.register_time || 0))
-  const counts = {
-    total: jobs.length,
-    overdue: jobs.filter((j) => (aging(j)?.hrs || 0) >= 48).length,
-    Assign: jobs.filter((j) => j.status === 'Assign').length,
-    'Work On': jobs.filter((j) => j.status === 'Work On').length,
-    Clear: jobs.filter((j) => ['Clear', 'Clear1'].includes(j.status)).length,
-  }
-
-  const exportExcel = async () => {
-    setBusy(true)
-    try {
-      const res = await api.get('/ac-repair/jobs/export/excel', { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a'); a.href = url; a.download = `งานซ่อมแอร์-${dayjs().format('YYYYMMDD')}.xlsx`
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
-    } catch { alert('ดาวน์โหลด Excel ไม่สำเร็จ') } finally { setBusy(false) }
-  }
-
+function StatusBadge({ status }) {
   return (
-    <Layout title="งานซ่อมแอร์" actions={
-      <button onClick={load} className="p-1.5 rounded-lg text-ink-muted hover:bg-page"><RefreshCw className="h-5 w-5" /></button>
-    }>
-      <div className="p-4 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-ink-muted flex items-center gap-1.5"><Wrench className="h-4 w-4" /> งาน AC จากระบบแจ้งซ่อม</p>
-          <button onClick={exportExcel} disabled={busy} className="btn-secondary text-sm flex items-center gap-1.5"><Download className="h-4 w-4" /> ส่งออก Excel</button>
-        </div>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLOR[status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
+}
 
-        {/* สรุปงาน (dashboard) */}
-        {!error && jobs.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            {[
-              ['ทั้งหมด', counts.total, 'text-ink'],
-              ['ค้าง >48ชม.', counts.overdue, 'text-danger'],
-              ['รอเริ่ม', counts.Assign, 'text-amber-500'],
-              ['กำลังซ่อม', counts['Work On'], 'text-primary'],
-              ['รอปิด', counts.Clear, 'text-indigo-500'],
-            ].map(([label, n, color]) => (
-              <div key={label} className="card py-3 text-center">
-                <div className={`text-2xl font-bold ${color}`}>{n}</div>
-                <div className="text-[11px] text-ink-muted mt-0.5">{label}</div>
+function fmt(dt) {
+  if (!dt) return '—';
+  const d = new Date(dt);
+  const y = d.getFullYear() + 543;
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${y} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// ── Create / Edit modal ──────────────────────────────────────────────────────
+function JobFormModal({ initial, onSave, onClose }) {
+  const [form, setForm] = useState({
+    building: '', floor: '', department: '', requester: '', telephone: '',
+    description: '', assign_name: '', issue_type: '', job_detail: '',
+    ...initial,
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.description.trim()) { setErr('กรุณาระบุรายละเอียด'); return; }
+    setSaving(true); setErr('');
+    try { await onSave(form); }
+    catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
+  }
+
+  const isEdit = !!initial?.id;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-bold">{isEdit ? 'แก้ไขใบงาน' : 'สร้างใบงานซ่อมแอร์'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit} className="overflow-y-auto p-6 space-y-4 flex-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">อาคาร</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.building} onChange={set('building')} placeholder="อาคาร" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ชั้น</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.floor} onChange={set('floor')} placeholder="ชั้น" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">แผนก / ห้อง</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department} onChange={set('department')} placeholder="ชื่อแผนก หรือ ห้อง" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ผู้แจ้ง</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.requester} onChange={set('requester')} placeholder="ชื่อผู้แจ้ง" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.telephone} onChange={set('telephone')} placeholder="เบอร์โทร" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดอาการ <span className="text-red-500">*</span></label>
+            <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={form.description} onChange={set('description')} placeholder="ระบุอาการหรือปัญหา" required />
+          </div>
+          {isEdit && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ช่างผู้รับงาน</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.assign_name} onChange={set('assign_name')} placeholder="ชื่อช่าง" />
               </div>
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div className="card flex items-start gap-3 text-danger">
-            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div><p className="font-medium">{error}</p>
-              <p className="text-xs text-ink-muted mt-1">ถ้าสาขานี้ยังไม่ผูกโรงพยาบาล ให้ตั้ง repair_slug · หรือระบบแจ้งซ่อมเชื่อมต่อไม่ได้ชั่วคราว</p></div>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-4 border-line border-t-primary" /></div>
-        ) : (!error && jobs.length === 0) ? (
-          <div className="card text-center text-ink-muted py-12"><Wrench className="h-8 w-8 mx-auto opacity-40 mb-2" /><p className="text-sm">ไม่มีงาน AC ค้างอยู่</p></div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {sorted.map((j) => {
-              const s = STATUS[j.status] || { label: j.status, color: 'badge-gray' }
-              const pendingBudget = j.status === 'Work On' && j.status_work === 'Pending Budget'
-              const age = aging(j)
-              return (
-                <div key={j.id} className="card flex flex-col gap-2">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="font-semibold text-primary">{j.job_number || `#${j.id}`}</span>
-                    <div className="flex items-center gap-2">
-                      {pendingBudget && <span className="badge badge-danger">รออนุมัติงบ</span>}
-                      <span className={`badge ${s.color}`}>{s.label}</span>
-                    </div>
-                  </div>
-                  <div className="text-sm text-ink">{loc(j) || '-'}</div>
-                  <div className="text-sm text-ink-muted">{j.description || j.job_detail || '-'}</div>
-                  <div className="text-xs text-ink-muted flex items-center gap-2 flex-wrap">
-                    <span>แจ้งโดย {j.requester || '-'} · {j.register_time ? dayjs(j.register_time).format('DD/MM/YY HH:mm') : ''}{j.assign_name ? ` · ช่าง ${j.assign_name}` : ''}</span>
-                    {age && <span className={`font-medium ${age.color}`}>· {age.label}</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {j.status === 'Assign' && (
-                      <button onClick={() => setModal({ kind: 'start', job: j })} disabled={busy} className="btn-primary text-sm flex items-center gap-1.5"><Play className="h-4 w-4" /> เริ่มงาน</button>
-                    )}
-                    {j.status === 'Work On' && (
-                      <button onClick={() => setModal({ kind: 'clear', job: j })} disabled={busy} className="btn-primary text-sm flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> ปิดงาน (ซ่อมเสร็จ)</button>
-                    )}
-                    {j.status === 'Clear' && (
-                      <button onClick={() => setModal({ kind: 'eval', job: j })} disabled={busy} className="btn-secondary text-sm flex items-center gap-1.5"><Star className="h-4 w-4" /> ประเมินงาน</button>
-                    )}
-                    {['Clear', 'Clear1'].includes(j.status) && (
-                      <button onClick={() => setModal({ kind: 'parts', job: j })} disabled={busy} className="btn-primary text-sm flex items-center gap-1.5"><PackagePlus className="h-4 w-4" /> เบิกอะไหล่ + ปิดงาน</button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {modal?.kind === 'start' && <StartModal job={modal.job} onClose={() => setModal(null)} onDone={done} />}
-      {modal?.kind === 'clear' && <ClearModal job={modal.job} onClose={() => setModal(null)} onDone={done} />}
-      {modal?.kind === 'eval'  && <EvalModal  job={modal.job} onClose={() => setModal(null)} onDone={done} />}
-      {modal?.kind === 'parts' && <PartsModal job={modal.job} onClose={() => setModal(null)} onDone={done} />}
-    </Layout>
-  )
-}
-
-function Modal({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="text-ink-muted"><X className="h-5 w-5" /></button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทปัญหา</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.issue_type} onChange={set('issue_type')} placeholder="เช่น คอมแพรสเซอร์ / น้ำยา / แผงไฟ" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดการซ่อม</label>
+                <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.job_detail} onChange={set('job_detail')} placeholder="บันทึกเพิ่มเติม" />
+              </div>
+            </>
+          )}
+          {err && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+        </form>
+        <div className="px-6 py-4 border-t flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50 text-sm">ยกเลิก</button>
+          <button onClick={submit} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:opacity-50">
+            {saving ? 'กำลังบันทึก…' : isEdit ? 'บันทึก' : 'สร้างใบงาน'}
+          </button>
         </div>
-        {children}
       </div>
     </div>
-  )
+  );
 }
 
-// เริ่มงาน — เริ่มเลย หรือ ขอรองบประมาณ (Pending Budget → ช่างอาคารอนุมัติ)
-function StartModal({ job, onClose, onDone }) {
-  const [mode, setMode] = useState('work') // work | budget
-  const [budget, setBudget] = useState('')
-  const [desc, setDesc] = useState('')
-  const [saving, setSaving] = useState(false)
-  const submit = async () => {
-    setSaving(true)
-    try {
-      await api.put(`/ac-repair/jobs/${job.id}/status`, {
-        action: 'START_WORK',
-        statusWork: mode === 'budget' ? 'Pending Budget' : 'Start Working',
-        workDesc: desc,
-        ...(mode === 'budget' ? { budgetRequested: budget } : {}),
-      })
-      onDone()
-    } catch (e) { alert(e.response?.data?.error || 'เริ่มงานไม่สำเร็จ') } finally { setSaving(false) }
+// ── Assign modal ─────────────────────────────────────────────────────────────
+function AssignModal({ job, onSave, onClose }) {
+  const [assignName, setAssignName] = useState(job.assign_name || '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true); setErr('');
+    try { await onSave({ assign_name: assignName }); }
+    catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
   }
   return (
-    <Modal title={`เริ่มงาน ${job.job_number || ''}`} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-2">
-          {[['work', 'เริ่มงานเลย'], ['budget', 'ขอรองบประมาณ']].map(([v, l]) => (
-            <button key={v} onClick={() => setMode(v)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border ${mode === v ? 'bg-primary text-white border-primary' : 'bg-white text-ink-muted border-line'}`}>{l}</button>
-          ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-bold">รับงาน — {job.job_number}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
         </div>
-        {mode === 'budget' && (
-          <div><label className="label">งบที่ขอ (บาท)</label><input className="input" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} /></div>
-        )}
-        <div><label className="label">บันทึกงาน (ถ้ามี)</label><textarea className="input" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
-        {mode === 'budget' && <p className="text-xs text-ink-muted">ขอรองบ → งานเข้าสถานะ "รออนุมัติงบ" ให้ช่างอาคาร/แอดมินอนุมัติก่อน</p>}
-        <div className="flex gap-2 mt-1">
-          <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="btn-primary flex-1">{saving ? 'กำลังบันทึก...' : (mode === 'budget' ? 'ขอรองบ' : 'เริ่มงาน')}</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ปิดงาน (Clear) — รายละเอียดการซ่อม + รูปหลังซ่อม
-function ClearModal({ job, onClose, onDone }) {
-  const [desc, setDesc] = useState('')
-  const [photo, setPhoto] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const pick = (e) => {
-    const f = e.target.files?.[0]; if (!f) return
-    const reader = new FileReader()
-    reader.onload = () => setPhoto({ base64: String(reader.result).split(',')[1], name: f.name })
-    reader.readAsDataURL(f)
-  }
-  const submit = async () => {
-    if (!desc.trim()) { alert('กรุณาใส่รายละเอียดการปิดงาน'); return }
-    setSaving(true)
-    try {
-      await api.put(`/ac-repair/jobs/${job.id}/status`, {
-        action: 'CLEAR', clearDesc: desc,
-        ...(photo ? { afterImageBase64: photo.base64, afterImageName: photo.name } : {}),
-      })
-      onDone()
-    } catch (e) { alert(e.response?.data?.error || 'ปิดงานไม่สำเร็จ') } finally { setSaving(false) }
-  }
-  return (
-    <Modal title={`ปิดงาน ${job.job_number || ''}`} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <div><label className="label">รายละเอียดการซ่อม *</label><textarea className="input" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="ซ่อมอะไร เปลี่ยนอะไร" /></div>
-        <div><label className="label">รูปหลังซ่อม (ถ้ามี)</label><input type="file" accept="image/*" onChange={pick} className="text-sm" />{photo && <p className="text-xs text-ink-muted mt-1">แนบ: {photo.name}</p>}</div>
-        <div className="flex gap-2 mt-1">
-          <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="btn-primary flex-1">{saving ? 'กำลังบันทึก...' : 'ปิดงาน'}</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ประเมินงาน (Clear → Clear1) — คะแนน 4 ด้าน
-function EvalModal({ job, onClose, onDone }) {
-  const FIELDS = [['scorePolite', 'ความสุภาพ'], ['scoreSpeed', 'ความรวดเร็ว'], ['scoreSkill', 'ฝีมือ'], ['scoreSat', 'ความพึงพอใจ']]
-  const [scores, setScores] = useState({ scorePolite: 5, scoreSpeed: 5, scoreSkill: 5, scoreSat: 5 })
-  const [sug, setSug] = useState('')
-  const [saving, setSaving] = useState(false)
-  const submit = async () => {
-    setSaving(true)
-    try {
-      await api.post(`/ac-repair/jobs/${job.id}/evaluation`, { ...scores, suggestions: sug })
-      onDone()
-    } catch (e) { alert(e.response?.data?.error || 'ประเมินไม่สำเร็จ') } finally { setSaving(false) }
-  }
-  return (
-    <Modal title={`ประเมินงาน ${job.job_number || ''}`} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        {FIELDS.map(([k, l]) => (
-          <div key={k}>
-            <label className="label">{l}</label>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} onClick={() => setScores((s) => ({ ...s, [k]: n }))}
-                  className={`p-1.5 rounded ${scores[k] >= n ? 'text-amber-400' : 'text-line'}`}>
-                  <Star className="h-6 w-6" fill={scores[k] >= n ? 'currentColor' : 'none'} />
-                </button>
-              ))}
-            </div>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ช่างผู้รับงาน</label>
+            <input autoFocus className="w-full border rounded-lg px-3 py-2 text-sm" value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="ชื่อช่าง" />
           </div>
-        ))}
-        <div><label className="label">ข้อเสนอแนะ</label><textarea className="input" rows={2} value={sug} onChange={(e) => setSug(e.target.value)} /></div>
-        <div className="flex gap-2 mt-1">
-          <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="btn-primary flex-1">{saving ? 'กำลังบันทึก...' : 'บันทึกประเมิน'}</button>
-        </div>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ยกเลิก</button>
+            <button disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-50">
+              {saving ? 'กำลังบันทึก…' : 'รับงาน'}
+            </button>
+          </div>
+        </form>
       </div>
-    </Modal>
-  )
+    </div>
+  );
 }
 
-// เบิกอะไหล่ + ปิดงาน (Close) — อะไหล่ AC เท่านั้น
-function PartsModal({ job, onClose, onDone }) {
-  const [stock, setStock] = useState([])
-  const [cart, setCart] = useState([])
-  const [remark, setRemark] = useState('')
-  const [noParts, setNoParts] = useState(false)
-  const [photo, setPhoto] = useState(null)
-  const [saving, setSaving] = useState(false)
-  useEffect(() => { api.get('/ac-repair/stock').then((r) => setStock(r.data || [])).catch(() => {}) }, [])
-  const addItem = (code) => {
-    const s = stock.find((x) => x.code === code); if (!s || cart.some((c) => c.code === code)) return
-    setCart((c) => [...c, { code: s.code, name: s.name, qty: 1, price: Number(s.price) || 0 }])
+// ── Clear modal ───────────────────────────────────────────────────────────────
+function ClearModal({ job, onSave, onClose }) {
+  const [workDesc, setWorkDesc] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef();
+
+  function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto({ base64: reader.result, name: file.name });
+    reader.readAsDataURL(file);
   }
-  const setQty = (code, qty) => setCart((c) => c.map((it) => it.code === code ? { ...it, qty } : it))
-  const removeItem = (code) => setCart((c) => c.filter((it) => it.code !== code))
-  const total = cart.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.price) || 0), 0)
-  const pickPhoto = (e) => {
-    const f = e.target.files?.[0]; if (!f) return
-    const reader = new FileReader()
-    reader.onload = () => setPhoto({ base64: String(reader.result).split(',')[1], name: f.name })
-    reader.readAsDataURL(f)
-  }
-  const submit = async () => {
-    if (!remark.trim()) { alert('กรุณาระบุรายละเอียดการปิดงาน'); return }
-    if (!noParts && cart.length === 0) { alert('เลือกอะไหล่ หรือเลือก "ไม่ใช้อะไหล่"'); return }
-    setSaving(true)
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!workDesc.trim()) { setErr('กรุณาระบุรายละเอียดการซ่อม'); return; }
+    setSaving(true); setErr('');
     try {
-      await api.post(`/ac-repair/jobs/${job.id}/spare-parts`, {
-        cartItems: noParts ? [] : cart, remark, noSparePart: noParts,
-        ...(photo ? { spareImageBase64: photo.base64, spareImageName: photo.name } : {}),
-      })
-      onDone()
-    } catch (e) { alert(e.response?.data?.error || 'เบิกอะไหล่/ปิดงานไม่สำเร็จ') } finally { setSaving(false) }
+      await onSave({
+        work_desc: workDesc,
+        afterImageBase64: photo?.base64 || undefined,
+        afterImageName:   photo?.name   || undefined,
+      });
+    } catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
   }
+
   return (
-    <Modal title={`เบิกอะไหล่ + ปิดงาน ${job.job_number || ''}`} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" className="accent-primary h-4 w-4" checked={noParts} onChange={(e) => setNoParts(e.target.checked)} /> ไม่ใช้อะไหล่ในงานนี้
-        </label>
-        {!noParts && (
-          <>
-            <div><label className="label">เลือกอะไหล่ AC</label>
-              <select className="input" value="" onChange={(e) => { addItem(e.target.value); e.target.value = '' }}>
-                <option value="">+ เพิ่มอะไหล่</option>
-                {stock.map((s) => <option key={s.code} value={s.code}>{s.code} · {s.name} (คงเหลือ {s.remaining})</option>)}
-              </select>
-            </div>
-            {cart.map((it) => (
-              <div key={it.code} className="flex items-center gap-2 text-sm">
-                <span className="flex-1 min-w-0 truncate">{it.code} · {it.name}</span>
-                <span className="text-xs text-ink-muted shrink-0">{Number(it.price).toLocaleString()}฿</span>
-                <input type="number" min="1" className="input w-16" value={it.qty} onChange={(e) => setQty(it.code, e.target.value)} />
-                <span className="text-xs text-ink shrink-0 w-16 text-right">{((Number(it.qty) || 0) * (Number(it.price) || 0)).toLocaleString()}฿</span>
-                <button onClick={() => removeItem(it.code)} className="text-danger"><X className="h-4 w-4" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-bold">ปิดงาน — {job.job_number}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดการซ่อม <span className="text-red-500">*</span></label>
+            <textarea autoFocus className="w-full border rounded-lg px-3 py-2 text-sm" rows={4} value={workDesc} onChange={(e) => setWorkDesc(e.target.value)} placeholder="อธิบายการซ่อมที่ทำ…" required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">รูปหลังซ่อม (ไม่บังคับ)</label>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
+            <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+              {photo ? `✓ ${photo.name}` : 'เลือกรูป'}
+            </button>
+            {photo && (
+              <img src={photo.base64} alt="preview" className="mt-2 rounded-lg h-28 object-cover border" />
+            )}
+          </div>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ยกเลิก</button>
+            <button disabled={saving} className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm disabled:opacity-50">
+              {saving ? 'กำลังบันทึก…' : 'ยืนยันปิดงาน'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Import from repair-system modal ─────────────────────────────────────────
+function ImportModal({ onImport, onClose }) {
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [importing, setImporting] = useState(null);
+
+  useEffect(() => {
+    api.get('/ac-repair-jobs/pending-repair')
+      .then((r) => setJobs(r.data.jobs || []))
+      .catch((e) => setErr(e.response?.data?.error || e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function doImport(job) {
+    setImporting(job.id);
+    try {
+      await onImport({
+        repair_job_id:     job.id,
+        repair_job_number: job.job_number,
+        building:          job.building,
+        floor:             job.floor,
+        department:        job.department,
+        requester:         job.requester,
+        telephone:         job.telephone || '',
+        description:       job.description,
+        file_url:          job.file_url || '-',
+      });
+    } catch (e) {
+      alert(e.response?.data?.error || e.message);
+    } finally { setImporting(null); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">นำเข้างานจาก repair-system</h2>
+            <p className="text-xs text-gray-500 mt-0.5">งาน AC ที่ยังค้างอยู่ฝั่งช่างอาคาร</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          {loading && <p className="text-center text-gray-500 py-8">กำลังโหลด…</p>}
+          {err && <p className="text-center text-red-600 py-8">{err}</p>}
+          {!loading && !err && jobs.length === 0 && (
+            <p className="text-center text-gray-400 py-8">ไม่มีงาน AC ค้างอยู่ฝั่งช่างอาคาร</p>
+          )}
+          <div className="space-y-3">
+            {jobs.map((job) => (
+              <div key={job.id} className="border rounded-xl p-4 hover:bg-gray-50 flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-sm font-bold text-gray-800">{job.job_number}</span>
+                    <StatusBadge status={job.status} />
+                  </div>
+                  <p className="text-sm text-gray-700 line-clamp-2">{job.description}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {[job.building, job.floor, job.department].filter(Boolean).join(' › ')}
+                    {job.requester && ` · ${job.requester}`}
+                  </p>
+                </div>
+                <button
+                  disabled={!!importing}
+                  onClick={() => doImport(job)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {importing === job.id ? 'กำลังนำเข้า…' : 'นำเข้า'}
+                </button>
               </div>
             ))}
-            {cart.length > 0 && (
-              <div className="flex justify-between text-sm font-medium border-t border-line pt-2">
-                <span>รวม {cart.length} รายการ</span><span className="text-primary">{total.toLocaleString()} ฿</span>
-              </div>
-            )}
-          </>
-        )}
-        <div><label className="label">รายละเอียดการปิดงาน / การเบิก *</label><textarea className="input" rows={2} value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="อะไหล่ที่เปลี่ยน / สาเหตุ / รายละเอียด" /></div>
-        <div>
-          <label className="label">รูปการเบิกอะไหล่ (ถ้ามี)</label>
-          <input type="file" accept="image/*" onChange={pickPhoto} className="text-sm" />
-          {photo && <p className="text-xs text-ink-muted mt-1">แนบ: {photo.name}</p>}
+          </div>
         </div>
-        <div className="flex gap-2 mt-1">
-          <button onClick={onClose} className="btn-secondary flex-1">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="btn-primary flex-1">{saving ? 'กำลังปิดงาน...' : 'ปิดงาน'}</button>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
         </div>
       </div>
-    </Modal>
-  )
+    </div>
+  );
+}
+
+// ── Detail modal ─────────────────────────────────────────────────────────────
+function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
+  const [job, setJob] = useState(initialJob);
+  const [editing, setEditing] = useState(false);
+  const [showAssign, setShowAssign] = useState(false);
+  const [showClear, setShowClear] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const isAdmin = ['admin', 'super_admin'].includes(role);
+
+  async function transition(action, body = {}) {
+    setBusy(true); setMsg('');
+    try {
+      const r = await api.put(`/ac-repair-jobs/${job.id}/status`, { action, ...body });
+      setJob(r.data);
+      onRefresh();
+      setShowAssign(false); setShowClear(false); setCancelling(false);
+    } catch (e) { setMsg(e.response?.data?.error || e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function saveEdit(form) {
+    const r = await api.put(`/ac-repair-jobs/${job.id}`, form);
+    setJob(r.data);
+    onRefresh();
+    setEditing(false);
+  }
+
+  if (editing) return <JobFormModal initial={job} onSave={saveEdit} onClose={() => setEditing(false)} />;
+  if (showAssign) return <AssignModal job={job} onSave={(b) => transition('assign', b)} onClose={() => setShowAssign(false)} />;
+  if (showClear) return <ClearModal job={job} onSave={(b) => transition('clear', b)} onClose={() => setShowClear(false)} />;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-mono font-bold text-gray-800">{job.job_number}</h2>
+              <StatusBadge status={job.status} />
+            </div>
+            {job.repair_job_number && (
+              <p className="text-xs text-gray-400 mt-0.5">อ้างอิง repair: {job.repair_job_number}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none ml-4">&times;</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-5">
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">สถานที่</h3>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div><span className="text-gray-500 text-xs">อาคาร</span><p className="font-medium">{job.building || '—'}</p></div>
+              <div><span className="text-gray-500 text-xs">ชั้น</span><p className="font-medium">{job.floor || '—'}</p></div>
+              <div><span className="text-gray-500 text-xs">แผนก</span><p className="font-medium">{job.department || '—'}</p></div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">ผู้แจ้ง</h3>
+            <p className="text-sm font-medium">{job.requester || '—'} {job.telephone ? `(${job.telephone})` : ''}</p>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รายละเอียดอาการ</h3>
+            <p className="text-sm whitespace-pre-wrap">{job.description}</p>
+          </section>
+
+          {(job.assign_name || job.issue_type || job.job_detail || job.work_desc) && (
+            <section>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">ข้อมูลการซ่อม</h3>
+              <div className="space-y-1 text-sm">
+                {job.assign_name && <p><span className="text-gray-500">ช่างผู้รับงาน: </span>{job.assign_name}</p>}
+                {job.issue_type  && <p><span className="text-gray-500">ประเภทปัญหา: </span>{job.issue_type}</p>}
+                {job.job_detail  && <p><span className="text-gray-500">บันทึกเพิ่มเติม: </span>{job.job_detail}</p>}
+                {job.work_desc   && <p><span className="text-gray-500">รายละเอียดการซ่อม: </span>{job.work_desc}</p>}
+              </div>
+            </section>
+          )}
+
+          {job.after_image_url && (
+            <section>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปหลังซ่อม</h3>
+              <img src={job.after_image_url} alt="after" className="rounded-xl border max-h-48 object-contain" />
+            </section>
+          )}
+
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Timeline</h3>
+            <div className="space-y-1 text-xs text-gray-600">
+              {job.register_time && <p>📋 แจ้งซ่อม — {fmt(job.register_time)}</p>}
+              {job.assign_time   && <p>👷 รับงาน — {fmt(job.assign_time)}</p>}
+              {job.start_time    && <p>🔧 เริ่มซ่อม — {fmt(job.start_time)}</p>}
+              {job.clear_time    && <p>✅ ซ่อมเสร็จ — {fmt(job.clear_time)}</p>}
+              {job.close_time    && <p>🏁 ปิดงาน — {fmt(job.close_time)}</p>}
+              {job.cancel_time   && <p>❌ ยกเลิก — {fmt(job.cancel_time)} {job.cancel_reason ? `(${job.cancel_reason})` : ''}</p>}
+            </div>
+          </section>
+
+          {cancelling && (
+            <section className="border-t pt-4">
+              <p className="text-sm font-medium text-red-700 mb-2">ยืนยันการยกเลิกใบงาน</p>
+              <input
+                className="w-full border rounded-lg px-3 py-2 text-sm mb-3"
+                placeholder="เหตุผลยกเลิก (ถ้ามี)"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setCancelling(false)} className="flex-1 px-3 py-2 border rounded-lg text-sm">ไม่ยกเลิก</button>
+                <button disabled={busy} onClick={() => transition('cancel', { cancel_reason: cancelReason })}
+                  className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50">
+                  {busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิก'}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {msg && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
+        </div>
+
+        {!['Close', 'Cancel'].includes(job.status) && !cancelling && (
+          <div className="px-6 py-4 border-t flex flex-wrap gap-2">
+            <button onClick={() => setEditing(true)} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+              แก้ไขรายละเอียด
+            </button>
+            {job.status === 'Register' && (
+              <button onClick={() => setShowAssign(true)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                รับงาน
+              </button>
+            )}
+            {job.status === 'Assign' && (
+              <button disabled={busy} onClick={() => transition('start')}
+                className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600 disabled:opacity-50">
+                {busy ? '…' : 'เริ่มงาน'}
+              </button>
+            )}
+            {job.status === 'Work On' && (
+              <button onClick={() => setShowClear(true)} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700">
+                ปิดงาน
+              </button>
+            )}
+            {job.status === 'Clear' && isAdmin && (
+              <button disabled={busy} onClick={() => transition('close')}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                {busy ? '…' : 'ปิดสมบูรณ์'}
+              </button>
+            )}
+            <button onClick={() => setCancelling(true)} className="ml-auto px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50">
+              ยกเลิกใบงาน
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function AcRepair() {
+  const { user } = useAuthStore();
+  const role = user?.role || '';
+
+  const [jobs, setJobs] = useState([]);
+  const [stats, setStats] = useState({});
+  const [filter, setFilter] = useState('active');
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  const ACR = '/ac-repair-jobs';
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      const [jRes, sRes] = await Promise.all([
+        api.get(`${ACR}/`, { params: { status: filter } }),
+        api.get(`${ACR}/stats`),
+      ]);
+      setJobs(jRes.data);
+      setStats(sRes.data);
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message || 'โหลดข้อมูลไม่สำเร็จ');
+    } finally { setLoading(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function createJob(form) {
+    await api.post(`${ACR}/`, form);
+    setShowCreate(false);
+    load();
+  }
+
+  async function importJob(data) {
+    await api.post(`${ACR}/import`, data);
+    setShowImport(false);
+    load();
+  }
+
+  const totalActive = ACTIVE_STATUSES.reduce((s, k) => s + (stats[k] || 0), 0);
+  const isAdmin = ['admin', 'super_admin'].includes(role);
+
+  return (
+    <Layout>
+    <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">งานซ่อมแอร์</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{totalActive} งานค้าง</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+            📥 นำเข้างาน
+          </button>
+          <button onClick={() => setShowCreate(true)} className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 flex items-center gap-1.5">
+            + สร้างใบงาน
+          </button>
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {ALL_STATUSES.map((s) => (
+          <button
+            key={s}
+            onClick={() => setFilter(s)}
+            className={`rounded-xl border p-2.5 text-center transition-all ${filter === s ? 'ring-2 ring-offset-1 ring-blue-500 bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
+          >
+            <div className="text-lg font-bold text-gray-800">{stats[s] || 0}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{STATUS_LABEL[s]}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {[
+          { key: 'active', label: 'งานค้าง' },
+          { key: 'all',    label: 'ทั้งหมด' },
+          ...ALL_STATUSES.map((s) => ({ key: s, label: STATUS_LABEL[s] })),
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-all ${filter === key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Error */}
+      {err && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{err}</span>
+          <button onClick={load} className="text-xs underline ml-4">ลองใหม่</button>
+        </div>
+      )}
+
+      {/* Job list */}
+      {loading ? (
+        <p className="text-center text-gray-400 py-12">กำลังโหลด…</p>
+      ) : jobs.length === 0 ? (
+        <p className="text-center text-gray-400 py-12">ไม่มีใบงาน</p>
+      ) : (
+        <div className="space-y-2">
+          {jobs.map((job) => (
+            <div
+              key={job.id}
+              onClick={() => setSelected(job)}
+              className="bg-white border rounded-xl p-4 cursor-pointer hover:shadow-sm transition-shadow flex items-start gap-4"
+            >
+              <div className={`w-1.5 self-stretch rounded-full shrink-0 ${
+                job.status === 'Register'  ? 'bg-gray-400' :
+                job.status === 'Assign'    ? 'bg-blue-500' :
+                job.status === 'Work On'   ? 'bg-yellow-500' :
+                job.status === 'Clear'     ? 'bg-teal-500' :
+                job.status === 'Close'     ? 'bg-green-500' : 'bg-red-400'
+              }`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="font-mono text-sm font-bold text-gray-800">{job.job_number}</span>
+                  <StatusBadge status={job.status} />
+                  {job.repair_job_number && (
+                    <span className="text-xs text-gray-400 border rounded px-1">{job.repair_job_number}</span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-700 line-clamp-2">{job.description}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs text-gray-500">
+                  {(job.building || job.floor || job.department) && (
+                    <span>{[job.building, job.floor, job.department].filter(Boolean).join(' › ')}</span>
+                  )}
+                  {job.requester  && <span>👤 {job.requester}</span>}
+                  {job.assign_name && <span>🔧 {job.assign_name}</span>}
+                  <span>🕒 {fmt(job.register_time)}</span>
+                </div>
+              </div>
+              <div className="shrink-0 text-xs">
+                {job.status === 'Register'              && <span className="text-blue-600 font-medium">รับงาน →</span>}
+                {job.status === 'Assign'                && <span className="text-yellow-600 font-medium">เริ่มงาน →</span>}
+                {job.status === 'Work On'               && <span className="text-teal-600 font-medium">ปิดงาน →</span>}
+                {job.status === 'Clear' && isAdmin       && <span className="text-green-600 font-medium">ปิดสมบูรณ์ →</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modals */}
+      {showCreate && <JobFormModal onSave={createJob} onClose={() => setShowCreate(false)} />}
+      {showImport && <ImportModal onImport={importJob} onClose={() => setShowImport(false)} />}
+      {selected && (
+        <DetailModal
+          job={selected}
+          role={role}
+          onClose={() => setSelected(null)}
+          onRefresh={() => { load(); setSelected(null); }}
+        />
+      )}
+    </div>
+    </Layout>
+  );
 }
