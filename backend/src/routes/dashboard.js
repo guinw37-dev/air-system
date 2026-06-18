@@ -63,12 +63,69 @@ function totalOf(branches) {
   return t;
 }
 
+// ── richer branch detail (recent lists + 6-month trend) for the branch view ──
+const RECENT_AC_SQL = `
+  SELECT id, job_number, description, department, status, register_time
+  FROM ac_repair_jobs
+  WHERE status NOT IN ('Close','Cancel')
+  ORDER BY register_time DESC LIMIT 6`;
+const RECENT_WO_SQL = `
+  SELECT wo_number, client_name, work_type, status, created_at,
+         ${ALL_SIGNED} AS all_signed
+  FROM simple_work_orders
+  WHERE deleted_at IS NULL
+  ORDER BY created_at DESC LIMIT 6`;
+const TREND_AC_SQL = `
+  SELECT to_char(register_time,'YYYY-MM') ym, COUNT(*)::int c
+  FROM ac_repair_jobs
+  WHERE register_time >= date_trunc('month', now()) - interval '5 months'
+  GROUP BY ym`;
+const TREND_WO_SQL = `
+  SELECT to_char(created_at,'YYYY-MM') ym, COUNT(*)::int c
+  FROM simple_work_orders
+  WHERE deleted_at IS NULL AND created_at >= date_trunc('month', now()) - interval '5 months'
+  GROUP BY ym`;
+
+// Build the last 6 month keys (YYYY-MM), oldest → newest, anchored to a passed
+// "now" so the series is stable across the two queries.
+function lastSixMonths(now) {
+  const out = [];
+  const d = new Date(now.getFullYear(), now.getMonth(), 1);
+  for (let i = 5; i >= 0; i--) {
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    out.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+async function branchDetail(branch) {
+  const schema = branch.schema_name || branch.slug;
+  const summary = await summarizeBranch(branch);
+  const detail = { recentRepair: [], recentWo: [], trend: [] };
+  try {
+    const [ra, rw, ta, tw] = await Promise.all([
+      query(schema, RECENT_AC_SQL),
+      query(schema, RECENT_WO_SQL),
+      query(schema, TREND_AC_SQL),
+      query(schema, TREND_WO_SQL),
+    ]);
+    detail.recentRepair = ra.rows;
+    detail.recentWo = rw.rows;
+    const acByM = Object.fromEntries(ta.rows.map((r) => [r.ym, r.c]));
+    const woByM = Object.fromEntries(tw.rows.map((r) => [r.ym, r.c]));
+    detail.trend = lastSixMonths(new Date()).map((ym) => ({
+      ym, month: ym.slice(5), repair: acByM[ym] || 0, wash: woByM[ym] || 0,
+    }));
+  } catch (e) { /* tolerate a mid-migration schema — summary still returns */ }
+  return { ...summary, ...detail };
+}
+
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    // Branch context → just this branch.
+    // Branch context → just this branch (with recent lists + trend).
     if (req.branch) {
-      const summary = await summarizeBranch(req.branch);
-      return res.json({ scope: 'branch', branch: summary });
+      const branch = await branchDetail(req.branch);
+      return res.json({ scope: 'branch', branch });
     }
     // Apex → super-admin only, aggregate every active branch.
     if (!req.user?.isSuper && req.user?.role !== 'super_admin') {
