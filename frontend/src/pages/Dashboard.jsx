@@ -25,11 +25,11 @@ const AC_STATUS = [
   { key: 'ac_clear',    label: 'ซ่อมเสร็จ', color: C.teal },
   { key: 'ac_close',    label: 'ปิดงาน',   color: C.indigo },
 ];
-const WO_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
-const REPAIR_STATUS_TH = {
-  Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม',
-  Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
-};
+const WO_TYPE = [
+  { key: 'wo_major', label: 'ล้างใหญ่', color: '#0F6E56' },
+  { key: 'wo_minor', label: 'ล้างย่อย', color: '#14b8a6' },
+  { key: 'wo_fan',   label: 'พัดลม',   color: '#5DCAA5' },
+];
 
 function fmtDate(d) { return d ? dayjs(d).format('DD/MM') : ''; }
 
@@ -48,23 +48,62 @@ function Card({ title, action, children, className = '' }) {
   );
 }
 
-// big highlight tile (top row)
-function Highlight({ icon: Icon, value, label, tone }) {
-  const tones = {
-    blue: 'from-blue-500 to-blue-600',
-    sky:  'from-sky-500 to-cyan-500',
-    teal: 'from-teal-500 to-emerald-500',
-    indigo: 'from-indigo-500 to-blue-600',
-  };
+// highlight tile — white card with a soft icon chip (Panze style)
+function Highlight({ icon: Icon, value, label, tone = 'blue' }) {
+  const chip = {
+    blue: 'bg-blue-50 text-blue-600',
+    teal: 'bg-teal-50 text-teal-600',
+  }[tone] || 'bg-blue-50 text-blue-600';
   return (
-    <div className={`rounded-2xl p-5 text-white bg-gradient-to-br ${tones[tone]} shadow-sm`}>
-      <div className="flex items-center justify-between">
-        <Icon size={22} className="opacity-90" />
-        <ArrowUpRight size={18} className="opacity-60" />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+      <div className={`w-9 h-9 rounded-xl ${chip} flex items-center justify-center mb-3`}>
+        <Icon size={18} />
       </div>
-      <div className="text-3xl font-bold mt-3 leading-none">{value}</div>
-      <div className="text-sm mt-1 opacity-90">{label}</div>
+      <div className="text-2xl font-bold text-slate-800 leading-none">{value}</div>
+      <div className="text-xs text-slate-500 mt-1">{label}</div>
     </div>
+  );
+}
+
+// reusable donut with a centre total + legend (used for ซ่อม and ล้าง)
+function DonutCard({ icon: Icon, accent, title, segments, total, onGo }) {
+  const data = segments.filter((s) => s.value > 0);
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Icon size={15} style={{ color: accent }} />
+          <span className="font-bold text-slate-800 text-sm">{title}</span>
+        </div>
+        {onGo && <button onClick={onGo} className="text-blue-600"><ArrowUpRight size={16} /></button>}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0" style={{ width: 104, height: 104 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data.length ? data : [{ name: '-', value: 1, color: '#e2e8f0' }]}
+                dataKey="value" innerRadius={36} outerRadius={50} paddingAngle={2} stroke="none">
+                {(data.length ? data : [{ color: '#e2e8f0' }]).map((d, i) => <Cell key={i} fill={d.color} />)}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-xl font-bold text-slate-800">{total}</span>
+            <span className="text-[10px] text-slate-400">รวม</span>
+          </div>
+        </div>
+        <div className="flex-1 space-y-1">
+          {segments.map((s) => (
+            <div key={s.label} className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+              <span className="flex-1">{s.label}</span>
+              <b className="text-slate-700">{s.value}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -86,85 +125,30 @@ function ProgressRow({ label, value, total, color }) {
 
 // ── branch-mode rich dashboard ───────────────────────────────────────────────
 function BranchDashboard({ b, navigate }) {
-  const donut = AC_STATUS.map((s) => ({ name: s.label, value: b[s.key] || 0, color: s.color }))
-    .filter((d) => d.value > 0);
-  const donutTotal = donut.reduce((s, d) => s + d.value, 0);
+  const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
+  const woSegments = WO_TYPE.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const billTotal = (b.wo_pending || 0) + (b.wo_ready || 0) + (b.wo_billed || 0);
   const openTickets = (b.recentRepair || []).filter((j) => j.status === 'Register');
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* top highlights span all cols */}
-      <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Highlight icon={Wrench}      value={b.ac_active}  label="งานซ่อมค้าง"  tone="blue" />
-        <Highlight icon={Clock}       value={b.ac_clear}   label="รอปิดงานซ่อม" tone="sky" />
-        <Highlight icon={ReceiptText} value={b.wo_ready}   label="รอวางบิล"     tone="teal" />
-        <Highlight icon={Sparkles}    value={b.wo_billed}  label="วางบิลแล้ว"   tone="indigo" />
+    <div className="space-y-4">
+      {/* highlights */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Highlight icon={Wrench}      value={b.ac_active}  label="งานซ่อมค้าง" tone="blue" />
+        <Highlight icon={Sparkles}    value={b.wo_active}  label="งานล้างค้าง" tone="teal" />
+        <Highlight icon={ReceiptText} value={b.wo_ready}   label="รอวางบิล"   tone="blue" />
+        <Highlight icon={Clock}       value={b.wo_billed}  label="วางบิลแล้ว" tone="teal" />
       </div>
 
-      {/* left: my tasks */}
-      <Card title="งานค้างล่าสุด" className="lg:row-span-2"
-        action={<button onClick={() => navigate('/simple-wo')} className="text-blue-600 text-xs hover:underline flex items-center gap-0.5">ทั้งหมด <ChevronRight size={13} /></button>}>
-        <div className="space-y-2">
-          {(b.recentRepair || []).slice(0, 3).map((j) => (
-            <button key={`r${j.id}`} onClick={() => navigate('/ac-repair')}
-              className="w-full text-left rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 p-3 transition-colors">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
-                <span className="text-xs font-mono text-slate-400">{j.job_number}</span>
-                <span className="ml-auto text-xs text-blue-600">{REPAIR_STATUS_TH[j.status] || j.status}</span>
-              </div>
-              <p className="text-sm text-slate-700 line-clamp-1 pl-4">{j.description}</p>
-              {j.department && <p className="text-xs text-slate-400 pl-4 mt-0.5">{j.department}</p>}
-            </button>
-          ))}
-          {(b.recentWo || []).slice(0, 3).map((w) => (
-            <button key={`w${w.wo_number}`} onClick={() => navigate('/simple-wo')}
-              className="w-full text-left rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 p-3 transition-colors">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
-                <span className="text-xs font-mono text-slate-400">{w.wo_number}</span>
-                <span className="ml-auto text-xs text-teal-600">{w.all_signed ? 'รอวางบิล' : 'กำลังทำ'}</span>
-              </div>
-              <p className="text-sm text-slate-700 line-clamp-1 pl-4">{w.client_name || '—'}</p>
-              <p className="text-xs text-slate-400 pl-4 mt-0.5">{WO_LABEL[w.work_type] || w.work_type}</p>
-            </button>
-          ))}
-          {!(b.recentRepair || []).length && !(b.recentWo || []).length && (
-            <p className="text-center text-slate-400 text-sm py-8">ไม่มีงานค้าง</p>
-          )}
-        </div>
-      </Card>
+      {/* two donuts: ซ่อม + ล้าง */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <DonutCard icon={Wrench} accent={C.primary} title="งานซ่อมแอร์"
+          segments={acSegments} total={b.ac_active} onGo={() => navigate('/ac-repair')} />
+        <DonutCard icon={Sparkles} accent="#0F6E56" title="งานล้างแอร์ (ค้าง)"
+          segments={woSegments} total={b.wo_active} onGo={() => navigate('/simple-wo')} />
+      </div>
 
-      {/* center: donut งานซ่อม */}
-      <Card title="ภาพรวมงานซ่อมแอร์"
-        action={<button onClick={() => navigate('/ac-repair')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
-        <div className="relative">
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={donut.length ? donut : [{ name: '-', value: 1, color: '#e2e8f0' }]}
-                dataKey="value" innerRadius={55} outerRadius={80} paddingAngle={2} stroke="none">
-                {(donut.length ? donut : [{ color: '#e2e8f0' }]).map((d, i) => <Cell key={i} fill={d.color} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-2xl font-bold text-slate-800">{donutTotal}</span>
-            <span className="text-xs text-slate-400">งานที่ค้าง</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-3">
-          {AC_STATUS.map((s) => (
-            <div key={s.key} className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
-              {s.label} <b className="text-slate-700">{b[s.key] || 0}</b>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* right: trend area */}
+      {/* trend full width */}
       <Card title="แนวโน้มงาน 6 เดือน">
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={b.trend || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -181,8 +165,8 @@ function BranchDashboard({ b, navigate }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip />
-            <Area type="monotone" dataKey="repair" name="ซ่อม" stroke={C.primary} strokeWidth={2} fill="url(#gRepair)" />
-            <Area type="monotone" dataKey="wash" name="ล้าง" stroke={C.cyan} strokeWidth={2} fill="url(#gWash)" />
+            <Area type="monotone" dataKey="repair" name="ซ่อม" stroke={C.primary} strokeWidth={2.5} fill="url(#gRepair)" />
+            <Area type="monotone" dataKey="wash" name="ล้าง" stroke={C.cyan} strokeWidth={2.5} fill="url(#gWash)" />
           </AreaChart>
         </ResponsiveContainer>
         <div className="flex gap-4 justify-center mt-2 text-xs text-slate-500">
@@ -191,34 +175,35 @@ function BranchDashboard({ b, navigate }) {
         </div>
       </Card>
 
-      {/* center-bottom: invoice progress */}
-      <Card title="สถานะวางบิล (งานล้าง)"
-        action={<button onClick={() => navigate('/simple-wo?view=ready')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
-        <div className="space-y-4">
-          <ProgressRow label="งานค้าง (ยังไม่เซ็นครบ)" value={b.wo_pending} total={billTotal} color={C.slate} />
-          <ProgressRow label="รอวางบิล" value={b.wo_ready} total={billTotal} color={C.sky} />
-          <ProgressRow label="วางบิลแล้ว" value={b.wo_billed} total={billTotal} color={C.teal} />
-        </div>
-      </Card>
+      {/* invoice progress + open repair tickets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card title="สถานะวางบิล (งานล้าง)"
+          action={<button onClick={() => navigate('/simple-wo?view=ready')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
+          <div className="space-y-4">
+            <ProgressRow label="งานค้าง (ยังไม่เซ็นครบ)" value={b.wo_pending} total={billTotal} color={C.slate} />
+            <ProgressRow label="รอวางบิล" value={b.wo_ready} total={billTotal} color={C.sky} />
+            <ProgressRow label="วางบิลแล้ว" value={b.wo_billed} total={billTotal} color={C.teal} />
+          </div>
+        </Card>
 
-      {/* right-bottom: open tickets (รอรับงานซ่อม) */}
-      <Card title="งานซ่อมรอรับ"
-        action={<button onClick={() => navigate('/ac-repair')} className="text-blue-600 text-xs hover:underline flex items-center gap-0.5">ทั้งหมด <ChevronRight size={13} /></button>}>
-        <div className="space-y-2">
-          {openTickets.length ? openTickets.map((j) => (
-            <button key={j.id} onClick={() => navigate('/ac-repair')}
-              className="w-full text-left flex items-start gap-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 p-3 transition-colors">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                <Wrench size={15} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-slate-700 line-clamp-1">{j.description}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{j.department || '—'} · {fmtDate(j.register_time)}</p>
-              </div>
-            </button>
-          )) : <p className="text-center text-slate-400 text-sm py-8">ไม่มีงานรอรับ</p>}
-        </div>
-      </Card>
+        <Card title="งานซ่อมรอรับ"
+          action={<button onClick={() => navigate('/ac-repair')} className="text-blue-600 text-xs hover:underline flex items-center gap-0.5">ทั้งหมด <ChevronRight size={13} /></button>}>
+          <div className="space-y-2">
+            {openTickets.length ? openTickets.map((j) => (
+              <button key={j.id} onClick={() => navigate('/ac-repair')}
+                className="w-full text-left flex items-start gap-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 p-3 transition-colors">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                  <Wrench size={15} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-700 line-clamp-1">{j.description}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{j.department || '—'} · {fmtDate(j.register_time)}</p>
+                </div>
+              </button>
+            )) : <p className="text-center text-slate-400 text-sm py-8">ไม่มีงานรอรับ</p>}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

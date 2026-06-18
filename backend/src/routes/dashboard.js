@@ -32,13 +32,19 @@ const WO_SQL = `
                      AND status <> 'rejected' AND NOT ${ALL_SIGNED})      AS wo_pending,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND ${ALL_SIGNED})                                   AS wo_ready,
-    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'approved')    AS wo_billed
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'approved')    AS wo_billed,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND work_type = 'major')                            AS wo_major,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND work_type = 'minor')                            AS wo_minor,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND work_type = 'fan')                              AS wo_fan
   FROM simple_work_orders`;
 
 async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
   const z = { ac_register:0, ac_assign:0, ac_work:0, ac_clear:0, ac_close:0, ac_cancel:0,
-              wo_pending:0, wo_ready:0, wo_billed:0 };
+              wo_pending:0, wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
   const out = { id: branch.id, slug: branch.slug, name: branch.name, ...z };
   try {
     const ac = await query(schema, AC_SQL);
@@ -50,6 +56,7 @@ async function summarizeBranch(branch) {
   } catch (e) { out.error = true; }
   // derived
   out.ac_active = out.ac_register + out.ac_assign + out.ac_work + out.ac_clear;
+  out.wo_active = out.wo_pending + out.wo_ready;   // งานล้างค้าง (ยังไม่วางบิล)
   return out;
 }
 const mapInts = (row) => Object.fromEntries(Object.entries(row || {}).map(([k, v]) => [k, Number(v) || 0]));
