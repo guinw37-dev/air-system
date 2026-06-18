@@ -13,8 +13,9 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
 const { callRepair, configured } = require('../services/repairClient');
 
-const canUse  = requireRole('technician', 'checker', 'admin', 'super_admin');
-const canAdmin = requireRole('admin', 'super_admin');
+const canUse = requireRole(
+  'technician', 'checker', 'approve_building', 'approve_engineer', 'admin', 'super_admin'
+);
 
 // Photo storage (base64 → disk).
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
