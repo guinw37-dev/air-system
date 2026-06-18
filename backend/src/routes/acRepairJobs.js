@@ -8,10 +8,10 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const dayjs = require('dayjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
 const { callRepair, configured } = require('../services/repairClient');
+const { insertJob } = require('../services/acRepairCreate');
 
 const canUse = requireRole(
   'technician', 'checker', 'approve_building', 'approve_engineer', 'admin', 'super_admin'
@@ -29,19 +29,6 @@ function savePhoto(slug, base64, filename) {
   const buf = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
   fs.writeFileSync(path.join(dir, name), buf);
   return `/uploads/photos/ac-repair/${slug}/${name}`;
-}
-
-// Job number: AC-{พ.ศ.}-{MM}-{NNN}, MAX-based to survive deletes.
-async function genJobNumber(client) {
-  const be = dayjs().year() + 543;
-  const mm = dayjs().format('MM');
-  const prefix = `AC-${be}-${mm}-`;
-  const { rows } = await client.query(
-    `SELECT COALESCE(MAX(CAST(RIGHT(job_number, 4) AS INTEGER)), 0) AS maxn
-       FROM ac_repair_jobs WHERE job_number LIKE $1`,
-    [`${prefix}%`]
-  );
-  return `${prefix}${String(rows[0].maxn + 1).padStart(4, '0')}`;
 }
 
 // Status transition table.
@@ -120,57 +107,27 @@ router.get('/:id', async (req, res) => {
 
 // ── POST / — create job manually ─────────────────────────────────────────
 router.post('/', async (req, res) => {
-  const { building, floor, department, requester, telephone, description, file_url } = req.body;
-  if (!description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
+  if (!req.body.description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
   const c = await req.tx();
   try {
     await c.query('BEGIN');
-    const jobNumber = await genJobNumber(c);
-    const { rows } = await c.query(
-      `INSERT INTO ac_repair_jobs
-         (job_number, building, floor, department, requester, telephone, description, file_url, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [jobNumber, building || '', floor || '', department || '', requester || '',
-       telephone || '', description.trim(), file_url || '-', req.user.id]
-    );
+    const { row } = await insertJob(c, req.body, req.user.id);
     await c.query('COMMIT');
-    res.status(201).json(rows[0]);
+    res.status(201).json(row);
   } catch (e) { await c.query('ROLLBACK'); serverError(res, e); }
   finally { c.release(); }
 });
 
 // ── POST /import — create job from repair-system record (one-way copy) ───
 router.post('/import', async (req, res) => {
-  const {
-    repair_job_id, repair_job_number,
-    building, floor, department, requester, telephone, description, file_url,
-  } = req.body;
-  if (!description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
-  // Prevent double-import of the same repair-system job.
-  if (repair_job_id) {
-    try {
-      const { rows: ex } = await req.db(
-        'SELECT id, job_number FROM ac_repair_jobs WHERE repair_job_id = $1',
-        [repair_job_id]
-      );
-      if (ex.length) return res.status(409).json({ error: 'นำเข้างานนี้แล้ว', existing: ex[0] });
-    } catch (err) { return serverError(res, err); }
-  }
+  if (!req.body.description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
   const c = await req.tx();
   try {
     await c.query('BEGIN');
-    const jobNumber = await genJobNumber(c);
-    const { rows } = await c.query(
-      `INSERT INTO ac_repair_jobs
-         (job_number, repair_job_id, repair_job_number,
-          building, floor, department, requester, telephone, description, file_url, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [jobNumber, repair_job_id || null, repair_job_number || null,
-       building || '', floor || '', department || '', requester || '',
-       telephone || '', description.trim(), file_url || '-', req.user.id]
-    );
+    const { row, duplicate } = await insertJob(c, req.body, req.user.id);
     await c.query('COMMIT');
-    res.status(201).json(rows[0]);
+    if (duplicate) return res.status(409).json({ error: 'นำเข้างานนี้แล้ว', existing: duplicate });
+    res.status(201).json(row);
   } catch (e) { await c.query('ROLLBACK'); serverError(res, e); }
   finally { c.release(); }
 });
