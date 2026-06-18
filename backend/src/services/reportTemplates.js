@@ -1110,6 +1110,7 @@ function acDetailBlock(ac, wo, unit) {
         ${line('ยี่ห้อ', a.brand)}
         ${line('รุ่น', a.model)}
         ${line('หมายเลขเครื่อง', (unit || {}).asset_code)}
+        ${line('Nameplate', a.serial)}
         ${line('ขนาดทำความเย็น (BTU)', a.cooling_size)}
       </div>
     </div>
