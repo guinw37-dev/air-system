@@ -1402,4 +1402,92 @@ function buildReportHtml(data, type) {
   return htmlDoc(d, TYPE_TITLES[type] || 'รายงานการปฏิบัติงาน', pages);
 }
 
-module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml };
+// ── ใบงานซ่อมแอร์ (AC repair job) — single-page printable ────────────────────
+const AC_STATUS_TH = {
+  Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม',
+  Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
+};
+function fmtDateTime(v) {
+  if (!v) return '—';
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return '—';
+  return `${fmtDate(d)} ${fmtTime(d)}`;
+}
+function buildAcRepairReportHtml(job, branch) {
+  const j = job || {};
+  const parts = Array.isArray(j.parts) ? j.parts : [];
+  const row = (k, v) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${dash(v)}</td></tr>`;
+  const tl = (label, t) => t ? `<tr><td class="k">${escapeHtml(label)}</td><td class="v">${fmtDateTime(t)}</td></tr>` : '';
+  const partsRows = parts.length
+    ? parts.map((p, i) => `<tr>
+        <td style="text-align:center">${i + 1}</td>
+        <td>${dash(p.name)}</td>
+        <td style="text-align:center">${dash(p.qty)}</td>
+        <td>${dash(p.note)}</td></tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:#888">— ไม่มีรายการอะไหล่ —</td></tr>`;
+  const afterImg = j.after_image_url
+    ? `<div class="sec"><div class="sec-h">รูปหลังซ่อม</div>
+         <img src="${escapeHtml(j.after_image_url)}" style="max-width:100%;max-height:280px;border:1px solid #ddd;border-radius:6px"/></div>`
+    : '';
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"/>
+<title>${escapeHtml(j.job_number || 'ใบงานซ่อมแอร์')}</title>
+<style>
+  *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:#1f2937;margin:0;padding:24px;font-size:14px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px}
+  .head .title{font-size:20px;font-weight:700;color:#1e3a8a}
+  .head .no{font-family:monospace;font-size:15px;color:#2563eb;font-weight:700}
+  .head .sub{font-size:12px;color:#6b7280}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:600}
+  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #2563eb;padding-left:8px;margin-bottom:6px}
+  table{width:100%;border-collapse:collapse} td{padding:5px 8px;vertical-align:top}
+  .kv td.k{width:32%;color:#6b7280;background:#f9fafb} .kv td{border:1px solid #eef2f7}
+  .parts th{background:#eff6ff;color:#1e40af;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #dbeafe}
+  .parts td{border:1px solid #eef2f7}
+  .desc{white-space:pre-wrap;border:1px solid #eef2f7;border-radius:6px;padding:8px;background:#fafafa;min-height:38px}
+</style></head><body>
+  <div class="head">
+    <div>
+      <div class="title">ใบงานซ่อมแอร์</div>
+      <div class="sub">${dash(branch && branch.name)}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="no">${escapeHtml(j.job_number || '')}</div>
+      <div class="sub"><span class="badge">${escapeHtml(AC_STATUS_TH[j.status] || j.status || '')}</span></div>
+      ${j.repair_job_number ? `<div class="sub">อ้างอิง: ${escapeHtml(j.repair_job_number)}</div>` : ''}
+    </div>
+  </div>
+
+  <div class="sec"><div class="sec-h">สถานที่ / ผู้แจ้ง</div>
+    <table class="kv">
+      ${row('อาคาร', j.building)}${row('ชั้น', j.floor)}${row('แผนก / ห้อง', j.department)}
+      ${row('ผู้แจ้ง', j.requester)}${row('เบอร์โทร', j.telephone)}
+    </table></div>
+
+  <div class="sec"><div class="sec-h">รายละเอียดอาการ</div><div class="desc">${dash(j.description)}</div></div>
+
+  <div class="sec"><div class="sec-h">ข้อมูลการซ่อม</div>
+    <table class="kv">
+      ${row('ช่างผู้รับงาน', j.assign_name)}${row('ประเภทปัญหา', j.issue_type)}
+      ${j.job_detail ? row('บันทึกเพิ่มเติม', j.job_detail) : ''}
+    </table>
+    ${j.work_desc ? `<div style="margin-top:6px"><div class="sec-h">รายละเอียดการซ่อม</div><div class="desc">${dash(j.work_desc)}</div></div>` : ''}
+  </div>
+
+  <div class="sec"><div class="sec-h">อะไหล่ที่ต้องใช้ / สั่งของ</div>
+    <table class="parts">
+      <tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>
+      ${partsRows}
+    </table></div>
+
+  ${afterImg}
+
+  <div class="sec"><div class="sec-h">Timeline</div>
+    <table class="kv">
+      ${tl('แจ้งซ่อม', j.register_time)}${tl('รับงาน', j.assign_time)}${tl('เริ่มซ่อม', j.start_time)}
+      ${tl('ซ่อมเสร็จ', j.clear_time)}${tl('ปิดงาน', j.close_time)}
+      ${j.cancel_time ? `<tr><td class="k">ยกเลิก</td><td class="v">${fmtDateTime(j.cancel_time)} ${escapeHtml(j.cancel_reason || '')}</td></tr>` : ''}
+    </table></div>
+</body></html>`;
+}
+
+module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml, buildAcRepairReportHtml };

@@ -39,12 +39,86 @@ function fmt(dt) {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${y} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
+// ── Parts editor (อะไหล่ list) ────────────────────────────────────────────────
+function PartsEditor({ parts, onChange }) {
+  const rows = Array.isArray(parts) ? parts : [];
+  const setRow = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const addRow = () => onChange([...rows, { name: '', qty: '', note: '' }]);
+  const delRow = (i) => onChange(rows.filter((_, j) => j !== i));
+  return (
+    <div className="space-y-2">
+      {rows.length > 0 && (
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <input className="flex-1 border rounded-lg px-2 py-1.5 text-sm" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} placeholder="ชื่ออะไหล่" />
+              <input className="w-16 border rounded-lg px-2 py-1.5 text-sm" value={r.qty || ''} onChange={(e) => setRow(i, { qty: e.target.value })} placeholder="จำนวน" />
+              <input className="w-24 border rounded-lg px-2 py-1.5 text-sm" value={r.note || ''} onChange={(e) => setRow(i, { note: e.target.value })} placeholder="หมายเหตุ" />
+              <button type="button" onClick={() => delRow(i)} className="text-red-400 hover:text-red-600 px-1.5 py-1.5 text-lg leading-none">&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="button" onClick={addRow} className="text-sm text-blue-600 hover:underline">+ เพิ่มอะไหล่</button>
+    </div>
+  );
+}
+
+// ── Parts summary modal (รวมอะไหล่ที่ต้องสั่ง ทุกงานที่ยังไม่ปิด) ──────────────
+function PartsSummaryModal({ onClose }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    api.get('/ac-repair-jobs/parts-summary')
+      .then((r) => setRows(r.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">สรุปอะไหล่ที่ต้องสั่ง</h2>
+            <p className="text-xs text-gray-500 mt-0.5">รวมจากงานซ่อมที่ยังไม่ปิด</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          {loading ? <p className="text-center text-gray-400 py-8">กำลังโหลด…</p>
+            : rows.length === 0 ? <p className="text-center text-gray-400 py-8">ยังไม่มีรายการอะไหล่</p>
+            : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b">
+                  <th className="py-2">รายการ</th><th className="py-2 w-24 text-center">จำนวน</th><th className="py-2 w-14 text-center">งาน</th>
+                </tr></thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.key} className="border-b last:border-0">
+                      <td className="py-2">{r.name}</td>
+                      <td className="py-2 text-center text-gray-600">{r.qty_list || '—'}</td>
+                      <td className="py-2 text-center text-gray-400">{r.jobs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Create / Edit modal ──────────────────────────────────────────────────────
 function JobFormModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState({
     building: '', floor: '', department: '', requester: '', telephone: '',
-    description: '', assign_name: '', issue_type: '', job_detail: '',
+    description: '', assign_name: '', issue_type: '', job_detail: '', parts: [],
     ...initial,
+    parts: Array.isArray(initial?.parts) ? initial.parts : [],
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -178,6 +252,10 @@ function JobFormModal({ initial, onSave, onClose }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดการซ่อม</label>
                 <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.job_detail} onChange={set('job_detail')} placeholder="บันทึกเพิ่มเติม" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">อะไหล่ที่ต้องใช้ / สั่งของ</label>
+                <PartsEditor parts={form.parts} onChange={(parts) => setForm((f) => ({ ...f, parts }))} />
               </div>
             </>
           )}
@@ -408,6 +486,13 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
     setEditing(false);
   }
 
+  async function printPdf() {
+    try {
+      const res = await api.get(`/ac-repair-jobs/${job.id}/pdf`, { responseType: 'blob' });
+      window.open(URL.createObjectURL(res.data), '_blank');
+    } catch { alert('ปริ้นใบงานไม่สำเร็จ'); }
+  }
+
   if (editing) return <JobFormModal initial={job} onSave={saveEdit} onClose={() => setEditing(false)} />;
   if (showAssign) return <AssignModal job={job} onSave={(b) => transition('assign', b)} onClose={() => setShowAssign(false)} />;
   if (showClear) return <ClearModal job={job} onSave={(b) => transition('clear', b)} onClose={() => setShowClear(false)} />;
@@ -425,7 +510,10 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
               <p className="text-xs text-gray-400 mt-0.5">อ้างอิง repair: {job.repair_job_number}</p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none ml-4">&times;</button>
+          <div className="flex items-center gap-1 ml-4">
+            <button onClick={printPdf} title="ปริ้นใบงาน" className="text-gray-500 hover:text-blue-600 border rounded-lg px-2.5 py-1 text-sm">🖨️ ปริ้น</button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-1">&times;</button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
@@ -457,6 +545,23 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
                 {job.job_detail  && <p><span className="text-gray-500">บันทึกเพิ่มเติม: </span>{job.job_detail}</p>}
                 {job.work_desc   && <p><span className="text-gray-500">รายละเอียดการซ่อม: </span>{job.work_desc}</p>}
               </div>
+            </section>
+          )}
+
+          {Array.isArray(job.parts) && job.parts.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">อะไหล่ที่ต้องใช้ / สั่งของ</h3>
+              <table className="w-full text-sm">
+                <tbody>
+                  {job.parts.map((p, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-1.5">{p.name}</td>
+                      <td className="py-1.5 w-20 text-center text-gray-600">{p.qty || '—'}</td>
+                      <td className="py-1.5 w-28 text-gray-400">{p.note || ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </section>
           )}
 
@@ -551,6 +656,7 @@ export default function AcRepair() {
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showParts, setShowParts] = useState(false);
 
   const ACR = '/ac-repair-jobs';
 
@@ -595,6 +701,9 @@ export default function AcRepair() {
           <p className="text-sm text-gray-500 mt-0.5">{totalActive} งานค้าง</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setShowParts(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+            🧰 สรุปอะไหล่
+          </button>
           <button onClick={() => setShowImport(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
             📥 นำเข้างาน
           </button>
@@ -695,6 +804,7 @@ export default function AcRepair() {
       {/* Modals */}
       {showCreate && <JobFormModal onSave={createJob} onClose={() => setShowCreate(false)} />}
       {showImport && <ImportModal onImport={importJob} onClose={() => setShowImport(false)} />}
+      {showParts && <PartsSummaryModal onClose={() => setShowParts(false)} />}
       {selected && (
         <DetailModal
           job={selected}

@@ -90,6 +90,9 @@ async function provisionBranchSchema(schemaName) {
     // varchar length is metadata-only (no table rewrite). Runs after the drops.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
     await c.query(BRANCH_SQL);
+    // ac_repair_jobs.parts added after the table first shipped — ADD on branches
+    // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
+    await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);
     // Retire legacy roles on existing branch users (incl. single 'approver' →
     // approve_engineer). DROP the old CHECK FIRST — the remap produces values the
     // old CHECK forbids, so updating before dropping would violate users_role_check.
