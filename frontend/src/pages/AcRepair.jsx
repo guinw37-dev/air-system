@@ -48,6 +48,42 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  // Master-data cascade for the อาคาร/ชั้น/แผนก comboboxes (same source as the
+  // repair form). Uses the first site of the branch. Fields stay free-text:
+  // these only supply <datalist> suggestions, so an empty master never blocks.
+  const [buildings, setBuildings] = useState([]);
+  const [floors, setFloors] = useState([]);
+  const [rooms, setRooms] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/master/sites')
+      .then((r) => (r.data[0]?.id
+        ? api.get('/master/buildings', { params: { site_id: r.data[0].id } })
+        : { data: [] }))
+      .then((r) => { if (alive) setBuildings(r.data || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const buildingId = buildings.find((b) => b.name === form.building)?.id;
+  useEffect(() => {
+    if (!buildingId) { setFloors([]); return; }
+    let alive = true;
+    api.get('/master/floors', { params: { building_id: buildingId } })
+      .then((r) => { if (alive) setFloors(r.data || []); }).catch(() => setFloors([]));
+    return () => { alive = false; };
+  }, [buildingId]);
+
+  const floorId = floors.find((f) => f.name === form.floor)?.id;
+  useEffect(() => {
+    if (!floorId) { setRooms([]); return; }
+    let alive = true;
+    api.get('/master/rooms', { params: { floor_id: floorId } })
+      .then((r) => { if (alive) setRooms(r.data || []); }).catch(() => setRooms([]));
+    return () => { alive = false; };
+  }, [floorId]);
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e) {
@@ -70,16 +106,19 @@ function JobFormModal({ initial, onSave, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">อาคาร</label>
-              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.building} onChange={set('building')} placeholder="อาคาร" />
+              <input list="acr-buildings" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.building} onChange={set('building')} placeholder="เลือกหรือพิมพ์อาคาร" />
+              <datalist id="acr-buildings">{buildings.map((b) => <option key={b.id} value={b.name} />)}</datalist>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ชั้น</label>
-              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.floor} onChange={set('floor')} placeholder="ชั้น" />
+              <input list="acr-floors" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.floor} onChange={set('floor')} placeholder="เลือกหรือพิมพ์ชั้น" />
+              <datalist id="acr-floors">{floors.map((f) => <option key={f.id} value={f.name} />)}</datalist>
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">แผนก / ห้อง</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department} onChange={set('department')} placeholder="ชื่อแผนก หรือ ห้อง" />
+            <input list="acr-rooms" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department} onChange={set('department')} placeholder="เลือกหรือพิมพ์แผนก/ห้อง" />
+            <datalist id="acr-rooms">{rooms.map((r) => <option key={r.id} value={r.name} />)}</datalist>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
