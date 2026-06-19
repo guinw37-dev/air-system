@@ -208,6 +208,21 @@ CREATE TABLE IF NOT EXISTS repair_logs (
   updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── เป้าหมายล้างต่อเดือน (per zone × work_type) ตามสัญญา ────────────────────
+-- zone = pts_zone value (PTS1/PTS2/คลินิก…). work_type NULL = รวมทุกประเภท
+-- (คลินิก/หอพักไม่แยกประเภท). monthly_target = จำนวนที่ต้องล้างให้ได้ต่อเดือน.
+CREATE TABLE IF NOT EXISTS service_targets (
+  id             SERIAL PRIMARY KEY,
+  zone           VARCHAR(50) NOT NULL,
+  work_type      VARCHAR(20),           -- major | minor | fan | NULL(=รวม)
+  monthly_target INT NOT NULL DEFAULT 0,
+  note           TEXT,
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+-- COALESCE so a NULL work_type (คลินิก = รวม) is still unique per zone.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_zone_wt
+  ON service_targets (zone, COALESCE(work_type, ''));
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported
