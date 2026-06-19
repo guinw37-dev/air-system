@@ -76,6 +76,21 @@ router.get('/stats', async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── GET /locations — distinct อาคาร/ชั้น/แผนก already used on this branch's jobs.
+// Feeds the form comboboxes so suggestions exist even when master data is empty
+// (e.g. a freshly-provisioned branch whose jobs came in via import).
+router.get('/locations', async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT
+        ARRAY(SELECT DISTINCT building   FROM ac_repair_jobs WHERE COALESCE(building,'')   <> '' ORDER BY building)   AS buildings,
+        ARRAY(SELECT DISTINCT floor      FROM ac_repair_jobs WHERE COALESCE(floor,'')      <> '' ORDER BY floor)      AS floors,
+        ARRAY(SELECT DISTINCT department FROM ac_repair_jobs WHERE COALESCE(department,'') <> '' ORDER BY department) AS departments
+    `);
+    res.json(rows[0] || { buildings: [], floors: [], departments: [] });
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /pending-repair — fetch active AC jobs from repair-system (import UI)
 router.get('/pending-repair', async (req, res) => {
   if (!configured()) return res.json({ ok: false, jobs: [], reason: 'ยังไม่ตั้งค่า REPAIR_API_URL / REPAIR_SERVICE_KEY' });
