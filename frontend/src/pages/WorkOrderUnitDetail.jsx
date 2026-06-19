@@ -262,7 +262,7 @@ export default function WorkOrderUnitDetail() {
     e.target.value = ''
     try {
       // shrink the mobile photo so the upload actually completes
-      const file = await compressImage(raw, { maxDim: 1600, quality: 0.7 })
+      const file = await compressImage(raw, { maxDim: 1600, quality: 0.7, stamp: true })
       const fields = {
         work_order_unit_id: String(unitId),
         phase: uploadingPhase,

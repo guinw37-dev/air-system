@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/client';
 import { useAuthStore } from '../store/auth';
 import Layout from '../components/Layout';
+import { compressImage } from '../lib/image';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const STATUS_LABEL = {
@@ -237,12 +238,13 @@ function ClearModal({ job, onSave, onClose }) {
   const [err, setErr] = useState('');
   const fileRef = useRef();
 
-  function pickPhoto(e) {
+  async function pickPhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const stamped = await compressImage(file, { stamp: true });   // downscale + วัน/เวลา
     const reader = new FileReader();
-    reader.onload = () => setPhoto({ base64: reader.result, name: file.name });
-    reader.readAsDataURL(file);
+    reader.onload = () => setPhoto({ base64: reader.result, name: stamped.name || file.name });
+    reader.readAsDataURL(stamped);
   }
 
   async function submit(e) {
@@ -272,7 +274,7 @@ function ClearModal({ job, onSave, onClose }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">รูปหลังซ่อม (ไม่บังคับ)</label>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pickPhoto} />
             <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
               {photo ? `✓ ${photo.name}` : 'เลือกรูป'}
             </button>

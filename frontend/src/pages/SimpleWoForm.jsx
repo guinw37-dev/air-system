@@ -233,7 +233,7 @@ export default function SimpleWoForm() {
   // state, so each PhotoSlot owns its own busy/preview/error locally and an
   // upload re-renders only that slot, not the whole (large) form.
   const uploadOne = async (file) => {
-    const compressed = await compressImage(file)
+    const compressed = await compressImage(file, { stamp: true })   // burn วัน/เวลา in
     const fd = new FormData()
     fd.append('photo', compressed)
     // Do NOT set Content-Type manually — the browser adds the multipart boundary.
@@ -1250,6 +1250,7 @@ function PhotoSlot({ label, photo, onUpload, onRemove }) {
       <input
         type="file"
         accept="image/*"
+        capture="environment"
         className="sr-only"
         disabled={busy}
         onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }}
