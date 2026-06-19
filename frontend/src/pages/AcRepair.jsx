@@ -85,8 +85,16 @@ function JobFormModal({ initial, onSave, onClose }) {
     .filter((d) => !form.floor || d.floor_id === form.floor || d.floor_id === '')
     .map((d) => d.name);
   const buildingOpts = uniq([...buildings.map((b) => b.name), ...repairHier.map((h) => h.name), ...(locs.buildings || [])]);
-  const floorOpts = uniq([...floors.map((f) => f.name), ...hierFloors, ...(locs.floors || [])]);
-  const roomOpts = uniq([...rooms.map((r) => r.name), ...hierDepts, ...(locs.departments || [])]);
+  // When the chosen อาคาร matches the repair master, cascade STRICTLY from it —
+  // don't mix in the flat distinct-job floors/depts (those aren't scoped to a
+  // building, so other buildings' floors like O-F03 would leak in). The distinct
+  // fallback is only for a building typed by hand / not in the master.
+  const floorOpts = hierB
+    ? uniq([...floors.map((f) => f.name), ...hierFloors])
+    : uniq([...floors.map((f) => f.name), ...(locs.floors || [])]);
+  const roomOpts = hierB
+    ? uniq([...rooms.map((r) => r.name), ...hierDepts])
+    : uniq([...rooms.map((r) => r.name), ...(locs.departments || [])]);
 
   const buildingId = buildings.find((b) => b.name === form.building)?.id;
   useEffect(() => {
