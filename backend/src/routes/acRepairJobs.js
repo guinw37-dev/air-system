@@ -12,6 +12,8 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
 const { callRepair, configured } = require('../services/repairClient');
 const { insertJob } = require('../services/acRepairCreate');
+const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
+const { buildAcRepairReportHtml } = require('../services/reportTemplates');
 
 const canUse = requireRole(
   'technician', 'checker', 'approve_building', 'approve_engineer', 'admin', 'super_admin'
@@ -105,6 +107,23 @@ router.get('/repair-locations', async (req, res) => {
   }
 });
 
+// ── GET /parts-summary — aggregate อะไหล่ที่ต้องสั่ง across open jobs (สั่งของ) ──
+router.get('/parts-summary', async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT lower(trim(p->>'name')) AS key,
+             max(p->>'name')         AS name,
+             string_agg(NULLIF(p->>'qty',''), ' + ') AS qty_list,
+             count(*)::int           AS jobs
+      FROM ac_repair_jobs j
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(j.parts,'[]'::jsonb)) AS p
+      WHERE j.status NOT IN ('Close','Cancel') AND trim(p->>'name') <> ''
+      GROUP BY lower(trim(p->>'name'))
+      ORDER BY name`);
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /pending-repair — fetch active AC jobs from repair-system (import UI)
 router.get('/pending-repair', async (req, res) => {
   if (!configured()) return res.json({ ok: false, jobs: [], reason: 'ยังไม่ตั้งค่า REPAIR_API_URL / REPAIR_SERVICE_KEY' });
@@ -164,7 +183,15 @@ router.post('/import', async (req, res) => {
 // ── PUT /:id — update details (only for non-terminal jobs) ───────────────
 router.put('/:id', async (req, res) => {
   const { building, floor, department, requester, telephone, description,
-          assign_name, issue_type, job_detail } = req.body;
+          assign_name, issue_type, job_detail, parts } = req.body;
+  // Normalise the parts list — keep only {name, qty, note}, drop blank rows.
+  const cleanParts = Array.isArray(parts)
+    ? parts.map((p) => ({
+        name: String(p?.name || '').trim(),
+        qty: String(p?.qty || '').trim(),
+        note: String(p?.note || '').trim(),
+      })).filter((p) => p.name)
+    : [];
   try {
     const { rows: cur } = await req.db(
       'SELECT status FROM ac_repair_jobs WHERE id = $1', [req.params.id]
@@ -176,13 +203,37 @@ router.put('/:id', async (req, res) => {
     const { rows } = await req.db(
       `UPDATE ac_repair_jobs SET
          building=$1, floor=$2, department=$3, requester=$4, telephone=$5,
-         description=$6, assign_name=$7, issue_type=$8, job_detail=$9
-       WHERE id=$10 RETURNING *`,
+         description=$6, assign_name=$7, issue_type=$8, job_detail=$9, parts=$10
+       WHERE id=$11 RETURNING *`,
       [building || '', floor || '', department || '', requester || '', telephone || '',
        description || '', assign_name || null, issue_type || null, job_detail || null,
-       req.params.id]
+       JSON.stringify(cleanParts), req.params.id]
     );
     res.json(rows[0]);
+  } catch (err) { serverError(res, err); }
+});
+
+// ── GET /:id/pdf — printable ใบงานซ่อม ──────────────────────────────────────
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const { rows } = await req.db(
+      `SELECT j.*, u.name AS created_by_name FROM ac_repair_jobs j
+         LEFT JOIN users u ON j.created_by = u.id WHERE j.id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
+    const html = buildAcRepairReportHtml(rows[0], req.branch);
+    try {
+      const pdf = await htmlToPdf(html);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${rows[0].job_number}.pdf"`);
+      return res.end(pdf);
+    } catch (e) {
+      if (e instanceof PdfUnavailableError) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-PDF-Fallback', 'html');
+        return res.send(html);
+      }
+      throw e;
+    }
   } catch (err) { serverError(res, err); }
 });
 
