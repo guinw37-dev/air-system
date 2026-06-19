@@ -124,6 +124,42 @@ function ProgressRow({ label, value, total, color }) {
   );
 }
 
+// ── เป้าหมายล้างเดือนนี้ (เป้า vs ล้างได้ vs เหลือ) ───────────────────────────
+const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม', '': 'รวม' };
+function TargetSection({ navigate }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    const m = dayjs().format('YYYY-MM');
+    api.get('/targets/progress', { params: { month: m } }).then((r) => setData(r.data)).catch(() => {});
+  }, []);
+  if (!data || !data.targets?.length) return null;
+  return (
+    <Card title={`เป้าหมายล้างเดือนนี้ (${dayjs().format('MM/')}${dayjs().year() + 543})`}
+      action={<button onClick={() => navigate('/targets')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
+      <div className="space-y-3">
+        {data.targets.map((t) => {
+          const tone = t.pct >= 100 ? C.teal : t.pct >= 60 ? C.sky : '#f59e0b';
+          return (
+            <div key={t.id}>
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-slate-700">{t.zone} <span className="text-slate-400">· {WT_LABEL[t.work_type || ''] || t.work_type}</span></span>
+                <span className="text-slate-500">
+                  <b className="text-slate-800">{t.done}</b>/{t.monthly_target}
+                  {t.remaining > 0 && <span className="text-amber-600"> · เหลือ {t.remaining}</span>}
+                  <b className="ml-2" style={{ color: tone }}>{t.pct}%</b>
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, t.pct)}%`, background: tone }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 // ── แอร์เสื่อมสภาพ / ต้องแก้ — fetched on its own (heavier query) ──────────────
 function ConditionSection({ navigate }) {
   const [data, setData] = useState(null);
@@ -188,6 +224,9 @@ function BranchDashboard({ b, navigate }) {
         <Highlight icon={ReceiptText} value={b.wo_ready}   label="รอวางบิล"   tone="blue" />
         <Highlight icon={Clock}       value={b.wo_billed}  label="วางบิลแล้ว" tone="teal" />
       </div>
+
+      {/* เป้าหมายล้างเดือนนี้ */}
+      <TargetSection navigate={navigate} />
 
       {/* two donuts: ซ่อม + ล้าง */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -23,6 +23,7 @@ const NAV = [
       { to: '/simple-wo?view=all',                     label: 'ทั้งหมด' },
     ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
+  { path: '/targets',      icon: CalendarCheck,    label: 'เป้าหมายล้าง',   roles: ['admin', 'super_admin'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin', 'super_admin'] },

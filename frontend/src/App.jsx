@@ -25,6 +25,7 @@ import Branches from './pages/Branches'
 import Landing from './pages/Landing'
 import SelectBranch from './pages/SelectBranch'
 import Dashboard from './pages/Dashboard'
+import Targets from './pages/Targets'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -97,6 +98,9 @@ export default function App() {
         } />
         <Route path="/master" element={
           <RequireAuth><RequireRole roles={['admin']}><MasterData /></RequireRole></RequireAuth>
+        } />
+        <Route path="/targets" element={
+          <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Targets /></RequireRole></RequireAuth>
         } />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Users /></RequireRole></RequireAuth>
