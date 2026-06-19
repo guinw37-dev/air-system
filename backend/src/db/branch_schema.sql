@@ -304,6 +304,9 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   start_time TIME,
   end_time   TIME,
   team_comment JSONB DEFAULT '{}'::jsonb,
+  -- สภาพแอร์/แจ้งเปลี่ยนอะไหล่ (ไม่ใช่งานซ่อม — แค่ประเมินตอนล้าง):
+  -- { issues:[keys], issues_other, health_pct, health_reason, priority }
+  condition    JSONB DEFAULT '{}'::jsonb,
   photo_urls   JSONB DEFAULT '[]'::jsonb,
   gallery_urls JSONB DEFAULT '[]'::jsonb,
   ac_info      JSONB DEFAULT '{}'::jsonb,

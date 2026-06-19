@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import api from '../api/client';
 import { useTenantStore } from '../store/tenant';
 import { useAuthStore } from '../store/auth';
+import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition';
 import Layout from '../components/Layout';
 
 // ── blue-family palette ───────────────────────────────────────────────────────
@@ -123,6 +124,54 @@ function ProgressRow({ label, value, total, color }) {
   );
 }
 
+// ── แอร์เสื่อมสภาพ / ต้องแก้ — fetched on its own (heavier query) ──────────────
+function ConditionSection({ navigate }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get('/simple-wo/condition-summary').then((r) => setData(r.data)).catch(() => {});
+  }, []);
+  if (!data || !data.total) return null;
+  const issues = Object.entries(data.byIssue || {}).sort((a, b) => b[1] - a[1]);
+  const prio = data.byPriority || {};
+  return (
+    <Card title={`แอร์เสื่อมสภาพ / ต้องแก้ (${data.total})`}
+      action={<button onClick={() => navigate('/simple-wo?view=all')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
+      {/* priority chips */}
+      <div className="flex gap-2 mb-3">
+        {['urgent', 'normal', 'low'].filter((p) => prio[p]).map((p) => (
+          <span key={p} className="text-xs font-medium px-2.5 py-1 rounded-lg text-white" style={{ background: PRIORITY_COLOR[p] }}>
+            {PRIORITY_LABEL[p]} {prio[p]}
+          </span>
+        ))}
+      </div>
+      {/* by issue */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3">
+        {issues.map(([k, n]) => (
+          <div key={k} className="flex items-center justify-between text-sm">
+            <span className="text-slate-600 truncate">{CONDITION_ISSUE_LABEL[k] || k}</span>
+            <b className="text-slate-800">{n}</b>
+          </div>
+        ))}
+      </div>
+      {/* per-location list (top 6) */}
+      <div className="border-t border-slate-100 pt-2 space-y-1">
+        {(data.items || []).slice(0, 6).map((it) => (
+          <button key={it.id} onClick={() => navigate(`/simple-wo/${it.id}`)}
+            className="w-full text-left flex items-center gap-2 text-sm hover:bg-blue-50/40 rounded px-1.5 py-1">
+            {it.condition?.priority && (
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: PRIORITY_COLOR[it.condition.priority] || '#94a3b8' }} />
+            )}
+            <span className="text-slate-700 truncate flex-1">
+              {[it.building, it.room || it.location].filter(Boolean).join(' › ') || it.wo_number}
+            </span>
+            <span className="text-xs text-slate-400">{(it.condition?.issues || []).length} รายการ</span>
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── branch-mode rich dashboard ───────────────────────────────────────────────
 function BranchDashboard({ b, navigate }) {
   const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
@@ -204,6 +253,8 @@ function BranchDashboard({ b, navigate }) {
           </div>
         </Card>
       </div>
+
+      <ConditionSection navigate={navigate} />
     </div>
   );
 }

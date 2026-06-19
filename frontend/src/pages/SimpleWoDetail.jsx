@@ -6,6 +6,7 @@ import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
+import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
 import { useAuthStore } from '../store/auth'
 
 // Each role signs ONE slot on a ใบงาน (backend enforces it too); admin/super any.
@@ -145,6 +146,7 @@ export default function SimpleWoDetail() {
 
   const cv = wo.checklist_values || {}
   const tc = wo.team_comment || {}
+  const cond = wo.condition || {}
   const ac = wo.ac_info || {}
   const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่นๆ' }
   const photos = Array.isArray(wo.photo_urls) ? wo.photo_urls : []
@@ -329,6 +331,37 @@ export default function SimpleWoDetail() {
           </div>
         </div>
         )}
+
+        {/* สภาพแอร์ / แจ้งเปลี่ยนอะไหล่ */}
+        {!isGrid && cond && (cond.issues?.length || cond.issues_other || cond.health_reason || cond.priority) ? (
+        <div className="card">
+          <h2 className="section-header mb-3">สภาพแอร์ / แจ้งเปลี่ยนอะไหล่</h2>
+          {cond.priority && (
+            <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full text-white mb-2"
+              style={{ background: PRIORITY_COLOR[cond.priority] || '#94a3b8' }}>
+              {PRIORITY_LABEL[cond.priority] || cond.priority}
+            </span>
+          )}
+          {(cond.issues?.length || cond.issues_other) ? (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {(cond.issues || []).map((k) => (
+                <span key={k} className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5">
+                  {CONDITION_ISSUE_LABEL[k] || k}
+                </span>
+              ))}
+              {cond.issues_other && (
+                <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5">{cond.issues_other}</span>
+              )}
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-1 text-sm">
+            {cond.health_pct !== '' && cond.health_pct != null && (
+              <InfoRow label="สภาพโดยรวม" value={`${cond.health_pct}%`} />
+            )}
+            {cond.health_reason && <InfoRow label="เหตุผล" value={cond.health_reason} />}
+          </div>
+        </div>
+        ) : null}
 
         {/* Photos — grouped ก่อน / หลัง */}
         {photos.length > 0 && (

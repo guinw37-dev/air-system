@@ -79,6 +79,8 @@ async function provisionBranchSchema(schemaName) {
                        'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
       await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ${col}`);
     }
+    // สภาพแอร์/แจ้งเปลี่ยนอะไหล่ assessment (added after the table shipped).
+    await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS condition JSONB DEFAULT '{}'::jsonb`);
     // vw_simple_wo_minor/_fan reference ac_type AND changed column names/order
     // (added สถานที่/ประเภท, split ห้อง/เลขเครื่อง). DROP them FIRST: Postgres can't
     // ALTER a column type while a view depends on it ("cannot alter type of a
