@@ -20,17 +20,17 @@ export default function Landing() {
       .finally(() => setLoading(false))
   }, [])
 
+  const PROD_BASE = 'tw-carework.online'
   const enter = (slug) => {
     const host = window.location.hostname
-    const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(host)
-    // On a real apex domain (e.g. tw-carework.online) go to the branch's own
-    // subdomain (pts1.tw-carework.online). Otherwise (localhost / IP / the
-    // multi-label *.sslip.io dev host) fall back to ?branch= which the SPA
-    // resolves without per-branch DNS.
-    const isRealApex = !isIp && host !== 'localhost' && host.split('.').length === 2
-    if (isRealApex) {
-      window.location.href = `${window.location.protocol}//${slug}.${host}/login`
+    // On the production domain — apex (tw-carework.online) OR any branch subdomain
+    // (salawakan.tw-carework.online) — always jump to the chosen branch's OWN
+    // subdomain so the host matches the branch. (Bug: switching from a subdomain
+    // used to only set ?branch=, leaving the old subdomain in the address bar.)
+    if (host === PROD_BASE || host.endsWith(`.${PROD_BASE}`)) {
+      window.location.href = `${window.location.protocol}//${slug}.${PROD_BASE}/login`
     } else {
+      // localhost / IP / *.sslip.io dev hosts have no per-branch DNS → ?branch=.
       const url = new URL(window.location.href)
       url.searchParams.set('branch', slug)
       url.pathname = '/login'
