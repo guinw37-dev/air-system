@@ -57,6 +57,8 @@ function JobFormModal({ initial, onSave, onClose }) {
   // Distinct locations already used on this branch's jobs — covers branches whose
   // master data is empty (e.g. imported jobs on a fresh schema).
   const [locs, setLocs] = useState({ buildings: [], floors: [], departments: [] });
+  // Full hospital location master from repair-system (อาคาร→ชั้น→แผนก, cascading).
+  const [repairHier, setRepairHier] = useState([]);
 
   useEffect(() => {
     let alive = true;
@@ -69,13 +71,22 @@ function JobFormModal({ initial, onSave, onClose }) {
     api.get('/ac-repair-jobs/locations')
       .then((r) => { if (alive) setLocs(r.data || { buildings: [], floors: [], departments: [] }); })
       .catch(() => {});
+    api.get('/ac-repair-jobs/repair-locations')
+      .then((r) => { if (alive) setRepairHier(r.data?.buildings || []); })
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
 
   const uniq = (a) => [...new Set(a.filter(Boolean))];
-  const buildingOpts = uniq([...buildings.map((b) => b.name), ...(locs.buildings || [])]);
-  const floorOpts = uniq([...floors.map((f) => f.name), ...(locs.floors || [])]);
-  const roomOpts = uniq([...rooms.map((r) => r.name), ...(locs.departments || [])]);
+  // Cascade off the repair-system hierarchy when the chosen อาคาร matches one.
+  const hierB = repairHier.find((h) => h.name === form.building);
+  const hierFloors = (hierB?.floors || []).map((f) => f.name);
+  const hierDepts = (hierB?.departments || [])
+    .filter((d) => !form.floor || d.floor_id === form.floor || d.floor_id === '')
+    .map((d) => d.name);
+  const buildingOpts = uniq([...buildings.map((b) => b.name), ...repairHier.map((h) => h.name), ...(locs.buildings || [])]);
+  const floorOpts = uniq([...floors.map((f) => f.name), ...hierFloors, ...(locs.floors || [])]);
+  const roomOpts = uniq([...rooms.map((r) => r.name), ...hierDepts, ...(locs.departments || [])]);
 
   const buildingId = buildings.find((b) => b.name === form.building)?.id;
   useEffect(() => {

@@ -91,6 +91,20 @@ router.get('/locations', async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── GET /repair-locations — hospital อาคาร/ชั้น/แผนก master from repair-system,
+// for cascading dropdowns on the form. Read-only; never blocks (returns empty on
+// any failure so the form still works offline / when the bridge is off).
+router.get('/repair-locations', async (req, res) => {
+  const slug = req.branch?.repair_slug;
+  if (!configured() || !slug) return res.json({ buildings: [] });
+  try {
+    const data = await callRepair('GET', slug, '/buildings', { actor: req.user?.name || 'air' });
+    res.json({ buildings: Array.isArray(data) ? data : [] });
+  } catch (e) {
+    res.json({ buildings: [] });
+  }
+});
+
 // ── GET /pending-repair — fetch active AC jobs from repair-system (import UI)
 router.get('/pending-repair', async (req, res) => {
   if (!configured()) return res.json({ ok: false, jobs: [], reason: 'ยังไม่ตั้งค่า REPAIR_API_URL / REPAIR_SERVICE_KEY' });
