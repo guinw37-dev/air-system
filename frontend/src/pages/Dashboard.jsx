@@ -124,27 +124,40 @@ function ProgressRow({ label, value, total, color }) {
   );
 }
 
-// ── เป้าหมายล้างเดือนนี้ (เป้า vs ล้างได้ vs เหลือ) ───────────────────────────
+// ── เป้าหมายล้าง (เป้า+คงค้าง vs ล้างได้ vs เหลือ) — เลือกเดือนย้อนหลังได้ ──────
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม', '': 'รวม' };
+const monthOptions = () => Array.from({ length: 6 }, (_, i) => dayjs().subtract(i, 'month').format('YYYY-MM'));
+const monthLabel = (m) => `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}`;
 function TargetSection({ navigate }) {
+  const [month, setMonth] = useState(dayjs().format('YYYY-MM'));
   const [data, setData] = useState(null);
   useEffect(() => {
-    const m = dayjs().format('YYYY-MM');
-    api.get('/targets/progress', { params: { month: m } }).then((r) => setData(r.data)).catch(() => {});
-  }, []);
+    api.get('/targets/progress', { params: { month } }).then((r) => setData(r.data)).catch(() => {});
+  }, [month]);
   if (!data || !data.targets?.length) return null;
   return (
-    <Card title={`เป้าหมายล้างเดือนนี้ (${dayjs().format('MM/')}${dayjs().year() + 543})`}
-      action={<button onClick={() => navigate('/targets')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
+    <Card title="เป้าหมายล้าง"
+      action={
+        <div className="flex items-center gap-2">
+          <select value={month} onChange={(e) => setMonth(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
+            {monthOptions().map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+          <button onClick={() => navigate('/targets')} className="text-blue-600"><ArrowUpRight size={16} /></button>
+        </div>
+      }>
       <div className="space-y-3">
         {data.targets.map((t) => {
           const tone = t.pct >= 100 ? C.teal : t.pct >= 60 ? C.sky : '#f59e0b';
           return (
             <div key={t.id}>
               <div className="flex items-center justify-between text-sm mb-1">
-                <span className="text-slate-700">{t.zone} <span className="text-slate-400">· {WT_LABEL[t.work_type || ''] || t.work_type}</span></span>
+                <span className="text-slate-700">
+                  {t.zone} <span className="text-slate-400">· {WT_LABEL[t.work_type || ''] || t.work_type}</span>
+                  {t.carry_in > 0 && <span className="ml-1.5 text-xs text-amber-600">+คงค้าง {t.carry_in}</span>}
+                </span>
                 <span className="text-slate-500">
-                  <b className="text-slate-800">{t.done}</b>/{t.monthly_target}
+                  <b className="text-slate-800">{t.done}</b>/{t.effective_target}
                   {t.remaining > 0 && <span className="text-amber-600"> · เหลือ {t.remaining}</span>}
                   <b className="ml-2" style={{ color: tone }}>{t.pct}%</b>
                 </span>
