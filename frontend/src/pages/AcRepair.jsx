@@ -54,6 +54,9 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [buildings, setBuildings] = useState([]);
   const [floors, setFloors] = useState([]);
   const [rooms, setRooms] = useState([]);
+  // Distinct locations already used on this branch's jobs — covers branches whose
+  // master data is empty (e.g. imported jobs on a fresh schema).
+  const [locs, setLocs] = useState({ buildings: [], floors: [], departments: [] });
 
   useEffect(() => {
     let alive = true;
@@ -63,8 +66,16 @@ function JobFormModal({ initial, onSave, onClose }) {
         : { data: [] }))
       .then((r) => { if (alive) setBuildings(r.data || []); })
       .catch(() => {});
+    api.get('/ac-repair-jobs/locations')
+      .then((r) => { if (alive) setLocs(r.data || { buildings: [], floors: [], departments: [] }); })
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
+
+  const uniq = (a) => [...new Set(a.filter(Boolean))];
+  const buildingOpts = uniq([...buildings.map((b) => b.name), ...(locs.buildings || [])]);
+  const floorOpts = uniq([...floors.map((f) => f.name), ...(locs.floors || [])]);
+  const roomOpts = uniq([...rooms.map((r) => r.name), ...(locs.departments || [])]);
 
   const buildingId = buildings.find((b) => b.name === form.building)?.id;
   useEffect(() => {
@@ -107,18 +118,18 @@ function JobFormModal({ initial, onSave, onClose }) {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">อาคาร</label>
               <input list="acr-buildings" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.building} onChange={set('building')} placeholder="เลือกหรือพิมพ์อาคาร" />
-              <datalist id="acr-buildings">{buildings.map((b) => <option key={b.id} value={b.name} />)}</datalist>
+              <datalist id="acr-buildings">{buildingOpts.map((n) => <option key={n} value={n} />)}</datalist>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ชั้น</label>
               <input list="acr-floors" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.floor} onChange={set('floor')} placeholder="เลือกหรือพิมพ์ชั้น" />
-              <datalist id="acr-floors">{floors.map((f) => <option key={f.id} value={f.name} />)}</datalist>
+              <datalist id="acr-floors">{floorOpts.map((n) => <option key={n} value={n} />)}</datalist>
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">แผนก / ห้อง</label>
             <input list="acr-rooms" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department} onChange={set('department')} placeholder="เลือกหรือพิมพ์แผนก/ห้อง" />
-            <datalist id="acr-rooms">{rooms.map((r) => <option key={r.id} value={r.name} />)}</datalist>
+            <datalist id="acr-rooms">{roomOpts.map((n) => <option key={n} value={n} />)}</datalist>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
