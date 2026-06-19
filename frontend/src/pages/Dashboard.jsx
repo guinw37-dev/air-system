@@ -135,6 +135,10 @@ function TargetSection({ navigate }) {
     api.get('/targets/progress', { params: { month } }).then((r) => setData(r.data)).catch(() => {});
   }, [month]);
   if (!data || !data.targets?.length) return null;
+  // จำนวนต้องล้าง/วัน = เหลือ ÷ วันที่เหลือในเดือน (เฉพาะเดือนปัจจุบัน, ตัดสิ้นเดือน)
+  const isThisMonth = month === dayjs().format('YYYY-MM');
+  const daysLeft = isThisMonth ? Math.max(1, dayjs().daysInMonth() - dayjs().date() + 1) : 0;
+  const perDay = (remaining) => (isThisMonth && remaining > 0 ? Math.ceil(remaining / daysLeft) : 0);
   return (
     <Card title="เป้าหมายล้าง"
       action={
@@ -165,6 +169,12 @@ function TargetSection({ navigate }) {
               <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                 <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, t.pct)}%`, background: tone }} />
               </div>
+              {perDay(t.remaining) > 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  ต้องล้าง <b className="text-blue-600">{perDay(t.remaining)}</b> เครื่อง/วัน
+                  <span className="text-slate-400"> (เหลือ {daysLeft} วันในเดือนนี้)</span>
+                </p>
+              )}
             </div>
           );
         })}
