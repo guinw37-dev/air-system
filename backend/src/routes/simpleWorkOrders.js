@@ -367,8 +367,8 @@ router.post('/', authMiddleware, async (req, res) => {
             team_comment, photo_urls, gallery_urls, ac_info,
             sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
             sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
-            grid_rows, recommendation, location, ac_type, updated_at
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
+            grid_rows, recommendation, location, ac_type, condition, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,NOW())
           RETURNING id, wo_number
         `, [
           wo_number, req.user.id, b.tech_name || null, b.work_date || null,
@@ -385,7 +385,7 @@ router.post('/', authMiddleware, async (req, res) => {
           sig.sig_supervisor, sig.sig_supervisor_name,
           sig.sig_building, sig.sig_building_name,
           JSON.stringify(b.grid_rows || []), b.recommendation || null,
-          b.location || null, b.ac_type || null,
+          b.location || null, b.ac_type || null, JSON.stringify(b.condition || {}),
         ]));
         await client.query('COMMIT');
         break;
@@ -441,6 +441,31 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
+// ── GET /condition-summary — แอร์เสื่อมสภาพ/แจ้งเปลี่ยนอะไหล่ across all ใบงาน.
+// Powers the Dashboard "ต้องแก้อะไร จำนวนเท่าไร ที่ไหน + Priority" view.
+router.get('/condition-summary', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT id, wo_number, building, location, client_name, asset_code, room,
+             work_date, work_type, condition
+      FROM simple_work_orders
+      WHERE deleted_at IS NULL AND (
+        jsonb_array_length(COALESCE(condition->'issues','[]'::jsonb)) > 0
+        OR COALESCE(condition->>'priority','') <> ''
+        OR COALESCE(condition->>'health_reason','') <> ''
+        OR COALESCE(condition->>'issues_other','') <> '')
+      ORDER BY work_date DESC NULLS LAST, id DESC`);
+    const byIssue = {}, byPriority = {};
+    for (const r of rows) {
+      const c = r.condition || {};
+      for (const k of (Array.isArray(c.issues) ? c.issues : [])) byIssue[k] = (byIssue[k] || 0) + 1;
+      const p = c.priority || 'normal';
+      byPriority[p] = (byPriority[p] || 0) + 1;
+    }
+    res.json({ total: rows.length, byIssue, byPriority, items: rows });
+  } catch (err) { serverError(res, err); }
+});
+
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(`
@@ -506,7 +531,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_engineer=$17, sig_engineer_name=$18, sig_department=$19, sig_department_name=$20,
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
-        grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, pts_zone=$33, updated_at=NOW()
+        grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, pts_zone=$33,
+        condition=$34, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -524,6 +550,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       sig.sig_supervisor, sig.sig_supervisor_name,
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
       b.location || null, b.ac_type || null, b.pts_zone || null,
+      JSON.stringify(b.condition || {}),
     ]);
     res.json(upd[0]);
   } catch (err) { serverError(res, err); }

@@ -5,6 +5,7 @@ import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
 import api, { uploadsBase } from '../api/client'
 import { compressImage } from '../lib/image'
+import { CONDITION_ISSUES, PRIORITIES } from '../lib/condition'
 import { useAuthStore } from '../store/auth'
 
 
@@ -104,6 +105,13 @@ export default function SimpleWoForm() {
     internal_detail: '',
   })
 
+  // สภาพแอร์ / แจ้งเปลี่ยนอะไหล่ (ไม่ใช่งานซ่อม — ประเมินตอนล้าง)
+  const CONDITION_DEFAULT = { issues: [], issues_other: '', health_pct: '', health_reason: '', priority: '' }
+  const [condition, setCondition] = useState(CONDITION_DEFAULT)
+  const toggleIssue = (key) => setCondition((c) => ({
+    ...c, issues: c.issues.includes(key) ? c.issues.filter((k) => k !== key) : [...c.issues, key],
+  }))
+
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },
     department: { name: '', data: '' },
@@ -161,6 +169,7 @@ export default function SimpleWoForm() {
             internal_degraded: !!w.team_comment?.internal_degraded,
             internal_detail: w.team_comment?.internal_detail || '',
           })
+          setCondition({ ...CONDITION_DEFAULT, ...(w.condition || {}), issues: Array.isArray(w.condition?.issues) ? w.condition.issues : [] })
           setSignatures({
             engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
             department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
@@ -316,6 +325,7 @@ export default function SimpleWoForm() {
       internal_degraded: false,
       internal_detail: '',
     })
+    setCondition(CONDITION_DEFAULT)
     setSignatures({
       engineer:   { name: '', data: '' },
       department: { name: '', data: '' },
@@ -358,6 +368,7 @@ export default function SimpleWoForm() {
         start_time: header.start_time,
         end_time: header.end_time,
         team_comment: teamComment,
+        condition,
         photo_urls: photoUrls,
         gallery_urls: galleryUrls,
         sig_engineer: signatures.engineer.data,
@@ -689,6 +700,50 @@ export default function SimpleWoForm() {
                 onChange={(e) => setTeamComment({ ...teamComment, internal_detail: e.target.value })}
               />
             )}
+          </div>
+        </div>
+        )}
+
+        {/* ── สภาพแอร์ / แจ้งเปลี่ยนอะไหล่ (major only) ── */}
+        {!isGrid && (
+        <div className="card flex flex-col gap-3">
+          <h2 className="section-header">สภาพแอร์ / แจ้งเปลี่ยนอะไหล่</h2>
+          <p className="text-xs text-ink-muted -mt-1">แอร์ใช้งานได้ แต่อะไหล่เสื่อม — แจ้งให้พิจารณาเปลี่ยน (ไม่ใช่งานซ่อม)</p>
+          <div>
+            <label className="label">รายการที่เสื่อมสภาพ</label>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {CONDITION_ISSUES.map((it) => (
+                <CheckRow key={it.key} label={it.label}
+                  checked={condition.issues.includes(it.key)} onChange={() => toggleIssue(it.key)} />
+              ))}
+            </div>
+          </div>
+          <Text label="อื่นๆ (ระบุ)" value={condition.issues_other} onChange={(v) => setCondition((c) => ({ ...c, issues_other: v }))} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">สภาพแอร์โดยรวม (%)</label>
+              <input className="input" inputMode="numeric" placeholder="เช่น 70"
+                value={condition.health_pct} onChange={(e) => setCondition((c) => ({ ...c, health_pct: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">ความเร่งด่วน</label>
+              <div className="flex gap-2">
+                {PRIORITIES.map((p) => (
+                  <button key={p.key} type="button"
+                    onClick={() => setCondition((c) => ({ ...c, priority: c.priority === p.key ? '' : p.key }))}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      condition.priority === p.key ? 'text-white' : 'bg-white text-ink-muted border-line'}`}
+                    style={condition.priority === p.key ? { background: p.color, borderColor: p.color } : undefined}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="label">เหตุผล / รายละเอียด (ทำไมควรเปลี่ยน)</label>
+            <textarea className="input" rows={2} placeholder="เช่น คอยล์เริ่มผุ น้ำหยด ใช้ต่อเสี่ยงเสียหาย"
+              value={condition.health_reason} onChange={(e) => setCondition((c) => ({ ...c, health_reason: e.target.value }))} />
           </div>
         </div>
         )}
