@@ -38,7 +38,7 @@ async function lookupBranch(label) {
   const hit = _cache.get(label);
   if (hit && hit.exp > Date.now()) return hit.val;
   const { rows } = await pool.query(
-    `SELECT id, slug, name, schema_name, repair_slug FROM clients
+    `SELECT id, slug, name, schema_name, repair_slug, force_camera FROM clients
      WHERE active = true AND (subdomain = $1 OR slug = $1) LIMIT 1`,
     [label]
   );

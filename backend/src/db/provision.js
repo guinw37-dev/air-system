@@ -19,6 +19,9 @@ async function migratePublic(client) {
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS schema_name VARCHAR(63)`);
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS card_image TEXT`);
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS repair_slug VARCHAR(63)`);
+    // force_camera = บังคับถ่ายรูปสด + timestamp (ห้ามเลือกจาก gallery). เปิดเฉพาะ
+    // สาขาที่ต้องการ (เช่น ศรีราชา); สาขาอื่น false = อัปจาก gallery ได้เหมือนเดิม.
+    await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS force_camera BOOLEAN DEFAULT false`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_slug        ON clients(slug)        WHERE slug        IS NOT NULL`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_subdomain   ON clients(subdomain)   WHERE subdomain   IS NOT NULL`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_schema_name ON clients(schema_name) WHERE schema_name IS NOT NULL`);
