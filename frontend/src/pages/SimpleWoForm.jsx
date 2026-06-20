@@ -112,6 +112,14 @@ export default function SimpleWoForm() {
     ...c, issues: c.issues.includes(key) ? c.issues.filter((k) => k !== key) : [...c.issues, key],
   }))
 
+  // รหัสเครื่องที่เคยล้าง → datalist กันกรอกรหัสผิด (พี่ยิม)
+  const [unitCodes, setUnitCodes] = useState([])
+  useEffect(() => {
+    let alive = true
+    api.get('/simple-wo/unit-codes').then((r) => { if (alive) setUnitCodes(r.data || []) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },
     department: { name: '', data: '' },
@@ -424,7 +432,15 @@ export default function SimpleWoForm() {
             <Text label="ชั้น" value={header.floor} onChange={(v) => setHeader({ ...header, floor: v })} />
             {/* ห้อง + เลขเครื่อง: major = header; ล้างย่อย/พัดลม = ต่อเครื่องใน "รายการเครื่อง" */}
             {!isGrid && <Text label="ห้อง" value={header.room} onChange={(v) => setHeader({ ...header, room: v })} />}
-            {!isGrid && <Text label="เลขเครื่อง" value={header.asset_code} onChange={(v) => setHeader({ ...header, asset_code: v })} />}
+            {!isGrid && (
+              <div>
+                <label className="label">เลขเครื่อง</label>
+                <input list="swo-unit-codes" className="input" value={header.asset_code}
+                  onChange={(e) => setHeader({ ...header, asset_code: e.target.value })}
+                  placeholder="เลือกหรือพิมพ์รหัสเครื่อง" />
+                <datalist id="swo-unit-codes">{unitCodes.map((c) => <option key={c} value={c} />)}</datalist>
+              </div>
+            )}
             <div>
               <label className="label">เวลาเริ่ม</label>
               <input type="time" className="input" value={header.start_time} onChange={(e) => setHeader({ ...header, start_time: e.target.value })} />
