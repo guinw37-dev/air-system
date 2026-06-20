@@ -120,11 +120,13 @@ export default function SimpleWoForm() {
   // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
   const forceCamera = useTenantStore((s) => s.forceCamera)
 
-  // รหัสเครื่องที่เคยล้าง → datalist กันกรอกรหัสผิด (พี่ยิม)
+  // รหัสเครื่อง + สถานที่ ที่เคยใช้ → datalist กันกรอกผิด (พี่ยิม)
   const [unitCodes, setUnitCodes] = useState([])
+  const [locations, setLocations] = useState([])
   useEffect(() => {
     let alive = true
     api.get('/simple-wo/unit-codes').then((r) => { if (alive) setUnitCodes(r.data || []) }).catch(() => {})
+    api.get('/simple-wo/locations').then((r) => { if (alive) setLocations(r.data || []) }).catch(() => {})
     return () => { alive = false }
   }, [])
 
@@ -440,7 +442,13 @@ export default function SimpleWoForm() {
                 <option value="PTS2" />
               </datalist>
             </div>
-            <Text label="สถานที่ (เว้นว่าง = ใช้ชื่อลูกค้า)" value={header.location} onChange={(v) => setHeader({ ...header, location: v })} />
+            <div>
+              <label className="label">สถานที่ (เว้นว่าง = ใช้ชื่อลูกค้า)</label>
+              <input list="swo-locations" className="input" value={header.location}
+                onChange={(e) => setHeader({ ...header, location: e.target.value })}
+                placeholder="เลือกหรือพิมพ์ เช่น คลินิกบางพระ" />
+              <datalist id="swo-locations">{locations.map((l) => <option key={l} value={l} />)}</datalist>
+            </div>
             <Text label="อาคาร" value={header.building} onChange={(v) => setHeader({ ...header, building: v })} />
             <Text label="ชั้น" value={header.floor} onChange={(v) => setHeader({ ...header, floor: v })} />
             {/* ห้อง + เลขเครื่อง: major = header; ล้างย่อย/พัดลม = ต่อเครื่องใน "รายการเครื่อง" */}
