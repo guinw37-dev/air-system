@@ -458,6 +458,18 @@ router.get('/unit-codes', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── GET /locations — distinct สถานที่ ทุกใบงาน (datalist กันพิมพ์สถานที่ผิด —
+// คลินิกบางพระ/บ่อวิน ฯลฯ ต้องสะกดตรงกันเพื่อรวมยอดต่อสถานที่ถูก).
+router.get('/locations', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT DISTINCT TRIM(location) AS loc FROM simple_work_orders
+      WHERE deleted_at IS NULL AND COALESCE(TRIM(location),'') <> ''
+      ORDER BY loc`);
+    res.json(rows.map((r) => r.loc));
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /unit-history?code= — ประวัติการล้างของเครื่องหนึ่งตัว (major + grid) ──
 router.get('/unit-history', authMiddleware, async (req, res) => {
   const code = String(req.query.code || '').trim();
@@ -493,14 +505,19 @@ router.get('/condition-summary', authMiddleware, async (req, res) => {
         OR COALESCE(condition->>'health_reason','') <> ''
         OR COALESCE(condition->>'issues_other','') <> '')
       ORDER BY work_date DESC NULLS LAST, id DESC`);
-    const byIssue = {}, byPriority = {};
+    const byIssue = {}, byPriority = {}, byLocation = {};
     for (const r of rows) {
       const c = r.condition || {};
       for (const k of (Array.isArray(c.issues) ? c.issues : [])) byIssue[k] = (byIssue[k] || 0) + 1;
       const p = c.priority || 'normal';
       byPriority[p] = (byPriority[p] || 0) + 1;
+      // "ที่ไหนบ้าง" — รวมจำนวน + นับ priority เร่งด่วน ต่อสถานที่ (location → อาคาร → ลูกค้า)
+      const loc = (r.location || r.building || r.client_name || 'ไม่ระบุ').trim() || 'ไม่ระบุ';
+      const slot = byLocation[loc] || (byLocation[loc] = { count: 0, urgent: 0 });
+      slot.count += 1;
+      if (p === 'urgent') slot.urgent += 1;
     }
-    res.json({ total: rows.length, byIssue, byPriority, items: rows });
+    res.json({ total: rows.length, byIssue, byPriority, byLocation, items: rows });
   } catch (err) { serverError(res, err); }
 });
 

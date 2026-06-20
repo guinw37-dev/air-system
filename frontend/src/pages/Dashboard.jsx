@@ -192,6 +192,7 @@ function ConditionSection({ navigate }) {
   if (!data || !data.total) return null;
   const issues = Object.entries(data.byIssue || {}).sort((a, b) => b[1] - a[1]);
   const prio = data.byPriority || {};
+  const locs = Object.entries(data.byLocation || {}).sort((a, b) => (b[1].urgent - a[1].urgent) || (b[1].count - a[1].count));
   return (
     <Card title={`แอร์เสื่อมสภาพ / ต้องแก้ (${data.total})`}
       action={<button onClick={() => navigate('/simple-wo?view=all')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
@@ -212,7 +213,26 @@ function ConditionSection({ navigate }) {
           </div>
         ))}
       </div>
-      {/* per-location list (top 6) */}
+      {/* สรุปตามสถานที่ — ที่ไหนบ้าง กี่เครื่อง (เร่งด่วนกี่เครื่อง) */}
+      {locs.length > 0 && (
+        <div className="border-t border-slate-100 pt-2 mb-2">
+          <div className="text-xs text-slate-400 mb-1">ตามสถานที่</div>
+          <div className="space-y-1">
+            {locs.map(([loc, v]) => (
+              <div key={loc} className="flex items-center justify-between text-sm">
+                <span className="text-slate-600 truncate flex-1">{loc}</span>
+                {v.urgent > 0 && (
+                  <span className="text-[11px] font-medium text-white px-1.5 py-0.5 rounded mr-2" style={{ background: PRIORITY_COLOR.urgent }}>
+                    เร่ง {v.urgent}
+                  </span>
+                )}
+                <b className="text-slate-800">{v.count}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* รายการล่าสุด (top 6) คลิกดูใบงาน */}
       <div className="border-t border-slate-100 pt-2 space-y-1">
         {(data.items || []).slice(0, 6).map((it) => (
           <button key={it.id} onClick={() => navigate(`/simple-wo/${it.id}`)}
