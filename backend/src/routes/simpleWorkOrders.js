@@ -441,6 +441,44 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // ── GET /api/simple-wo/:id ──────────────────────────────────────────────────
+// ── GET /unit-codes — distinct รหัสเครื่อง ทุกตัวที่เคยล้าง (major asset_code +
+// grid machine_no) สำหรับ dropdown เลือกเครื่องดูประวัติ.
+router.get('/unit-codes', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT DISTINCT code FROM (
+        SELECT asset_code AS code FROM simple_work_orders
+          WHERE deleted_at IS NULL AND COALESCE(asset_code,'') <> ''
+        UNION
+        SELECT g->>'machine_no' FROM simple_work_orders s,
+               jsonb_array_elements(COALESCE(s.grid_rows,'[]'::jsonb)) g
+          WHERE s.deleted_at IS NULL AND COALESCE(g->>'machine_no','') <> ''
+      ) x ORDER BY code`);
+    res.json(rows.map((r) => r.code));
+  } catch (err) { serverError(res, err); }
+});
+
+// ── GET /unit-history?code= — ประวัติการล้างของเครื่องหนึ่งตัว (major + grid) ──
+router.get('/unit-history', authMiddleware, async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'ต้องระบุรหัสเครื่อง (code)' });
+  try {
+    const { rows } = await req.db(`
+      SELECT id, wo_number, work_date, work_type, building, floor, room, client_name, result, tech_name
+      FROM simple_work_orders
+      WHERE deleted_at IS NULL AND (
+        asset_code = $1
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(grid_rows,'[]'::jsonb)) g
+                   WHERE g->>'machine_no' = $1))
+      ORDER BY work_date DESC NULLS LAST, id DESC`, [code]);
+    const yr = new Date().getFullYear();
+    const thisYear = rows.filter((r) => r.work_date && new Date(r.work_date).getFullYear() === yr);
+    const byType = {};
+    for (const r of thisYear) byType[r.work_type || 'major'] = (byType[r.work_type || 'major'] || 0) + 1;
+    res.json({ code, total: rows.length, thisYearCount: thisYear.length, byType, items: rows });
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /condition-summary — แอร์เสื่อมสภาพ/แจ้งเปลี่ยนอะไหล่ across all ใบงาน.
 // Powers the Dashboard "ต้องแก้อะไร จำนวนเท่าไร ที่ไหน + Priority" view.
 router.get('/condition-summary', authMiddleware, async (req, res) => {
