@@ -37,6 +37,7 @@ export const useTenantStore = create((set, get) => ({
   isBranch: false,
   slug: null,
   name: null,
+  forceCamera: false,   // บังคับถ่ายสด+timestamp (ตั้งต่อสาขา); จาก /resolve-host
 
   async resolve() {
     if (get().resolved) return
@@ -49,7 +50,7 @@ export const useTenantStore = create((set, get) => ({
       const params = override ? { branch: override } : { hostname: window.location.hostname }
       const { data } = await axios.get(`${BACKEND}/api/resolve-host`, { params })
       if (data && data.apex === false && data.slug) {
-        set({ resolved: true, isBranch: true, slug: data.slug, name: data.name })
+        set({ resolved: true, isBranch: true, slug: data.slug, name: data.name, forceCamera: !!data.force_camera })
         return
       }
     } catch { /* network/hiccup → keep the deterministic fallback below */ }
