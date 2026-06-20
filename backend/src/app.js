@@ -78,6 +78,7 @@ app.use('/api/import',      requireBranch, require('./routes/import'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/deductions',  requireBranch, require('./routes/deductions'));
 app.use('/api/targets',     requireBranch, require('./routes/serviceTargets'));
+app.use('/api/wash-units',  requireBranch, require('./routes/washUnits'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 
 // Health check

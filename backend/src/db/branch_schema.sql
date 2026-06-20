@@ -223,6 +223,34 @@ CREATE TABLE IF NOT EXISTS service_targets (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_zone_wt
   ON service_targets (zone, COALESCE(work_type, ''));
 
+-- ทะเบียนแอร์รายตัว (master units สำหรับงานล้าง simple-wo). Flat — ตรงกับ
+-- simple_work_orders (zone/location/asset_code เป็น string ไม่ผูก rooms hierarchy).
+-- ฐานสำหรับ: นับล้างได้/เหลือ ต่อ type/site, contract ต่อเครื่อง, QR, dropdown.
+CREATE TABLE IF NOT EXISTS wash_units (
+  id           SERIAL PRIMARY KEY,
+  asset_code   VARCHAR(60) NOT NULL,
+  pts_zone     VARCHAR(50),                 -- สัญญา/โซน (ศรีราชา1=PTS1 / ศรีราชา2=PTS2)
+  location     VARCHAR(200),                -- สถานที่ (รพ.หลัก / คลินิกบางพระ / บ่อวิน)
+  is_clinic    BOOLEAN DEFAULT false,       -- true = คลินิก/หอพัก → ภายหลัง dashboard นับแยกตาม location ไม่แยก ac_type
+  building     VARCHAR(120),
+  floor        VARCHAR(60),
+  room         VARCHAR(120),
+  equipment    VARCHAR(10) DEFAULT 'ac',    -- 'ac' | 'fan'
+  ac_type      VARCHAR(30),                 -- FCU/SPT/VRF/AHU/OAU หรือประเภทพัดลม
+  brand        VARCHAR(80),
+  model        VARCHAR(80),
+  cooling_size VARCHAR(40),
+  freq_major   INT DEFAULT 0,              -- contract: ครั้ง/ปี ต่อเครื่อง
+  freq_minor   INT DEFAULT 0,
+  freq_fan     INT DEFAULT 0,
+  active       BOOLEAN DEFAULT true,
+  note         TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wash_units_code ON wash_units (asset_code);
+CREATE INDEX IF NOT EXISTS idx_wash_units_zone ON wash_units (pts_zone);
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported
