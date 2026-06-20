@@ -183,6 +183,59 @@ function TargetSection({ navigate }) {
   );
 }
 
+// ── ล้างได้/เหลือ เทียบทะเบียนแอร์ (per zone × ประเภทแอร์; คลินิก = ตามสถานที่) ──
+function CoverageSection() {
+  const [month, setMonth] = useState(dayjs().format('YYYY-MM'));
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get('/wash-units/coverage', { params: { month } }).then((r) => setData(r.data)).catch(() => {});
+  }, [month]);
+  if (!data || !data.groups?.length) return null;
+  // group rows by zone
+  const byZone = {};
+  for (const g of data.groups) (byZone[g.zone] ||= []).push(g);
+  return (
+    <Card title="ล้างได้ / เหลือ (เทียบทะเบียนแอร์)"
+      action={
+        <select value={month} onChange={(e) => setMonth(e.target.value)}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
+          {monthOptions().map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+        </select>
+      }>
+      <div className="space-y-4">
+        {Object.entries(byZone).map(([zone, rows]) => (
+          <div key={zone}>
+            <div className="text-sm font-semibold text-slate-700 mb-1.5">{zone}</div>
+            <div className="space-y-2">
+              {rows.map((g) => {
+                const pct = g.total > 0 ? Math.round((g.done / g.total) * 100) : 0;
+                const tone = pct >= 100 ? C.teal : pct >= 60 ? C.sky : '#f59e0b';
+                return (
+                  <div key={g.kind + g.label}>
+                    <div className="flex items-center justify-between text-sm mb-0.5">
+                      <span className="text-slate-600 truncate flex-1">
+                        {g.kind === 'clinic' && <span className="text-amber-600 mr-1">📍</span>}{g.label}
+                      </span>
+                      <span className="text-slate-500 text-xs">
+                        <b className="text-slate-800">{g.done}</b>/{g.total}
+                        {g.remaining > 0 && <span className="text-amber-600"> · เหลือ {g.remaining}</span>}
+                        <b className="ml-2" style={{ color: tone }}>{pct}%</b>
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: tone }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── แอร์เสื่อมสภาพ / ต้องแก้ — fetched on its own (heavier query) ──────────────
 function ConditionSection({ navigate }) {
   const [data, setData] = useState(null);
@@ -270,6 +323,9 @@ function BranchDashboard({ b, navigate }) {
 
       {/* เป้าหมายล้างเดือนนี้ */}
       <TargetSection navigate={navigate} />
+
+      {/* ล้างได้/เหลือ เทียบทะเบียนแอร์ */}
+      <CoverageSection />
 
       {/* two donuts: ซ่อม + ล้าง */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

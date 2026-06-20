@@ -87,6 +87,49 @@ router.get('/codes', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── GET /coverage?month=YYYY-MM — ล้างได้/เหลือ เทียบทะเบียนแอร์ ──────────────
+// ฐาน = wash_units (active). เครื่องถือว่า "ล้างแล้วเดือนนี้" ถ้ามีใบงาน simple-wo
+// ที่ asset_code (ล้างใหญ่) หรือ grid machine_no (ล้างย่อย/พัดลม) ตรงกัน ในเดือนนั้น.
+// กลุ่ม: ปกติ → pts_zone × ac_type; คลินิก/หอพัก (is_clinic) → pts_zone × location
+// (ไม่แยกประเภทแอร์ ตามสัญญาศรีราชา 1).
+router.get('/coverage', authMiddleware, async (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month
+    : new Date().toISOString().slice(0, 7);
+  try {
+    const { rows: units } = await req.db(
+      `SELECT asset_code, pts_zone, is_clinic, location, ac_type
+       FROM wash_units WHERE active = true`
+    );
+    const { rows: cleaned } = await req.db(
+      `SELECT DISTINCT code FROM (
+         SELECT asset_code AS code, COALESCE(work_date, created_at::date) AS d
+           FROM simple_work_orders WHERE deleted_at IS NULL
+         UNION ALL
+         SELECT g->>'machine_no', COALESCE(s.work_date, s.created_at::date)
+           FROM simple_work_orders s,
+                jsonb_array_elements(COALESCE(s.grid_rows,'[]'::jsonb)) g
+           WHERE s.deleted_at IS NULL
+       ) x
+       WHERE COALESCE(code,'') <> '' AND to_char(d,'YYYY-MM') = $1`,
+      [month]
+    );
+    const done = new Set(cleaned.map((r) => r.code));
+    const groups = new Map();   // key → { zone, kind, label, total, done }
+    for (const u of units) {
+      const zone = u.pts_zone || 'ไม่ระบุโซน';
+      const clinic = u.is_clinic;
+      const label = clinic ? (u.location || 'ไม่ระบุสถานที่') : (u.ac_type || 'ไม่ระบุประเภท');
+      const key = `${zone}|${clinic ? 'clinic' : 'type'}|${label}`;
+      const g = groups.get(key) || (groups.set(key, { zone, kind: clinic ? 'clinic' : 'type', label, total: 0, done: 0 }).get(key));
+      g.total += 1;
+      if (u.asset_code && done.has(u.asset_code)) g.done += 1;
+    }
+    const out = [...groups.values()].map((g) => ({ ...g, remaining: g.total - g.done }))
+      .sort((a, b) => a.zone.localeCompare(b.zone) || a.kind.localeCompare(b.kind) || a.label.localeCompare(b.label));
+    res.json({ month, groups: out });
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /:id — one row ──────────────────────────────────────────────────────
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
