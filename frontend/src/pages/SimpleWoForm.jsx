@@ -7,6 +7,7 @@ import api, { uploadsBase } from '../api/client'
 import { compressImage } from '../lib/image'
 import { CONDITION_ISSUES, PRIORITIES } from '../lib/condition'
 import { useAuthStore } from '../store/auth'
+import { useTenantStore } from '../store/tenant'
 
 
 const WORK_TYPES = [
@@ -16,6 +17,10 @@ const WORK_TYPES = [
 ]
 
 const REFRIGERANTS = ['R32', 'R410', 'R22']
+
+// force_camera: a freshly-captured photo's lastModified is ~now; anything older
+// than this is treated as an old gallery pick and rejected.
+const FRESH_PHOTO_MS = 5 * 60 * 1000
 
 // ประเภทเครื่องปรับอากาศ (ล้างใหญ่/ย่อย) — job-level, prints on the report.
 const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
@@ -111,6 +116,9 @@ export default function SimpleWoForm() {
   const toggleIssue = (key) => setCondition((c) => ({
     ...c, issues: c.issues.includes(key) ? c.issues.filter((k) => k !== key) : [...c.issues, key],
   }))
+
+  // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
+  const forceCamera = useTenantStore((s) => s.forceCamera)
 
   // รหัสเครื่อง + สถานที่ ที่เคยใช้ → datalist กันกรอกผิด (พี่ยิม)
   const [unitCodes, setUnitCodes] = useState([])
@@ -252,7 +260,12 @@ export default function SimpleWoForm() {
   // state, so each PhotoSlot owns its own busy/preview/error locally and an
   // upload re-renders only that slot, not the whole (large) form.
   const uploadOne = async (file) => {
-    const compressed = await compressImage(file, { stamp: true })   // burn วัน/เวลา in
+    // force_camera (เช่น ศรีราชา): กันเลือกรูปเก่าจากแกลเลอรี (พี่ยิม — เจอลงรูป
+    // ซ้ำ ก่อน/หลังภาพเดียวกัน). รูปถ่ายสด lastModified ~ ตอนนี้; รูปเก่า → reject.
+    if (forceCamera && file?.lastModified && Date.now() - file.lastModified > FRESH_PHOTO_MS) {
+      throw new Error('ต้องถ่ายรูปสดหน้างาน — ห้ามเลือกรูปเก่าจากแกลเลอรี')
+    }
+    const compressed = await compressImage(file, { stamp: forceCamera })   // burn วัน/เวลา (force_camera branches)
     const fd = new FormData()
     fd.append('photo', compressed)
     // Do NOT set Content-Type manually — the browser adds the multipart boundary.
@@ -528,7 +541,7 @@ export default function SimpleWoForm() {
         {/* ── Grid form (ล้างย่อย / พัดลม) ── */}
         {isGrid && (
           <>
-            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} />
+            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} forceCamera={forceCamera} />
             <div className="card flex flex-col gap-3">
               <h2 className="section-header">ข้อแนะนำ</h2>
               <textarea className="input" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} placeholder="ข้อแนะนำ / หมายเหตุ" />
@@ -622,12 +635,14 @@ export default function SimpleWoForm() {
                 <div className="grid grid-cols-2 gap-2">
                   <PhotoSlot
                     label="ก่อน"
+                    forceCamera={forceCamera}
                     photo={getPointPhoto(pt.no, 'before')}
                     onUpload={async (file) => setPointPhoto(pt, 'before', await uploadOne(file))}
                     onRemove={() => removePointPhoto(pt.no, 'before')}
                   />
                   <PhotoSlot
                     label="หลัง"
+                    forceCamera={forceCamera}
                     photo={getPointPhoto(pt.no, 'after')}
                     onUpload={async (file) => setPointPhoto(pt, 'after', await uploadOne(file))}
                     onRemove={() => removePointPhoto(pt.no, 'after')}
@@ -1196,7 +1211,7 @@ function ClientCombobox({ value, onChange }) {
 //   ล้างย่อย: ห้อง/แผนก + เลขเครื่อง + checks + 3 รูป (ก่อน/หลัง/ขณะ) ต่อเครื่อง.
 //   พัดลม:   ชื่อ/เลขเครื่อง + checks + ชำรุด.
 const ROW_PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']]
-function GridEditor({ workType, rows, onChange, uploadOne }) {
+function GridEditor({ workType, rows, onChange, uploadOne, forceCamera }) {
   const cols = GRID_COLS[workType] || []
   const fan = workType === 'fan'
   // both ล้างย่อย & พัดลม carry ห้อง/แผนก + เลขเครื่อง + 3 photos per machine.
@@ -1245,6 +1260,7 @@ function GridEditor({ workType, rows, onChange, uploadOne }) {
                   <PhotoSlot
                     key={k}
                     label={label}
+                    forceCamera={forceCamera}
                     photo={(r.photos || {})[k] ? { url: (r.photos || {})[k] } : null}
                     onUpload={async (file) => setPhoto(i, k, await uploadOne(file))}
                     onRemove={() => setPhoto(i, k, '')}
@@ -1263,8 +1279,9 @@ function GridEditor({ workType, rows, onChange, uploadOne }) {
 // One photo slot (ก่อน or หลัง) for a point. Owns its OWN busy/preview/error
 // state so an in-flight upload re-renders only this slot — not the whole form —
 // and shows an instant local preview while the file uploads in the background.
-// Empty tile = camera OR gallery (no `capture`, so the OS picker offers both).
-function PhotoSlot({ label, photo, onUpload, onRemove }) {
+// forceCamera → `capture` opens the camera directly (no gallery); otherwise the
+// OS picker offers both camera and gallery.
+function PhotoSlot({ label, photo, onUpload, onRemove, forceCamera }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [preview, setPreview] = useState('')
@@ -1329,7 +1346,7 @@ function PhotoSlot({ label, photo, onUpload, onRemove }) {
       <input
         type="file"
         accept="image/*"
-        capture="environment"
+        {...(forceCamera ? { capture: 'environment' } : {})}
         className="sr-only"
         disabled={busy}
         onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }}

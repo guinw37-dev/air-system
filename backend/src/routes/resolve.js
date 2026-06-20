@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
     if (!label) return res.json({ apex: true });
     const b = await lookupBranch(label);
     if (!b) return res.status(404).json({ error: 'unknown branch' });
-    res.json({ apex: false, slug: b.slug, name: b.name });
+    res.json({ apex: false, slug: b.slug, name: b.name, force_camera: !!b.force_camera });
   } catch (err) {
     serverError(res, err);
   }
