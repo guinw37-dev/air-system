@@ -487,7 +487,19 @@ router.get('/unit-history', authMiddleware, async (req, res) => {
     const thisYear = rows.filter((r) => r.work_date && new Date(r.work_date).getFullYear() === yr);
     const byType = {};
     for (const r of thisYear) byType[r.work_type || 'major'] = (byType[r.work_type || 'major'] || 0) + 1;
-    res.json({ code, total: rows.length, thisYearCount: thisYear.length, byType, items: rows });
+    // contract จากทะเบียนแอร์ (wash_units) ตาม asset_code → "ครบตามสัญญาไหม" (ปีนี้)
+    let unit = null, contract = null;
+    try {
+      const { rows: us } = await req.db('SELECT * FROM wash_units WHERE asset_code = $1 LIMIT 1', [code]);
+      if (us.length) {
+        unit = us[0];
+        const need = { major: unit.freq_major || 0, minor: unit.freq_minor || 0, fan: unit.freq_fan || 0 };
+        contract = ['major', 'minor', 'fan']
+          .filter((t) => need[t] > 0)
+          .map((t) => ({ work_type: t, need: need[t], done: byType[t] || 0, ok: (byType[t] || 0) >= need[t] }));
+      }
+    } catch { /* wash_units อาจยังไม่มีในสาขา (ก่อน migrate) — ข้าม contract */ }
+    res.json({ code, total: rows.length, thisYearCount: thisYear.length, byType, year: yr, unit, contract, items: rows });
   } catch (err) { serverError(res, err); }
 });
 

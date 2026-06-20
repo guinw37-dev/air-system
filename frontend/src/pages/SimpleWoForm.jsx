@@ -123,12 +123,42 @@ export default function SimpleWoForm() {
   // รหัสเครื่อง + สถานที่ ที่เคยใช้ → datalist กันกรอกผิด (พี่ยิม)
   const [unitCodes, setUnitCodes] = useState([])
   const [locations, setLocations] = useState([])
+  // ทะเบียนแอร์ (wash_units): asset_code → ข้อมูลเครื่อง สำหรับ dropdown + auto-fill
+  const [washMap, setWashMap] = useState({})
   useEffect(() => {
     let alive = true
-    api.get('/simple-wo/unit-codes').then((r) => { if (alive) setUnitCodes(r.data || []) }).catch(() => {})
     api.get('/simple-wo/locations').then((r) => { if (alive) setLocations(r.data || []) }).catch(() => {})
+    // ทะเบียนแอร์เป็นแหล่งหลักของรหัสเครื่อง; ถ้าว่าง (ยังไม่ import) fallback ใบงานเดิม
+    api.get('/wash-units').then((r) => {
+      if (!alive) return
+      const list = r.data || []
+      if (list.length) {
+        setWashMap(Object.fromEntries(list.map((u) => [u.asset_code, u])))
+        setUnitCodes(list.map((u) => u.asset_code))
+      } else {
+        api.get('/simple-wo/unit-codes').then((r2) => { if (alive) setUnitCodes(r2.data || []) }).catch(() => {})
+      }
+    }).catch(() => {
+      api.get('/simple-wo/unit-codes').then((r2) => { if (alive) setUnitCodes(r2.data || []) }).catch(() => {})
+    })
     return () => { alive = false }
   }, [])
+
+  // เลือกรหัสเครื่องจากทะเบียน → auto-fill สถานที่/ประเภท/โซน/อาคาร/ชั้น/ห้อง (กันกรอกผิด)
+  const applyUnit = (code) => {
+    const u = washMap[code]
+    if (!u) return
+    setHeader((h) => ({
+      ...h,
+      asset_code: code,
+      location: u.location || h.location,
+      pts_zone: u.pts_zone || h.pts_zone,
+      ac_type: u.ac_type || h.ac_type,
+      building: u.building || h.building,
+      floor: u.floor || h.floor,
+      room: u.room || h.room,
+    }))
+  }
 
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },
@@ -457,9 +487,10 @@ export default function SimpleWoForm() {
               <div>
                 <label className="label">เลขเครื่อง</label>
                 <input list="swo-unit-codes" className="input" value={header.asset_code}
-                  onChange={(e) => setHeader({ ...header, asset_code: e.target.value })}
+                  onChange={(e) => { const v = e.target.value; if (washMap[v]) applyUnit(v); else setHeader({ ...header, asset_code: v }) }}
                   placeholder="เลือกหรือพิมพ์รหัสเครื่อง" />
                 <datalist id="swo-unit-codes">{unitCodes.map((c) => <option key={c} value={c} />)}</datalist>
+                {washMap[header.asset_code] && <p className="text-[11px] text-emerald-600 mt-0.5">✓ ดึงข้อมูลจากทะเบียนแอร์แล้ว</p>}
               </div>
             )}
             <div>
@@ -541,7 +572,7 @@ export default function SimpleWoForm() {
         {/* ── Grid form (ล้างย่อย / พัดลม) ── */}
         {isGrid && (
           <>
-            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} forceCamera={forceCamera} />
+            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} forceCamera={forceCamera} unitCodes={unitCodes} />
             <div className="card flex flex-col gap-3">
               <h2 className="section-header">ข้อแนะนำ</h2>
               <textarea className="input" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} placeholder="ข้อแนะนำ / หมายเหตุ" />
@@ -1211,7 +1242,7 @@ function ClientCombobox({ value, onChange }) {
 //   ล้างย่อย: ห้อง/แผนก + เลขเครื่อง + checks + 3 รูป (ก่อน/หลัง/ขณะ) ต่อเครื่อง.
 //   พัดลม:   ชื่อ/เลขเครื่อง + checks + ชำรุด.
 const ROW_PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']]
-function GridEditor({ workType, rows, onChange, uploadOne, forceCamera }) {
+function GridEditor({ workType, rows, onChange, uploadOne, forceCamera, unitCodes = [] }) {
   const cols = GRID_COLS[workType] || []
   const fan = workType === 'fan'
   // both ล้างย่อย & พัดลม carry ห้อง/แผนก + เลขเครื่อง + 3 photos per machine.
@@ -1225,6 +1256,7 @@ function GridEditor({ workType, rows, onChange, uploadOne, forceCamera }) {
   const removeRow = (i) => onChange(rows.filter((_, idx) => idx !== i))
   return (
     <div className="card flex flex-col gap-3">
+      <datalist id="grid-unit-codes">{unitCodes.map((c) => <option key={c} value={c} />)}</datalist>
       <h2 className="section-header">รายการเครื่อง ({rows.length})</h2>
       {rows.length === 0 && <p className="text-xs text-ink-muted">ยังไม่มีเครื่อง · กด “เพิ่มเครื่อง” ด้านล่าง</p>}
       {rows.map((r, i) => (
@@ -1234,7 +1266,7 @@ function GridEditor({ workType, rows, onChange, uploadOne, forceCamera }) {
             {roomGrid ? (
               <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
                 <input className="input min-w-0" placeholder="ห้อง/แผนก (ไม่รู้ใส่ –)" value={r.room || ''} onChange={(e) => setRow(i, { room: e.target.value })} />
-                <input className="input min-w-0" placeholder="เลขเครื่อง (ไม่รู้ใส่ –)" value={r.machine_no || ''} onChange={(e) => setRow(i, { machine_no: e.target.value })} />
+                <input className="input min-w-0" list="grid-unit-codes" placeholder="เลขเครื่อง (ไม่รู้ใส่ –)" value={r.machine_no || ''} onChange={(e) => setRow(i, { machine_no: e.target.value })} />
               </div>
             ) : (
               <input className="input flex-1 min-w-0" placeholder="ชื่อ / เลขเครื่อง" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} />

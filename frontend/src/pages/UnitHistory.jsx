@@ -62,6 +62,30 @@ export default function UnitHistory() {
               </div>
             </div>
 
+            {/* ครบตามสัญญาไหม (ปีนี้) — จาก contract ต่อเครื่องในทะเบียนแอร์ */}
+            {data.unit && (
+              <div className="bg-white border rounded-2xl p-4">
+                <div className="text-sm font-semibold text-gray-700 mb-1">
+                  ครบตามสัญญาปี {data.year + 543}?
+                  {data.unit.pts_zone && <span className="text-gray-400 font-normal ml-1">· {data.unit.pts_zone}</span>}
+                  {data.unit.ac_type && <span className="text-gray-400 font-normal ml-1">· {data.unit.ac_type}</span>}
+                </div>
+                {(!data.contract || data.contract.length === 0) ? (
+                  <p className="text-xs text-gray-400">ยังไม่ได้ตั้งจำนวนครั้งตามสัญญาให้เครื่องนี้ (แก้ที่ทะเบียนแอร์)</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {data.contract.map((c) => (
+                      <span key={c.work_type}
+                        className={`text-xs rounded-lg px-2.5 py-1 border ${c.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                        {c.ok ? '✓' : '⚠'} {WT_LABEL[c.work_type] || c.work_type} {c.done}/{c.need}
+                        {!c.ok && <span> · เหลือ {c.need - c.done}</span>}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {data.items.length === 0 ? (
               <p className="text-center text-gray-400 py-8">ยังไม่มีประวัติ</p>
             ) : (
