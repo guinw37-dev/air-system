@@ -119,11 +119,12 @@ router.get('/summary', authMiddleware, canSupervise, async (req, res) => {
     const { rows } = await req.db(
       `SELECT user_id,
               MAX(user_name) AS user_name,
-              COUNT(DISTINCT work_date)::int AS days
+              COUNT(DISTINCT work_date) FILTER (WHERE check_in_at IS NOT NULL)::int AS days,
+              COUNT(DISTINCT work_date) FILTER (WHERE check_in_at IS NOT NULL AND check_out_at IS NOT NULL)::int AS days_complete
          FROM tech_attendance
         WHERE to_char(work_date, 'YYYY-MM') = $1
-          AND check_in_at IS NOT NULL
         GROUP BY user_id
+       HAVING COUNT(*) FILTER (WHERE check_in_at IS NOT NULL) > 0
         ORDER BY user_name NULLS LAST, user_id`,
       [month]
     );

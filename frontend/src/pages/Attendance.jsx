@@ -81,8 +81,37 @@ export default function Attendance() {
     }
   }, [isAdmin]);
 
+  // --- Admin monthly summary ---
+  const [sumMonth, setSumMonth] = useState(dayjs().format('YYYY-MM'));
+  const [sumRows, setSumRows] = useState([]);
+  const [sumLoading, setSumLoading] = useState(false);
+
+  const loadSummary = useCallback(async (month) => {
+    if (!isAdmin) return;
+    setSumLoading(true);
+    try {
+      const r = await api.get('/attendance/summary', { params: { month } });
+      setSumRows(r.data || []);
+    } catch {
+      setSumRows([]);
+    } finally {
+      setSumLoading(false);
+    }
+  }, [isAdmin]);
+
+  const exportSummaryCsv = () => {
+    const head = ['ช่าง', 'วันเข้างาน', 'วันครบ(เข้า+ออก)'];
+    const lines = sumRows.map((r) => [r.user_name || '', r.days, r.days_complete].join(','));
+    const csv = '﻿' + [head.join(','), ...lines].join('\n');   // BOM → Excel อ่านไทยถูก
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `สรุปลงเวลา-${sumMonth}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => { loadToday(); loadRecent(); }, [loadToday, loadRecent]);
   useEffect(() => { loadAdmin(adminDate); }, [loadAdmin, adminDate]);
+  useEffect(() => { loadSummary(sumMonth); }, [loadSummary, sumMonth]);
 
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
@@ -302,6 +331,57 @@ export default function Attendance() {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== ADMIN MONTHLY SUMMARY ===== */}
+        {isAdmin && (
+          <div className="bg-white border rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-sm font-semibold text-gray-700">สรุปการเข้างานรายเดือน</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="month"
+                  value={sumMonth}
+                  onChange={(e) => setSumMonth(e.target.value)}
+                  className="border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+                <button
+                  onClick={exportSummaryCsv}
+                  disabled={sumRows.length === 0}
+                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-40 whitespace-nowrap"
+                >
+                  ดาวน์โหลด CSV
+                </button>
+              </div>
+            </div>
+
+            {sumLoading ? (
+              <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด…</p>
+            ) : sumRows.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">ยังไม่มีข้อมูลในเดือนนี้</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 text-xs border-b">
+                      <th className="py-2.5 px-4">ช่าง</th>
+                      <th className="py-2.5 px-3 text-center">วันเข้างาน</th>
+                      <th className="py-2.5 px-3 text-center">วันครบ (เข้า+ออก)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sumRows.map((row, i) => (
+                      <tr key={row.user_id || i} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="py-2.5 px-4 font-medium text-gray-800">{row.user_name || '—'}</td>
+                        <td className="py-2.5 px-3 text-center tabular-nums font-bold text-emerald-600">{row.days}</td>
+                        <td className="py-2.5 px-3 text-center tabular-nums text-blue-600">{row.days_complete}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
