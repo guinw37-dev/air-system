@@ -20,7 +20,7 @@ function branchUrl(b) {
 }
 
 function EditModal({ branch, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: branch.name || '', subdomain: branch.subdomain || branch.slug || '', card_image: branch.card_image || '' })
+  const [form, setForm] = useState({ name: branch.name || '', subdomain: branch.subdomain || branch.slug || '', card_image: branch.card_image || '', force_camera: !!branch.force_camera })
   const [saving, setSaving] = useState(false)
   const [qr, setQr] = useState(null)
   const [err, setErr] = useState('')
@@ -41,6 +41,7 @@ function EditModal({ branch, onClose, onSaved }) {
         name: form.name.trim(),
         subdomain: form.subdomain ? slugify(form.subdomain) : undefined,
         card_image: form.card_image,
+        force_camera: form.force_camera,
       })
       onSaved()
     } catch (e) { setErr(e.response?.data?.error || 'บันทึกไม่สำเร็จ') } finally { setSaving(false) }
@@ -78,6 +79,20 @@ function EditModal({ branch, onClose, onSaved }) {
               <input type="file" accept="image/*" onChange={pickImage} className="text-sm" />
               {form.card_image && <button onClick={() => setForm({ ...form, card_image: '' })} className="text-xs text-danger">ลบรูป</button>}
             </div>
+          </div>
+
+          {/* การอัพรูปใบงาน — เปิด = บังคับถ่ายสด+timestamp / ปิด = อัพจาก Gallery ได้ */}
+          <div className="border-t border-line pt-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="checkbox" className="accent-primary h-4 w-4 mt-0.5" checked={form.force_camera}
+                onChange={(e) => setForm({ ...form, force_camera: e.target.checked })} />
+              <span className="text-sm text-ink">
+                บังคับถ่ายรูปสด (ใบงานล้าง)
+                <span className="block text-xs text-ink-muted">
+                  เปิด = ช่างต้องถ่ายสดหน้างาน + ติด timestamp (เลือกรูปเก่าจาก Gallery ไม่ได้) · ปิด = อัพจาก Gallery ได้
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* QR */}
