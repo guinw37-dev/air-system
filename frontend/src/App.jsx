@@ -29,6 +29,7 @@ import Targets from './pages/Targets'
 import UnitHistory from './pages/UnitHistory'
 import WashUnits from './pages/WashUnits'
 import Attendance from './pages/Attendance'
+import AttendanceSummary from './pages/AttendanceSummary'
 
 function RequireAuth({ children }) {
   const token = useAuthStore((s) => s.token)
@@ -106,6 +107,7 @@ export default function App() {
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Targets /></RequireRole></RequireAuth>
         } />
         <Route path="/attendance" element={<RequireAuth><Attendance /></RequireAuth>} />
+        <Route path="/attendance-summary" element={<RequireAuth><AttendanceSummary /></RequireAuth>} />
         <Route path="/unit-history" element={<RequireAuth><UnitHistory /></RequireAuth>} />
         <Route path="/wash-units" element={<RequireAuth><WashUnits /></RequireAuth>} />
         <Route path="/users" element={
