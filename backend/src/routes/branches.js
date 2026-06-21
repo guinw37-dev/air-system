@@ -28,7 +28,7 @@ router.get('/public', async (req, res) => {
 router.get('/', authMiddleware, superOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, code, name, slug, subdomain, schema_name, card_image, active, created_at FROM clients ORDER BY code');
+      'SELECT id, code, name, slug, subdomain, schema_name, card_image, active, force_camera, created_at FROM clients ORDER BY code');
     res.json(rows);
   } catch (err) { serverError(res, err); }
 });
@@ -116,7 +116,7 @@ router.post('/:slug/adopt-user', authMiddleware, superOnly, async (req, res) => 
 // PATCH /api/branches/:id — edit name/code/subdomain/card image, or toggle
 // active. slug + schema_name stay fixed (changing them breaks the schema mapping).
 router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
-  const { name, code, subdomain, card_image, active } = req.body || {};
+  const { name, code, subdomain, card_image, active, force_camera } = req.body || {};
   let sub = subdomain;
   if (sub != null && sub !== '' && !/^[a-z0-9-]{1,63}$/.test(String(sub))) {
     return res.status(400).json({ error: 'subdomain ต้องเป็น a-z 0-9 - เท่านั้น' });
@@ -124,15 +124,17 @@ router.patch('/:id', authMiddleware, superOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE clients SET
-         name       = COALESCE($1, name),
-         code       = COALESCE($2, code),
-         subdomain  = COALESCE($3, subdomain),
-         card_image = COALESCE($4, card_image),
-         active     = COALESCE($5, active)
-       WHERE id = $6
-       RETURNING id, code, name, slug, subdomain, schema_name, card_image, active`,
+         name        = COALESCE($1, name),
+         code        = COALESCE($2, code),
+         subdomain   = COALESCE($3, subdomain),
+         card_image  = COALESCE($4, card_image),
+         active      = COALESCE($5, active),
+         force_camera = COALESCE($6, force_camera)
+       WHERE id = $7
+       RETURNING id, code, name, slug, subdomain, schema_name, card_image, active, force_camera`,
       [name ?? null, code ?? null, sub ?? null, card_image ?? null,
-       typeof active === 'boolean' ? active : null, req.params.id]);
+       typeof active === 'boolean' ? active : null,
+       typeof force_camera === 'boolean' ? force_camera : null, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบสาขา' });
     invalidateBranchCache(rows[0].slug);
     invalidateBranchCache(rows[0].subdomain);
