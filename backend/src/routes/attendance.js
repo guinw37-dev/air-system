@@ -348,4 +348,85 @@ router.delete('/sites/:id', authMiddleware, canSupervise, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── ใบลา (leave requests) — ยื่น → admin อนุมัติ/ปฏิเสธ ──────────────────────
+// ช่างยื่นใบลา (status='pending'); หัวหน้า/แม่งานพิจารณา (approved/rejected).
+const LEAVE_TYPES = ['sick', 'personal', 'vacation', 'other'];
+
+// POST /leave — ช่างยื่นใบลา (authed; ของตัวเอง)
+router.post('/leave', authMiddleware, async (req, res) => {
+  const leave_type = String(req.body?.leave_type ?? '').trim();
+  const start_date = String(req.body?.start_date ?? '').trim();
+  const end_date = String(req.body?.end_date ?? '').trim();
+  const reason = req.body?.reason != null ? String(req.body.reason) : null;
+  if (!LEAVE_TYPES.includes(leave_type))
+    return res.status(400).json({ error: 'leave_type ไม่ถูกต้อง' });
+  if (!DATE_RE.test(start_date) || !DATE_RE.test(end_date))
+    return res.status(400).json({ error: 'รูปแบบวันที่ต้องเป็น YYYY-MM-DD' });
+  if (end_date < start_date)
+    return res.status(400).json({ error: 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น' });
+  try {
+    const { rows } = await req.db(
+      `INSERT INTO leave_requests (user_id, user_name, leave_type, start_date, end_date, reason, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       RETURNING *`,
+      [req.user.id, req.user.name || null, leave_type, start_date, end_date, reason]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { serverError(res, err); }
+});
+
+// GET /leave/me — ใบลาของตัวเอง (ล่าสุดก่อน)
+router.get('/leave/me', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(
+      `SELECT * FROM leave_requests WHERE user_id = $1 ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
+// GET /leave?status= — ใบลาทุกคน (หัวหน้า/แม่งาน); pending ขึ้นก่อน
+router.get('/leave', authMiddleware, canSupervise, async (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
+    ? req.query.status : null;
+  try {
+    const { rows } = await req.db(
+      `SELECT * FROM leave_requests
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY (status = 'pending') DESC, created_at DESC`,
+      [status]
+    );
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
+// PUT /leave/:id/decision — อนุมัติ/ปฏิเสธ (หัวหน้า/แม่งาน); เฉพาะที่ยัง pending
+router.put('/leave/:id/decision', authMiddleware, canSupervise, async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'invalid id' });
+  const action = String(req.body?.action ?? '').trim();
+  const note = req.body?.note != null ? String(req.body.note) : null;
+  if (!['approve', 'reject'].includes(action))
+    return res.status(400).json({ error: 'action ต้องเป็น approve หรือ reject' });
+  const newStatus = action === 'approve' ? 'approved' : 'rejected';
+  try {
+    // กันการพิจารณาซ้ำ: แยกตรวจสถานะปัจจุบันเพื่อคืน 409 ที่ชัดเจน
+    const { rows: cur } = await req.db(
+      `SELECT status FROM leave_requests WHERE id = $1`, [req.params.id]);
+    if (!cur[0]) return res.status(404).json({ error: 'ไม่พบใบลานี้' });
+    if (cur[0].status !== 'pending')
+      return res.status(409).json({ error: 'ใบลานี้ถูกพิจารณาแล้ว' });
+    const { rows } = await req.db(
+      `UPDATE leave_requests
+          SET status = $2, reviewed_by = $3, reviewer_name = $4,
+              reviewed_at = NOW(), review_note = $5
+        WHERE id = $1 AND status = 'pending'
+        RETURNING *`,
+      [req.params.id, newStatus, req.user.id, req.user.name || null, note]
+    );
+    if (!rows[0]) return res.status(409).json({ error: 'ใบลานี้ถูกพิจารณาแล้ว' });
+    res.json(rows[0]);
+  } catch (err) { serverError(res, err); }
+});
+
 module.exports = router;

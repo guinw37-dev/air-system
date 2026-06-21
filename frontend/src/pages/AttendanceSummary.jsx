@@ -29,6 +29,26 @@ function getGPS() {
 
 const SITE_DEFAULTS = { name: '', lat: '', lng: '', radius_m: 200 };
 
+const LEAVE_TYPE_LABELS = {
+  sick: 'ลาป่วย',
+  personal: 'ลากิจ',
+  vacation: 'ลาพักร้อน',
+  other: 'อื่นๆ',
+};
+
+const LEAVE_STATUS_STYLES = {
+  pending: { label: 'รออนุมัติ', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  approved: { label: 'อนุมัติ', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  rejected: { label: 'ไม่อนุมัติ', cls: 'bg-red-50 text-red-700 border border-red-200' },
+};
+
+const LEAVE_STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'ทั้งหมด' },
+  { value: 'pending', label: 'รออนุมัติ' },
+  { value: 'approved', label: 'อนุมัติแล้ว' },
+  { value: 'rejected', label: 'ไม่อนุมัติ' },
+];
+
 /** Modal for add/edit a geofence site. */
 function SiteModal({ initial, onSave, onClose }) {
   const isEdit = !!initial?.id;
@@ -224,6 +244,14 @@ export default function AttendanceSummary() {
   const [siteModal, setSiteModal] = useState(null); // null | 'new' | site-object
   const [siteDeleting, setSiteDeleting] = useState(null); // id being deleted
 
+  // --- Leave approvals ---
+  const [leaveFilter, setLeaveFilter] = useState('pending');
+  const [leaveRows, setLeaveRows] = useState([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveDeciding, setLeaveDeciding] = useState(null); // id being acted on
+  // inline note input per row: { [id]: string }
+  const [leaveNotes, setLeaveNotes] = useState({});
+
   const loadAdmin = useCallback(async (date) => {
     setAdminLoading(true); setAdminErr('');
     try {
@@ -275,6 +303,19 @@ export default function AttendanceSummary() {
     } catch { setSites([]); } finally { setSitesLoading(false); }
   }, []);
 
+  const loadLeaves = useCallback(async (status) => {
+    setLeaveLoading(true);
+    try {
+      const params = status ? { status } : {};
+      const r = await api.get('/attendance/leave', { params });
+      setLeaveRows(r.data || []);
+    } catch {
+      setLeaveRows([]);
+    } finally {
+      setLeaveLoading(false);
+    }
+  }, []);
+
   // require_gps toggle (บังคับลงเวลาด้วย GPS ต่อสาขา)
   const [requireGps, setRequireGps] = useState(false);
   const [gpsSaving, setGpsSaving] = useState(false);
@@ -292,6 +333,7 @@ export default function AttendanceSummary() {
   useEffect(() => { if (isAdmin) loadDevices(); }, [isAdmin, loadDevices]);
   useEffect(() => { if (isAdmin) loadSites(); }, [isAdmin, loadSites]);
   useEffect(() => { if (isAdmin) loadSettings(); }, [isAdmin, loadSettings]);
+  useEffect(() => { if (isAdmin) loadLeaves(leaveFilter); }, [isAdmin, loadLeaves, leaveFilter]);
 
   async function deleteSite(id) {
     if (!window.confirm('ลบจุดพื้นที่นี้?')) return;
@@ -303,6 +345,21 @@ export default function AttendanceSummary() {
       alert(e.response?.data?.error || e.message);
     } finally {
       setSiteDeleting(null);
+    }
+  }
+
+  async function decideLeave(id, action) {
+    const note = leaveNotes[id] || '';
+    setLeaveDeciding(id);
+    try {
+      await api.put(`/attendance/leave/${id}/decision`, { action, note });
+      await loadLeaves(leaveFilter);
+      // clear note input for this row
+      setLeaveNotes((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    } catch (e) {
+      alert(e.response?.data?.error || e.message);
+    } finally {
+      setLeaveDeciding(null);
     }
   }
 
@@ -327,6 +384,109 @@ export default function AttendanceSummary() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">สรุปการลงเวลาช่าง</h1>
           <p className="text-sm text-gray-500 mt-0.5">ภาพรวมการเข้า-ออกงาน รายวัน รายเดือน และพฤติกรรมเครื่อง</p>
+        </div>
+
+        {/* ===== LEAVE APPROVAL SECTION ===== */}
+        <div className="bg-white border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <span className="text-sm font-semibold text-gray-700">อนุมัติใบลา</span>
+              <p className="text-xs text-gray-400 mt-0.5">ตรวจสอบและอนุมัติคำขอลาของช่าง</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {LEAVE_STATUS_FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setLeaveFilter(opt.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    leaveFilter === opt.value
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {leaveLoading ? (
+            <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด…</p>
+          ) : leaveRows.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">ไม่มีใบลา</p>
+          ) : (
+            <ul className="divide-y">
+              {leaveRows.map((row) => {
+                const st = LEAVE_STATUS_STYLES[row.status] || LEAVE_STATUS_STYLES.pending;
+                const isPending = row.status === 'pending';
+                const isActing = leaveDeciding === row.id;
+                return (
+                  <li key={row.id} className="px-4 py-3 hover:bg-gray-50">
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                      {/* Left: info */}
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-800">{row.user_name || '—'}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${st.cls}`}>
+                            {st.label}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {LEAVE_TYPE_LABELS[row.leave_type] || row.leave_type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          {fmtDateTH(row.start_date)}
+                          {row.end_date !== row.start_date && ` – ${fmtDateTH(row.end_date)}`}
+                        </p>
+                        {row.reason && (
+                          <p className="text-xs text-gray-500">{row.reason}</p>
+                        )}
+                        {/* Decided info */}
+                        {!isPending && (row.reviewer_name || row.review_note) && (
+                          <p className="text-xs text-gray-400">
+                            {row.reviewer_name && <span>โดย {row.reviewer_name}</span>}
+                            {row.reviewer_name && row.reviewed_at && <span> · {fmtDateTH(row.reviewed_at)}</span>}
+                            {row.review_note && <span> · {row.review_note}</span>}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Right: actions (pending only) */}
+                      {isPending && (
+                        <div className="flex flex-col gap-1.5 sm:items-end shrink-0">
+                          <input
+                            type="text"
+                            value={leaveNotes[row.id] || ''}
+                            onChange={(e) =>
+                              setLeaveNotes((prev) => ({ ...prev, [row.id]: e.target.value }))
+                            }
+                            placeholder="หมายเหตุ (ไม่บังคับ)"
+                            className="border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 w-44"
+                          />
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => decideLeave(row.id, 'approve')}
+                              disabled={isActing}
+                              className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                            >
+                              {isActing ? '…' : 'อนุมัติ'}
+                            </button>
+                            <button
+                              onClick={() => decideLeave(row.id, 'reject')}
+                              disabled={isActing}
+                              className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                            >
+                              {isActing ? '…' : 'ไม่อนุมัติ'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         {/* ===== DAILY TABLE ===== */}
