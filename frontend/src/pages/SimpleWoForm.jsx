@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Camera, X, PenLine, Loader2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
@@ -159,6 +159,14 @@ export default function SimpleWoForm() {
       room: u.room || h.room,
     }))
   }
+
+  // QR scan → /simple-wo/new?unit=<asset_code> → auto-fill เครื่องนั้นเมื่อทะเบียนโหลด
+  const [searchParams] = useSearchParams()
+  const unitParam = searchParams.get('unit')
+  useEffect(() => {
+    if (!isEdit && unitParam && washMap[unitParam]) applyUnit(unitParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [washMap, unitParam])
 
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },

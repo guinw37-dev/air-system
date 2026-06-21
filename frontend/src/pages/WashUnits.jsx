@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ClipboardList, Plus, Pencil, Trash2, Upload, X, AlertCircle } from 'lucide-react'
+import { ClipboardList, Plus, Pencil, Trash2, Upload, X, AlertCircle, QrCode, Printer } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import QRCode from 'qrcode'
 
 const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
 const FAN_TYPES = ['Exhaust Fan', 'Exhaust Fan Duct Type']
@@ -28,6 +29,157 @@ const EMPTY_FORM = {
   note: '',
 }
 
+function unitQrUrl(asset_code) {
+  return `${window.location.origin}/simple-wo/new?unit=${encodeURIComponent(asset_code)}`
+}
+
+/* ── QR Modal (single unit) ───────────────────────────────────────────── */
+function QrModal({ unit, onClose }) {
+  const [dataUrl, setDataUrl] = useState(null)
+
+  useEffect(() => {
+    QRCode.toDataURL(unitQrUrl(unit.asset_code), { width: 220, margin: 2 })
+      .then(setDataUrl)
+      .catch(() => {})
+  }, [unit.asset_code])
+
+  const handlePrint = () => {
+    const popup = window.open('', '_blank', 'width=400,height=520')
+    if (!popup) return
+    popup.document.write(`<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>QR – ${unit.asset_code}</title>
+<style>
+  body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; display: flex;
+         flex-direction: column; align-items: center; justify-content: center;
+         height: 100vh; background: #fff; }
+  img  { width: 220px; height: 220px; display: block; }
+  .code { font-family: monospace; font-size: 22px; font-weight: 700;
+          letter-spacing: .04em; margin-top: 10px; color: #1A2B38; }
+  .loc  { font-size: 13px; color: #7A93A8; margin-top: 4px; text-align: center; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+  <img src="${dataUrl}" alt="QR" />
+  <div class="code">${unit.asset_code}</div>
+  <div class="loc">${[unit.location, unit.ac_type].filter(Boolean).join(' · ')}</div>
+  <script>window.onload = function(){ window.print(); window.close(); };<\/script>
+</body>
+</html>`)
+    popup.document.close()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-72 flex flex-col items-center p-6 gap-4">
+        {/* close */}
+        <button onClick={onClose} className="absolute top-3 right-3 text-ink-muted hover:text-ink">
+          <X className="h-5 w-5" />
+        </button>
+
+        <h3 className="font-semibold text-ink text-base self-start">QR Code</h3>
+
+        {dataUrl ? (
+          <img src={dataUrl} alt={`QR ${unit.asset_code}`} className="w-[220px] h-[220px] rounded-lg border border-line" />
+        ) : (
+          <div className="w-[220px] h-[220px] flex items-center justify-center text-ink-muted text-sm">กำลังสร้าง…</div>
+        )}
+
+        <div className="text-center">
+          <p className="font-mono font-bold text-xl text-ink tracking-wide">{unit.asset_code}</p>
+          <p className="text-xs text-ink-muted mt-1">
+            {[unit.location, unit.ac_type].filter(Boolean).join(' · ') || '—'}
+          </p>
+        </div>
+
+        <div className="flex gap-2 w-full pt-1">
+          <button onClick={onClose} className="btn-secondary flex-1 text-sm py-2">ปิด</button>
+          <button
+            onClick={handlePrint}
+            disabled={!dataUrl}
+            className="btn-primary flex-1 text-sm py-2 flex items-center justify-center gap-1.5"
+          >
+            <Printer className="h-4 w-4" />พิมพ์
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Print all QRs (filtered list) ───────────────────────────────────── */
+async function printAllQr(rows) {
+  if (rows.length === 0) {
+    alert('ไม่มีเครื่องให้พิมพ์')
+    return
+  }
+
+  // Generate all data-URLs first
+  const items = await Promise.all(
+    rows.map(async (u) => ({
+      asset_code: u.asset_code,
+      location: u.location || '',
+      ac_type: u.ac_type || '',
+      dataUrl: await QRCode.toDataURL(unitQrUrl(u.asset_code), { width: 160, margin: 2 }),
+    }))
+  )
+
+  const labelsHtml = items.map((it) => `
+    <div class="label">
+      <img src="${it.dataUrl}" alt="${it.asset_code}" />
+      <div class="code">${it.asset_code}</div>
+      <div class="loc">${[it.location, it.ac_type].filter(Boolean).join(' · ') || '—'}</div>
+    </div>`).join('')
+
+  const popup = window.open('', '_blank', 'width=860,height=720')
+  if (!popup) {
+    alert('ป้องกันป๊อปอัพ — กรุณาอนุญาตป๊อปอัพสำหรับหน้านี้แล้วลองอีกครั้ง')
+    return
+  }
+
+  popup.document.write(`<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>QR ทะเบียนแอร์ (${items.length} เครื่อง)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #fff;
+         padding: 12px; color: #1A2B38; }
+  h1 { font-size: 13px; color: #7A93A8; margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .label { border: 1px solid #E3EDF5; border-radius: 8px; padding: 10px 8px;
+           display: flex; flex-direction: column; align-items: center;
+           break-inside: avoid; page-break-inside: avoid; }
+  .label img { width: 140px; height: 140px; display: block; }
+  .code { font-family: monospace; font-size: 13px; font-weight: 700;
+          letter-spacing: .03em; margin-top: 6px; text-align: center; }
+  .loc  { font-size: 10px; color: #7A93A8; margin-top: 2px; text-align: center;
+          word-break: break-word; }
+  @media print {
+    body { padding: 6px; }
+    h1   { display: none; }
+    .grid { gap: 6px; }
+    @page { margin: 10mm; }
+  }
+</style>
+</head>
+<body>
+  <h1>QR ทะเบียนแอร์ — ${items.length} เครื่อง</h1>
+  <div class="grid">${labelsHtml}</div>
+  <script>window.onload = function(){ window.print(); };<\/script>
+</body>
+</html>`)
+  popup.document.close()
+}
+
+/* ── UnitModal (add / edit) ───────────────────────────────────────────── */
 function UnitModal({ unit, onClose, onSaved }) {
   const [form, setForm] = useState(unit ? {
     asset_code: unit.asset_code || '',
@@ -260,6 +412,7 @@ function UnitModal({ unit, onClose, onSaved }) {
   )
 }
 
+/* ── Main page ────────────────────────────────────────────────────────── */
 export default function WashUnits() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
@@ -274,9 +427,12 @@ export default function WashUnits() {
   const [searchQ, setSearchQ] = useState('')
   const searchDebounce = useRef(null)
 
-  // Modal
+  // Modal (add/edit)
   const [modalUnit, setModalUnit] = useState(null) // null = closed, {} = new, {id,...} = edit
   const [modalOpen, setModalOpen] = useState(false)
+
+  // QR modal
+  const [qrUnit, setQrUnit] = useState(null) // null = closed
 
   // Import
   const importRef = useRef(null)
@@ -366,22 +522,35 @@ export default function WashUnits() {
             </h1>
             <p className="text-sm text-ink-muted mt-0.5">รายการเครื่องปรับอากาศและพัดลมทั้งหมดในสาขา</p>
           </div>
-          {isAdmin && (
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => importRef.current?.click()}
-                disabled={importing}
-                className="btn-secondary flex items-center gap-2 text-sm"
-              >
-                <Upload className="h-4 w-4" />
-                {importing ? 'กำลังนำเข้า…' : 'นำเข้า Excel'}
-              </button>
-              <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
-              <button onClick={openNew} className="btn-primary flex items-center gap-2 text-sm">
-                <Plus className="h-4 w-4" /> เพิ่มเครื่อง
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            {/* Print-all QR — available to everyone */}
+            <button
+              onClick={() => printAllQr(rows)}
+              disabled={loading || rows.length === 0}
+              className="btn-secondary flex items-center gap-2 text-sm"
+              title="พิมพ์ QR ทั้งหมดของรายการที่กรองอยู่"
+            >
+              <QrCode className="h-4 w-4" />
+              พิมพ์ QR ทั้งหมด
+            </button>
+
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => importRef.current?.click()}
+                  disabled={importing}
+                  className="btn-secondary flex items-center gap-2 text-sm"
+                >
+                  <Upload className="h-4 w-4" />
+                  {importing ? 'กำลังนำเข้า…' : 'นำเข้า Excel'}
+                </button>
+                <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+                <button onClick={openNew} className="btn-primary flex items-center gap-2 text-sm">
+                  <Plus className="h-4 w-4" /> เพิ่มเครื่อง
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Import hint */}
@@ -465,6 +634,7 @@ export default function WashUnits() {
                     <th className="py-2.5 px-3">อาคาร/ชั้น/ห้อง</th>
                     <th className="py-2.5 px-3">ประเภท</th>
                     <th className="py-2.5 px-3">สัญญา</th>
+                    <th className="py-2.5 px-3 w-10"></th>
                     {isAdmin && <th className="py-2.5 px-3 w-20"></th>}
                   </tr>
                 </thead>
@@ -494,6 +664,16 @@ export default function WashUnits() {
                       </td>
                       <td className="py-2.5 px-3 font-mono text-xs text-ink-muted">
                         {contractStr(u)}
+                      </td>
+                      {/* QR button — all roles */}
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          onClick={() => setQrUnit(u)}
+                          className="text-ink-muted hover:text-primary p-1 rounded transition-colors"
+                          title="ดู / พิมพ์ QR Code"
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                       {isAdmin && (
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
@@ -525,11 +705,20 @@ export default function WashUnits() {
         )}
       </div>
 
+      {/* Edit/add modal */}
       {modalOpen && (
         <UnitModal
           unit={modalUnit}
           onClose={closeModal}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* QR modal */}
+      {qrUnit && (
+        <QrModal
+          unit={qrUnit}
+          onClose={() => setQrUnit(null)}
         />
       )}
     </Layout>
