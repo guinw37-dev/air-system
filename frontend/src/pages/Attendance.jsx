@@ -14,6 +14,57 @@ function fmtDateTH(dateStr) {
   return d.format('DD/MM/') + String(d.year() + 543);
 }
 
+/** Tries to get current GPS coords. Resolves with { lat, lng } or null on fail/deny/timeout. */
+function getGPS() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  });
+}
+
+/** Inline badge showing GPS / in-area status from today's attendance row. */
+function GeoStatusBadge({ today }) {
+  if (!today) return null;
+  const { in_area, geo_site } = today;
+  if (in_area === true) {
+    return (
+      <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 align-middle" />
+        อยู่ในพื้นที่ {geo_site || ''}
+      </p>
+    );
+  }
+  if (in_area === false) {
+    return (
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+        <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1.5 align-middle" />
+        อยู่นอกพื้นที่ลงเวลา
+        {today.lat && today.lng ? (
+          <a
+            href={`https://www.google.com/maps?q=${today.lat},${today.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-2 underline hover:text-amber-900"
+          >
+            แผนที่
+          </a>
+        ) : null}
+      </p>
+    );
+  }
+  // in_area === null — no GPS recorded
+  return (
+    <p className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+      <span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1.5 align-middle" />
+      ไม่มีพิกัด GPS
+    </p>
+  );
+}
+
 export default function Attendance() {
   // --- My today card ---
   const [today, setToday] = useState(null);       // null = not loaded, false = no row
@@ -61,7 +112,9 @@ export default function Attendance() {
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
     try {
-      await api.post('/attendance/check-in', { device_id: getDeviceId() });
+      const coords = await getGPS();
+      const body = { device_id: getDeviceId(), ...(coords || {}) };
+      await api.post('/attendance/check-in', body);
       await loadToday(); await loadRecent();
     } catch (e) {
       setTodayErr(e.response?.data?.error || e.message);
@@ -73,7 +126,9 @@ export default function Attendance() {
   async function doCheckOut() {
     setActionLoading('out'); setTodayErr('');
     try {
-      await api.post('/attendance/check-out', { device_id: getDeviceId() });
+      const coords = await getGPS();
+      const body = { device_id: getDeviceId(), ...(coords || {}) };
+      await api.post('/attendance/check-out', body);
       await loadToday(); await loadRecent();
     } catch (e) {
       setTodayErr(e.response?.data?.error || e.message);
@@ -147,6 +202,9 @@ export default function Attendance() {
                   </p>
                 </div>
               </div>
+
+              {/* GPS / in-area status — shown once there's a row */}
+              {today && <GeoStatusBadge today={today} />}
 
               {/* Action buttons */}
               <div className="grid grid-cols-2 gap-3">

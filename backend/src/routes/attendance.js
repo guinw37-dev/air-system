@@ -19,11 +19,41 @@ const deviceOf = (req) => {
   return String(d).trim().slice(0, 64) || null;
 };
 
+// พิกัด GPS จาก body (อาจไม่ส่งมา = null). guard NaN/ค่าไม่ใช่ตัวเลข → null.
+const coordOf = (v) => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// ── Geofence (monitor only — ไม่บล็อกการลงเวลา) ──────────────────────────────
+// ระยะทางระหว่าง 2 พิกัด (เมตร) สูตร haversine.
+function distanceM(aLat, aLng, bLat, bLng) {
+  const R = 6371000, toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const s = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+// คืน { in_area, geo_site } — จุด active ที่ใกล้สุดและอยู่ในรัศมีของมัน; ไม่มี = นอกพื้นที่.
+// ไม่มีพิกัด → { in_area: null, geo_site: null } (ไม่ตัดสิน).
+async function resolveGeo(req, lat, lng) {
+  if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return { in_area: null, geo_site: null };
+  const { rows } = await req.db('SELECT name, lat, lng, radius_m FROM work_sites WHERE active = true');
+  let best = null;
+  for (const s of rows) {
+    const d = distanceM(lat, lng, s.lat, s.lng);
+    if (d <= (s.radius_m || 200) && (!best || d < best.d)) best = { d, name: s.name };
+  }
+  return best ? { in_area: true, geo_site: best.name } : { in_area: false, geo_site: null };
+}
+
 // ── GET /me/today — แถวของวันนี้ของผู้ใช้ปัจจุบัน (หรือ null) ─────────────────
 router.get('/me/today', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(
-      `SELECT check_in_at, check_out_at, note
+      `SELECT check_in_at, check_out_at, note, lat, lng, geo_site, in_area
          FROM tech_attendance
         WHERE user_id = $1 AND work_date = CURRENT_DATE`,
       [req.user.id]
@@ -51,16 +81,23 @@ router.get('/me', authMiddleware, async (req, res) => {
 // ── POST /check-in — ลงเวลาเข้า (ไม่ทับเวลาเข้าเดิมถ้าลงไว้แล้ว) ──────────────
 router.post('/check-in', authMiddleware, async (req, res) => {
   try {
+    const lat = coordOf(req.body?.lat);
+    const lng = coordOf(req.body?.lng);
+    const geo = await resolveGeo(req, lat, lng);
     const { rows } = await req.db(
-      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_in_at, device_id)
-       VALUES ($1, $2, CURRENT_DATE, NOW(), $3)
+      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_in_at, device_id, lat, lng, geo_site, in_area)
+       VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, work_date) DO UPDATE
          SET check_in_at = COALESCE(tech_attendance.check_in_at, NOW()),
              user_name   = EXCLUDED.user_name,
              device_id   = COALESCE(EXCLUDED.device_id, tech_attendance.device_id),
+             lat         = COALESCE(EXCLUDED.lat, tech_attendance.lat),
+             lng         = COALESCE(EXCLUDED.lng, tech_attendance.lng),
+             geo_site    = CASE WHEN EXCLUDED.lat IS NOT NULL THEN EXCLUDED.geo_site ELSE tech_attendance.geo_site END,
+             in_area     = CASE WHEN EXCLUDED.lat IS NOT NULL THEN EXCLUDED.in_area  ELSE tech_attendance.in_area  END,
              updated_at  = NOW()
        RETURNING *`,
-      [req.user.id, req.user.name || null, deviceOf(req)]
+      [req.user.id, req.user.name || null, deviceOf(req), lat, lng, geo.geo_site, geo.in_area]
     );
     // จับพฤติกรรมเครื่อง (ไม่บังคับ): นับครั้งที่ลงเวลาจากเครื่องนี้
     const dev = deviceOf(req);
@@ -81,15 +118,22 @@ router.post('/check-in', authMiddleware, async (req, res) => {
 // ── POST /check-out — ลงเวลาออก (last one wins; สร้างแถวถ้ายังไม่มี) ──────────
 router.post('/check-out', authMiddleware, async (req, res) => {
   try {
+    const lat = coordOf(req.body?.lat);
+    const lng = coordOf(req.body?.lng);
+    const geo = await resolveGeo(req, lat, lng);
     const { rows } = await req.db(
-      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_out_at)
-       VALUES ($1, $2, CURRENT_DATE, NOW())
+      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_out_at, lat, lng, geo_site, in_area)
+       VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, $5, $6)
        ON CONFLICT (user_id, work_date) DO UPDATE
          SET check_out_at = NOW(),
              user_name    = EXCLUDED.user_name,
+             lat          = COALESCE(EXCLUDED.lat, tech_attendance.lat),
+             lng          = COALESCE(EXCLUDED.lng, tech_attendance.lng),
+             geo_site     = CASE WHEN EXCLUDED.lat IS NOT NULL THEN EXCLUDED.geo_site ELSE tech_attendance.geo_site END,
+             in_area      = CASE WHEN EXCLUDED.lat IS NOT NULL THEN EXCLUDED.in_area  ELSE tech_attendance.in_area  END,
              updated_at   = NOW()
        RETURNING *`,
-      [req.user.id, req.user.name || null]
+      [req.user.id, req.user.name || null, lat, lng, geo.geo_site, geo.in_area]
     );
     res.json(rows[0]);
   } catch (err) { serverError(res, err); }
@@ -186,6 +230,76 @@ router.get('/summary', authMiddleware, canSupervise, async (req, res) => {
       [month]
     );
     res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
+// ── work_sites CRUD (จุด geofence ต่อสาขา) ───────────────────────────────────
+// GET อ่านได้ทุก authed user (ให้แอปช่างโชว์ "คุณอยู่ที่ X"); เขียนเฉพาะ admin.
+const ID_RE = /^\d+$/;
+const finite = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+// GET /sites — รายการจุดทั้งหมด (active ก่อน แล้วเรียงชื่อ)
+router.get('/sites', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(
+      `SELECT id, name, lat, lng, radius_m, active, created_at
+         FROM work_sites
+        ORDER BY active DESC, name`
+    );
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
+// POST /sites — เพิ่มจุด (admin)
+router.post('/sites', authMiddleware, canSupervise, async (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  const lat = finite(req.body?.lat);
+  const lng = finite(req.body?.lng);
+  let radius = req.body?.radius_m == null || req.body?.radius_m === '' ? 200 : Number(req.body.radius_m);
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng must be finite numbers' });
+  if (!Number.isInteger(radius) || radius <= 0) return res.status(400).json({ error: 'radius_m must be a positive integer' });
+  try {
+    const { rows } = await req.db(
+      `INSERT INTO work_sites (name, lat, lng, radius_m)
+       VALUES ($1, $2, $3, $4) RETURNING id, name, lat, lng, radius_m, active, created_at`,
+      [name.slice(0, 160), lat, lng, radius]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { serverError(res, err); }
+});
+
+// PUT /sites/:id — แก้ไขจุด (admin)
+router.put('/sites/:id', authMiddleware, canSupervise, async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'invalid id' });
+  const name = String(req.body?.name ?? '').trim();
+  const lat = finite(req.body?.lat);
+  const lng = finite(req.body?.lng);
+  let radius = req.body?.radius_m == null || req.body?.radius_m === '' ? 200 : Number(req.body.radius_m);
+  const active = req.body?.active == null ? true : !!req.body.active;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng must be finite numbers' });
+  if (!Number.isInteger(radius) || radius <= 0) return res.status(400).json({ error: 'radius_m must be a positive integer' });
+  try {
+    const { rows } = await req.db(
+      `UPDATE work_sites
+          SET name = $2, lat = $3, lng = $4, radius_m = $5, active = $6
+        WHERE id = $1
+        RETURNING id, name, lat, lng, radius_m, active, created_at`,
+      [req.params.id, name.slice(0, 160), lat, lng, radius, active]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'site not found' });
+    res.json(rows[0]);
+  } catch (err) { serverError(res, err); }
+});
+
+// DELETE /sites/:id — ลบจุด (admin)
+router.delete('/sites/:id', authMiddleware, canSupervise, async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'invalid id' });
+  try {
+    const { rowCount } = await req.db('DELETE FROM work_sites WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'site not found' });
+    res.json({ ok: true });
   } catch (err) { serverError(res, err); }
 });
 
