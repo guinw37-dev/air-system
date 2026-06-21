@@ -100,6 +100,11 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);
     // device_id added to tech_attendance after the table first shipped (#165 → device tracking)
     await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)`);
+    // GPS geofence (monitor only) added to tech_attendance later — ADD on existing branches.
+    await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+    await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+    await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS geo_site VARCHAR(160)`);
+    await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS in_area BOOLEAN`);
     // Retire legacy roles on existing branch users (incl. single 'approver' →
     // approve_engineer). DROP the old CHECK FIRST — the remap produces values the
     // old CHECK forbids, so updating before dropping would violate users_role_check.

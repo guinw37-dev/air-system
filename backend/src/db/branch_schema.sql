@@ -260,6 +260,10 @@ CREATE TABLE IF NOT EXISTS tech_attendance (
   check_in_at  TIMESTAMPTZ,
   check_out_at TIMESTAMPTZ,
   device_id    VARCHAR(64),     -- เครื่องที่ใช้ลงเวลา (token ต่อ browser) — กันลงเวลาแทน
+  lat          DOUBLE PRECISION, -- พิกัด GPS ตอนลงเวลา (monitor เฉยๆ ไม่บล็อก)
+  lng          DOUBLE PRECISION,
+  geo_site     VARCHAR(160),    -- ชื่อจุด work_sites ที่อยู่ในรัศมี (NULL = นอกพื้นที่/ไม่มีพิกัด)
+  in_area      BOOLEAN,         -- true=ในรัศมีจุดใดจุดหนึ่ง · false=นอกพื้นที่ · NULL=ไม่ส่งพิกัด
   note         TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()
@@ -279,6 +283,18 @@ CREATE TABLE IF NOT EXISTS user_devices (
   use_count  INT DEFAULT 1
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_devices ON user_devices (user_id, device_id);
+
+-- จุดพิกัดที่อนุญาตให้ลงเวลา (geofence) ต่อสาขา — admin กำหนด. หลายจุดได้
+-- (รพ.หลัก + คลินิกในเครือ). ตอนลงเวลาเช็คว่าช่างอยู่ในรัศมีจุดใดจุดหนึ่งไหม.
+CREATE TABLE IF NOT EXISTS work_sites (
+  id        SERIAL PRIMARY KEY,
+  name      VARCHAR(160) NOT NULL,
+  lat       DOUBLE PRECISION NOT NULL,
+  lng       DOUBLE PRECISION NOT NULL,
+  radius_m  INT DEFAULT 200,
+  active    BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
