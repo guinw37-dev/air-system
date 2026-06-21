@@ -205,6 +205,8 @@ const HEADER_MAP = {
   freq_major:   ['ล้างใหญ่/ปี', 'ล้างใหญ่ต่อปี', 'freq_major', 'freqmajor'],
   freq_minor:   ['ล้างย่อย/ปี', 'ล้างย่อยต่อปี', 'freq_minor', 'freqminor'],
   freq_fan:     ['พัดลม/ปี', 'พัดลมต่อปี', 'freq_fan', 'freqfan'],
+  active:       ['ใช้งาน', 'active', 'สถานะใช้งาน'],
+  note:         ['หมายเหตุ', 'note'],
 };
 
 const normKey = (s) => String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
