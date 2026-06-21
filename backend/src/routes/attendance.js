@@ -64,6 +64,18 @@ router.post('/check-in', authMiddleware, async (req, res) => {
        RETURNING *`,
       [req.user.id, req.user.name || null, deviceOf(req)]
     );
+    // จับพฤติกรรมเครื่อง (ไม่บังคับ): นับครั้งที่ลงเวลาจากเครื่องนี้
+    const dev = deviceOf(req);
+    if (dev) {
+      await req.db(
+        `INSERT INTO user_devices (user_id, user_name, device_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, device_id) DO UPDATE
+           SET last_seen = NOW(), use_count = user_devices.use_count + 1,
+               user_name = EXCLUDED.user_name`,
+        [req.user.id, req.user.name || null, dev]
+      ).catch(() => {});   // best-effort — ไม่ให้ล้มการลงเวลา
+    }
     res.json(rows[0]);
   } catch (err) { serverError(res, err); }
 });
@@ -117,6 +129,42 @@ router.get('/', authMiddleware, canSupervise, async (req, res) => {
     const byDevice = {};
     for (const r of rows) if (r.device_id) (byDevice[r.device_id] ||= new Set()).add(r.user_id);
     for (const r of rows) r.shared_device = !!(r.device_id && byDevice[r.device_id].size > 1);
+    // flag เครื่องไม่ประจำ: device วันนี้ ≠ เครื่องที่ช่างคนนั้นใช้บ่อยสุด (primary)
+    const uids = [...new Set(rows.map((r) => r.user_id))];
+    if (uids.length) {
+      const { rows: devs } = await req.db(
+        `SELECT DISTINCT ON (user_id) user_id, device_id
+           FROM user_devices WHERE user_id = ANY($1)
+          ORDER BY user_id, use_count DESC, first_seen ASC`,
+        [uids]
+      );
+      const primary = Object.fromEntries(devs.map((d) => [d.user_id, d.device_id]));
+      for (const r of rows) {
+        r.other_device = !!(r.device_id && primary[r.user_id] && r.device_id !== primary[r.user_id]);
+      }
+    }
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
+// ── GET /devices — พฤติกรรมเครื่องของช่างแต่ละคน (หัวหน้า/แม่งาน) ──────────────
+// ใช้กี่เครื่อง + แต่ละเครื่องลงเวลากี่ครั้ง/ล่าสุดเมื่อไร. device_count สูง = น่าดู.
+router.get('/devices', authMiddleware, canSupervise, async (req, res) => {
+  try {
+    const { rows } = await req.db(
+      `SELECT user_id,
+              MAX(user_name) AS user_name,
+              COUNT(*)::int AS device_count,
+              SUM(use_count)::int AS total_uses,
+              MAX(last_seen) AS last_seen,
+              json_agg(json_build_object(
+                'device_id', device_id, 'use_count', use_count,
+                'first_seen', first_seen, 'last_seen', last_seen
+              ) ORDER BY use_count DESC, last_seen DESC) AS devices
+         FROM user_devices
+        GROUP BY user_id
+        ORDER BY device_count DESC, user_name NULLS LAST`
+    );
     res.json(rows);
   } catch (err) { serverError(res, err); }
 });

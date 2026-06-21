@@ -267,6 +267,19 @@ CREATE TABLE IF NOT EXISTS tech_attendance (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tech_attendance_user_day ON tech_attendance (user_id, work_date);
 CREATE INDEX IF NOT EXISTS idx_tech_attendance_date ON tech_attendance (work_date);
 
+-- เครื่องที่ช่างแต่ละคนใช้ลงเวลา (จับพฤติกรรม — ไม่บังคับ). 1 แถว/ช่าง/เครื่อง.
+-- use_count = จำนวนครั้งที่ลงเวลาจากเครื่องนี้; เครื่อง use_count สูงสุด = เครื่องประจำ.
+CREATE TABLE IF NOT EXISTS user_devices (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL,
+  user_name  VARCHAR(120),
+  device_id  VARCHAR(64) NOT NULL,
+  first_seen TIMESTAMPTZ DEFAULT NOW(),
+  last_seen  TIMESTAMPTZ DEFAULT NOW(),
+  use_count  INT DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_devices ON user_devices (user_id, device_id);
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported
