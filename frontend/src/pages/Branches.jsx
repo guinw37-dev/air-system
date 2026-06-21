@@ -4,6 +4,7 @@ import { Building2, Plus, LogIn, Pencil, QrCode, X, Download } from 'lucide-reac
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useTenantStore } from '../store/tenant'
+import { compressImage } from '../lib/image'
 
 // Super-admin back-office: provision + edit branches (สาขา). Each branch is a
 // separate Postgres schema with its own users. "เข้าจัดการ" switches the SPA into
@@ -25,13 +26,15 @@ function EditModal({ branch, onClose, onSaved }) {
   const [qr, setQr] = useState(null)
   const [err, setErr] = useState('')
 
-  const pickImage = (e) => {
+  const pickImage = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 1.5 * 1024 * 1024) { setErr('รูปใหญ่เกิน 1.5MB'); return }
+    setErr('')
+    // ย่อรูปการ์ดก่อนเก็บ base64 ใน DB (เดิมเก็บไฟล์ดิบ ≤1.5MB → row อ้วน)
+    const small = await compressImage(file, { maxDim: 800, quality: 0.7 })
     const reader = new FileReader()
     reader.onload = () => setForm((f) => ({ ...f, card_image: reader.result }))
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(small)
   }
 
   const save = async () => {
