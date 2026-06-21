@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import dayjs from 'dayjs';
 import api from '../api/client';
 import Layout from '../components/Layout';
@@ -110,9 +110,23 @@ export default function Attendance() {
     URL.revokeObjectURL(url);
   };
 
+  // --- Admin device behavior ---
+  const [devRows, setDevRows] = useState([]);
+  const [devLoading, setDevLoading] = useState(false);
+  const [devOpen, setDevOpen] = useState(null);   // expanded user_id
+  const loadDevices = useCallback(async () => {
+    if (!isAdmin) return;
+    setDevLoading(true);
+    try {
+      const r = await api.get('/attendance/devices');
+      setDevRows(r.data || []);
+    } catch { setDevRows([]); } finally { setDevLoading(false); }
+  }, [isAdmin]);
+
   useEffect(() => { loadToday(); loadRecent(); }, [loadToday, loadRecent]);
   useEffect(() => { loadAdmin(adminDate); }, [loadAdmin, adminDate]);
   useEffect(() => { loadSummary(sumMonth); }, [loadSummary, sumMonth]);
+  useEffect(() => { loadDevices(); }, [loadDevices]);
 
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
@@ -331,8 +345,12 @@ export default function Attendance() {
                           </td>
                           <td className="py-2.5 px-3 text-xs">
                             {row.shared_device ? (
-                              <span className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap" title="เครื่องนี้ถูกใช้ลงเวลาหลายคน — อาจลงแทนกัน">
+                              <span className="text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 whitespace-nowrap" title="เครื่องนี้ถูกใช้ลงเวลาหลายคน — อาจลงแทนกัน">
                                 ⚠ เครื่องซ้ำ
+                              </span>
+                            ) : row.other_device ? (
+                              <span className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap" title="ลงจากเครื่องที่ไม่ใช่เครื่องประจำของช่างคนนี้">
+                                เครื่องไม่ประจำ
                               </span>
                             ) : row.device_id ? (
                               <span className="text-gray-400 font-mono">…{String(row.device_id).slice(-5)}</span>
@@ -392,6 +410,70 @@ export default function Attendance() {
                         <td className="py-2.5 px-3 text-center tabular-nums font-bold text-emerald-600">{row.days}</td>
                         <td className="py-2.5 px-3 text-center tabular-nums text-blue-600">{row.days_complete}</td>
                       </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== ADMIN DEVICE BEHAVIOR ===== */}
+        {isAdmin && (
+          <div className="bg-white border rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b bg-gray-50">
+              <span className="text-sm font-semibold text-gray-700">พฤติกรรมเครื่องของช่าง</span>
+              <p className="text-xs text-gray-400 mt-0.5">ช่างใช้กี่เครื่องลงเวลา · ใช้หลายเครื่อง = น่าตรวจ (ยังไม่บังคับ)</p>
+            </div>
+            {devLoading ? (
+              <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด…</p>
+            ) : devRows.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">ยังไม่มีข้อมูล</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 text-xs border-b">
+                      <th className="py-2.5 px-4">ช่าง</th>
+                      <th className="py-2.5 px-3 text-center">จำนวนเครื่อง</th>
+                      <th className="py-2.5 px-3 text-center">ลงเวลารวม</th>
+                      <th className="py-2.5 px-3">ล่าสุด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {devRows.map((row, i) => (
+                      <Fragment key={row.user_id || i}>
+                        <tr
+                          onClick={() => setDevOpen(devOpen === row.user_id ? null : row.user_id)}
+                          className="border-b last:border-0 hover:bg-gray-50 cursor-pointer">
+                          <td className="py-2.5 px-4 font-medium text-gray-800">{row.user_name || '—'}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`tabular-nums font-bold ${row.device_count > 1 ? 'text-amber-600' : 'text-gray-700'}`}>
+                              {row.device_count}
+                            </span>
+                            {row.device_count > 1 && <span className="text-amber-500 ml-1">⚠</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-center tabular-nums text-gray-500">{row.total_uses}</td>
+                          <td className="py-2.5 px-3 text-gray-500 text-xs">{row.last_seen ? fmtDateTH(row.last_seen) : '—'}</td>
+                        </tr>
+                        {devOpen === row.user_id && (
+                          <tr className="bg-gray-50/60">
+                            <td colSpan={4} className="px-4 py-2">
+                              <div className="space-y-1">
+                                {(row.devices || []).map((d, j) => (
+                                  <div key={d.device_id || j} className="flex items-center gap-2 text-xs text-gray-600">
+                                    <span className="font-mono text-gray-400">…{String(d.device_id).slice(-6)}</span>
+                                    {j === 0 && <span className="text-emerald-600 border border-emerald-200 bg-emerald-50 rounded px-1">เครื่องประจำ</span>}
+                                    <span className="flex-1" />
+                                    <span>ลง {d.use_count} ครั้ง</span>
+                                    <span className="text-gray-400">· ล่าสุด {fmtDateTH(d.last_seen)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
