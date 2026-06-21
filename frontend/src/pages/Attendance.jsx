@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import { useAuthStore } from '../store/auth';
 import { getDeviceId } from '../lib/device';
 
-const ADMIN_ROLES = ['admin', 'super_admin', 'approve_engineer', 'approve_building', 'checker'];
+const ADMIN_ROLES = ['admin', 'super_admin'];
 
 function fmtTime(ts) {
   return ts ? dayjs(ts).format('HH:mm') : '—';

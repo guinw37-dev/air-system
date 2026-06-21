@@ -7,10 +7,8 @@ const router = express.Router();
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
 
-// หัวหน้างาน/แม่งาน — ดูภาพรวมการเข้างานของช่างทุกคนในสาขาได้
-const canSupervise = requireRole(
-  'admin', 'super_admin', 'approve_engineer', 'approve_building', 'checker'
-);
+// ภาพรวม/สรุปการลงเวลา — เฉพาะ Admin (และ super_admin) เท่านั้น
+const canSupervise = requireRole('admin', 'super_admin');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-\d{2}$/;
