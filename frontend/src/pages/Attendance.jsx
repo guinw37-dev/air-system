@@ -107,12 +107,19 @@ export default function Attendance() {
     }
   }, []);
 
+  // สาขาบังคับ GPS ไหม (จาก /settings) — ถ้าบังคับและเปิด location ไม่ได้ → กันลงเวลา
+  const [requireGps, setRequireGps] = useState(false);
+  useEffect(() => {
+    api.get('/attendance/settings').then((r) => setRequireGps(!!r.data?.require_gps)).catch(() => {});
+  }, []);
+
   useEffect(() => { loadToday(); loadRecent(); }, [loadToday, loadRecent]);
 
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
     try {
       const coords = await getGPS();
+      if (requireGps && !coords) { setTodayErr('สาขานี้บังคับลงเวลาด้วย GPS — กรุณาเปิดตำแหน่ง (Location) แล้วลองใหม่'); return; }
       const body = { device_id: getDeviceId(), ...(coords || {}) };
       await api.post('/attendance/check-in', body);
       await loadToday(); await loadRecent();
@@ -127,6 +134,7 @@ export default function Attendance() {
     setActionLoading('out'); setTodayErr('');
     try {
       const coords = await getGPS();
+      if (requireGps && !coords) { setTodayErr('สาขานี้บังคับลงเวลาด้วย GPS — กรุณาเปิดตำแหน่ง (Location) แล้วลองใหม่'); return; }
       const body = { device_id: getDeviceId(), ...(coords || {}) };
       await api.post('/attendance/check-out', body);
       await loadToday(); await loadRecent();
