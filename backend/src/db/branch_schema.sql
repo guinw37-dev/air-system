@@ -304,6 +304,25 @@ CREATE TABLE IF NOT EXISTS attendance_settings (
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ใบลาของช่าง — ยื่นแล้วรอ admin อนุมัติ (pending → approved/rejected).
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id            SERIAL PRIMARY KEY,
+  user_id       INT NOT NULL,
+  user_name     VARCHAR(120),
+  leave_type    VARCHAR(20) NOT NULL,      -- sick | personal | vacation | other
+  start_date    DATE NOT NULL,
+  end_date      DATE NOT NULL,
+  reason        TEXT,
+  status        VARCHAR(12) NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
+  reviewed_by   INT,
+  reviewer_name VARCHAR(120),
+  reviewed_at   TIMESTAMPTZ,
+  review_note   TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests (status);
+CREATE INDEX IF NOT EXISTS idx_leave_user   ON leave_requests (user_id);
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported

@@ -65,6 +65,21 @@ function GeoStatusBadge({ today }) {
   );
 }
 
+const LEAVE_TYPE_LABELS = {
+  sick: 'ลาป่วย',
+  personal: 'ลากิจ',
+  vacation: 'ลาพักร้อน',
+  other: 'อื่นๆ',
+};
+
+const LEAVE_STATUS_STYLES = {
+  pending: { label: 'รออนุมัติ', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  approved: { label: 'อนุมัติ', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  rejected: { label: 'ไม่อนุมัติ', cls: 'bg-red-50 text-red-700 border border-red-200' },
+};
+
+const LEAVE_FORM_INIT = { leave_type: 'sick', start_date: '', end_date: '', reason: '' };
+
 export default function Attendance() {
   // --- My today card ---
   const [today, setToday] = useState(null);       // null = not loaded, false = no row
@@ -80,6 +95,16 @@ export default function Attendance() {
   const [note, setNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMsg, setNoteMsg] = useState('');
+
+  // --- Leave request form ---
+  const [leaveForm, setLeaveForm] = useState(LEAVE_FORM_INIT);
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+  const [leaveErr, setLeaveErr] = useState('');
+  const [leaveSuccess, setLeaveSuccess] = useState('');
+
+  // --- My leave list ---
+  const [myLeaves, setMyLeaves] = useState([]);
+  const [myLeavesLoading, setMyLeavesLoading] = useState(true);
 
   const loadToday = useCallback(async () => {
     setTodayLoading(true); setTodayErr('');
@@ -107,13 +132,25 @@ export default function Attendance() {
     }
   }, []);
 
+  const loadMyLeaves = useCallback(async () => {
+    setMyLeavesLoading(true);
+    try {
+      const r = await api.get('/attendance/leave/me');
+      setMyLeaves(r.data || []);
+    } catch {
+      setMyLeaves([]);
+    } finally {
+      setMyLeavesLoading(false);
+    }
+  }, []);
+
   // สาขาบังคับ GPS ไหม (จาก /settings) — ถ้าบังคับและเปิด location ไม่ได้ → กันลงเวลา
   const [requireGps, setRequireGps] = useState(false);
   useEffect(() => {
     api.get('/attendance/settings').then((r) => setRequireGps(!!r.data?.require_gps)).catch(() => {});
   }, []);
 
-  useEffect(() => { loadToday(); loadRecent(); }, [loadToday, loadRecent]);
+  useEffect(() => { loadToday(); loadRecent(); loadMyLeaves(); }, [loadToday, loadRecent, loadMyLeaves]);
 
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
@@ -156,6 +193,36 @@ export default function Attendance() {
       setNoteMsg(e.response?.data?.error || e.message);
     } finally {
       setNoteSaving(false);
+    }
+  }
+
+  function setLeaveField(k, v) {
+    setLeaveForm((f) => ({ ...f, [k]: v }));
+    setLeaveErr('');
+    setLeaveSuccess('');
+  }
+
+  async function submitLeave(e) {
+    e.preventDefault();
+    setLeaveErr(''); setLeaveSuccess('');
+    if (!leaveForm.start_date) { setLeaveErr('กรุณาระบุวันที่เริ่มลา'); return; }
+    if (!leaveForm.end_date) { setLeaveErr('กรุณาระบุวันที่สิ้นสุด'); return; }
+    if (leaveForm.end_date < leaveForm.start_date) { setLeaveErr('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม'); return; }
+    setLeaveSubmitting(true);
+    try {
+      await api.post('/attendance/leave', {
+        leave_type: leaveForm.leave_type,
+        start_date: leaveForm.start_date,
+        end_date: leaveForm.end_date,
+        reason: leaveForm.reason,
+      });
+      setLeaveSuccess('ส่งใบลาแล้ว — รอผู้ดูแลอนุมัติ');
+      setLeaveForm(LEAVE_FORM_INIT);
+      await loadMyLeaves();
+    } catch (e) {
+      setLeaveErr(e.response?.data?.error || e.message);
+    } finally {
+      setLeaveSubmitting(false);
     }
   }
 
@@ -292,6 +359,133 @@ export default function Attendance() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+
+        {/* ===== LEAVE REQUEST SECTION ===== */}
+        <div className="bg-white border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <span className="text-sm font-semibold text-gray-700">แจ้งลา</span>
+            <p className="text-xs text-gray-400 mt-0.5">ยื่นใบลาเพื่อให้ผู้ดูแลอนุมัติ</p>
+          </div>
+
+          <form onSubmit={submitLeave} className="p-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Leave type */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-gray-500 font-medium mb-1">
+                  ประเภทการลา <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={leaveForm.leave_type}
+                  onChange={(e) => setLeaveField('leave_type', e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                >
+                  <option value="sick">ลาป่วย</option>
+                  <option value="personal">ลากิจ</option>
+                  <option value="vacation">ลาพักร้อน</option>
+                  <option value="other">อื่นๆ</option>
+                </select>
+              </div>
+
+              {/* Start date */}
+              <div>
+                <label className="block text-xs text-gray-500 font-medium mb-1">
+                  วันที่เริ่ม <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={leaveForm.start_date}
+                  onChange={(e) => setLeaveField('start_date', e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+
+              {/* End date */}
+              <div>
+                <label className="block text-xs text-gray-500 font-medium mb-1">
+                  ถึงวันที่ <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={leaveForm.end_date}
+                  min={leaveForm.start_date || undefined}
+                  onChange={(e) => setLeaveField('end_date', e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+
+              {/* Reason */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-gray-500 font-medium mb-1">เหตุผล</label>
+                <textarea
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveField('reason', e.target.value)}
+                  rows={2}
+                  placeholder="ระบุเหตุผล (ไม่บังคับ)"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                />
+              </div>
+            </div>
+
+            {leaveErr && <p className="text-sm text-red-600">{leaveErr}</p>}
+            {leaveSuccess && <p className="text-sm text-emerald-600">{leaveSuccess}</p>}
+
+            <button
+              type="submit"
+              disabled={leaveSubmitting}
+              className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {leaveSubmitting ? 'กำลังส่ง…' : 'ส่งใบลา'}
+            </button>
+          </form>
+        </div>
+
+        {/* ===== MY LEAVE LIST ===== */}
+        <div className="bg-white border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <span className="text-sm font-semibold text-gray-700">ใบลาของฉัน</span>
+          </div>
+
+          {myLeavesLoading ? (
+            <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด…</p>
+          ) : myLeaves.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">ยังไม่มีใบลา</p>
+          ) : (
+            <ul className="divide-y">
+              {myLeaves.map((row) => {
+                const st = LEAVE_STATUS_STYLES[row.status] || LEAVE_STATUS_STYLES.pending;
+                return (
+                  <li key={row.id} className="px-4 py-3 hover:bg-gray-50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-gray-800">
+                          {LEAVE_TYPE_LABELS[row.leave_type] || row.leave_type}
+                          <span className="text-gray-400 font-normal mx-1.5">·</span>
+                          <span className="text-gray-600">
+                            {fmtDateTH(row.start_date)}
+                            {row.end_date !== row.start_date && ` – ${fmtDateTH(row.end_date)}`}
+                          </span>
+                        </p>
+                        {row.reason && (
+                          <p className="text-xs text-gray-500">{row.reason}</p>
+                        )}
+                        {(row.review_note || row.reviewer_name) && (
+                          <p className="text-xs text-gray-500">
+                            {row.reviewer_name && <span>โดย {row.reviewer_name}</span>}
+                            {row.reviewer_name && row.review_note && <span className="mx-1">·</span>}
+                            {row.review_note && <span>{row.review_note}</span>}
+                          </p>
+                        )}
+                      </div>
+                      <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full ${st.cls}`}>
+                        {st.label}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 
