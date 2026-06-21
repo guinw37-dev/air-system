@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, ChevronDown, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2, ClipboardList,
+  Clock,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -23,6 +24,7 @@ const NAV = [
       { to: '/simple-wo?view=all',                     label: 'ทั้งหมด' },
     ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
+  { path: '/attendance',   icon: Clock,            label: 'ลงเวลา',          roles: null },
   { path: '/unit-history', icon: Activity,         label: 'ประวัติแอร์',     roles: null },
   { path: '/wash-units',   icon: ClipboardList,    label: 'ทะเบียนแอร์',    roles: null },
   { path: '/targets',      icon: CalendarCheck,    label: 'เป้าหมายล้าง',   roles: ['admin', 'super_admin'] },

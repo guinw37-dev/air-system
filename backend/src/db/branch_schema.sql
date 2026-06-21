@@ -251,6 +251,21 @@ CREATE TABLE IF NOT EXISTS wash_units (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wash_units_code ON wash_units (asset_code);
 CREATE INDEX IF NOT EXISTS idx_wash_units_zone ON wash_units (pts_zone);
 
+-- การลงเวลาเข้า-ออกงานของช่างรายวัน (per-branch). 1 แถว/ช่าง/วัน.
+CREATE TABLE IF NOT EXISTS tech_attendance (
+  id           SERIAL PRIMARY KEY,
+  user_id      INT NOT NULL,
+  user_name    VARCHAR(120),
+  work_date    DATE NOT NULL,
+  check_in_at  TIMESTAMPTZ,
+  check_out_at TIMESTAMPTZ,
+  note         TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tech_attendance_user_day ON tech_attendance (user_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_tech_attendance_date ON tech_attendance (work_date);
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported
