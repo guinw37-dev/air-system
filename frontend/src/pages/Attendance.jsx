@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import { useAuthStore } from '../store/auth';
+import { getDeviceId } from '../lib/device';
 
 const ADMIN_ROLES = ['admin', 'super_admin', 'approve_engineer', 'approve_building', 'checker'];
 
@@ -116,7 +117,7 @@ export default function Attendance() {
   async function doCheckIn() {
     setActionLoading('in'); setTodayErr('');
     try {
-      await api.post('/attendance/check-in');
+      await api.post('/attendance/check-in', { device_id: getDeviceId() });
       await loadToday(); await loadRecent();
     } catch (e) {
       setTodayErr(e.response?.data?.error || e.message);
@@ -128,7 +129,7 @@ export default function Attendance() {
   async function doCheckOut() {
     setActionLoading('out'); setTodayErr('');
     try {
-      await api.post('/attendance/check-out');
+      await api.post('/attendance/check-out', { device_id: getDeviceId() });
       await loadToday(); await loadRecent();
     } catch (e) {
       setTodayErr(e.response?.data?.error || e.message);
@@ -311,6 +312,7 @@ export default function Attendance() {
                       <th className="py-2.5 px-4">ช่าง</th>
                       <th className="py-2.5 px-3">เข้างาน</th>
                       <th className="py-2.5 px-3">ออกงาน</th>
+                      <th className="py-2.5 px-3">เครื่อง</th>
                       <th className="py-2.5 px-3 hidden sm:table-cell">หมายเหตุ</th>
                     </tr>
                   </thead>
@@ -326,6 +328,15 @@ export default function Attendance() {
                           </td>
                           <td className={`py-2.5 px-3 tabular-nums font-medium ${hasOut ? 'text-blue-600' : 'text-gray-300'}`}>
                             {fmtTime(row.check_out_at)}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs">
+                            {row.shared_device ? (
+                              <span className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap" title="เครื่องนี้ถูกใช้ลงเวลาหลายคน — อาจลงแทนกัน">
+                                ⚠ เครื่องซ้ำ
+                              </span>
+                            ) : row.device_id ? (
+                              <span className="text-gray-400 font-mono">…{String(row.device_id).slice(-5)}</span>
+                            ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="py-2.5 px-3 text-gray-500 text-xs hidden sm:table-cell">{row.note || '—'}</td>
                         </tr>

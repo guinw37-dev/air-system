@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS tech_attendance (
   work_date    DATE NOT NULL,
   check_in_at  TIMESTAMPTZ,
   check_out_at TIMESTAMPTZ,
+  device_id    VARCHAR(64),     -- เครื่องที่ใช้ลงเวลา (token ต่อ browser) — กันลงเวลาแทน
   note         TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()

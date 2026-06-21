@@ -15,6 +15,12 @@ const canSupervise = requireRole(
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
+// device token ส่งมาจาก frontend (localStorage UUID) ทาง body หรือ header.
+const deviceOf = (req) => {
+  const d = req.body?.device_id || req.get('X-Device-Id') || '';
+  return String(d).trim().slice(0, 64) || null;
+};
+
 // ── GET /me/today — แถวของวันนี้ของผู้ใช้ปัจจุบัน (หรือ null) ─────────────────
 router.get('/me/today', authMiddleware, async (req, res) => {
   try {
@@ -48,14 +54,15 @@ router.get('/me', authMiddleware, async (req, res) => {
 router.post('/check-in', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db(
-      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_in_at)
-       VALUES ($1, $2, CURRENT_DATE, NOW())
+      `INSERT INTO tech_attendance (user_id, user_name, work_date, check_in_at, device_id)
+       VALUES ($1, $2, CURRENT_DATE, NOW(), $3)
        ON CONFLICT (user_id, work_date) DO UPDATE
          SET check_in_at = COALESCE(tech_attendance.check_in_at, NOW()),
              user_name   = EXCLUDED.user_name,
+             device_id   = COALESCE(EXCLUDED.device_id, tech_attendance.device_id),
              updated_at  = NOW()
        RETURNING *`,
-      [req.user.id, req.user.name || null]
+      [req.user.id, req.user.name || null, deviceOf(req)]
     );
     res.json(rows[0]);
   } catch (err) { serverError(res, err); }
@@ -106,6 +113,10 @@ router.get('/', authMiddleware, canSupervise, async (req, res) => {
         ORDER BY user_name NULLS LAST, user_id`,
       [date]
     );
+    // flag เครื่องที่ถูกใช้โดยช่างหลายคนในวันเดียวกัน = น่าจะลงเวลาแทน
+    const byDevice = {};
+    for (const r of rows) if (r.device_id) (byDevice[r.device_id] ||= new Set()).add(r.user_id);
+    for (const r of rows) r.shared_device = !!(r.device_id && byDevice[r.device_id].size > 1);
     res.json(rows);
   } catch (err) { serverError(res, err); }
 });
