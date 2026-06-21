@@ -296,6 +296,14 @@ CREATE TABLE IF NOT EXISTS work_sites (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ตั้งค่าการลงเวลาต่อสาขา (admin คุม). require_gps = บังคับต้องมีพิกัด +
+-- อยู่ในพื้นที่ (ถ้ากำหนด work_sites ไว้) ถึงลงเวลาได้. singleton row id=1.
+CREATE TABLE IF NOT EXISTS attendance_settings (
+  id          INT PRIMARY KEY DEFAULT 1,
+  require_gps BOOLEAN DEFAULT false,
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── งานซ่อมแอร์ (AC repair jobs — independent, decoupled from repair-system) ──
 -- Source-of-truth for AC repair work in air-system. repair_job_id/number are
 -- optional cross-references for jobs seeded from repair-system; once imported

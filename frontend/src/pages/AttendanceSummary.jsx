@@ -275,10 +275,23 @@ export default function AttendanceSummary() {
     } catch { setSites([]); } finally { setSitesLoading(false); }
   }, []);
 
+  // require_gps toggle (บังคับลงเวลาด้วย GPS ต่อสาขา)
+  const [requireGps, setRequireGps] = useState(false);
+  const [gpsSaving, setGpsSaving] = useState(false);
+  const loadSettings = useCallback(async () => {
+    try { const r = await api.get('/attendance/settings'); setRequireGps(!!r.data?.require_gps); } catch { /* keep */ }
+  }, []);
+  const toggleRequireGps = async (val) => {
+    setGpsSaving(true);
+    try { const r = await api.put('/attendance/settings', { require_gps: val }); setRequireGps(!!r.data?.require_gps); }
+    catch { /* keep */ } finally { setGpsSaving(false); }
+  };
+
   useEffect(() => { if (isAdmin) loadAdmin(adminDate); }, [isAdmin, loadAdmin, adminDate]);
   useEffect(() => { if (isAdmin) loadSummary(sumMonth); }, [isAdmin, loadSummary, sumMonth]);
   useEffect(() => { if (isAdmin) loadDevices(); }, [isAdmin, loadDevices]);
   useEffect(() => { if (isAdmin) loadSites(); }, [isAdmin, loadSites]);
+  useEffect(() => { if (isAdmin) loadSettings(); }, [isAdmin, loadSettings]);
 
   async function deleteSite(id) {
     if (!window.confirm('ลบจุดพื้นที่นี้?')) return;
@@ -512,6 +525,18 @@ export default function AttendanceSummary() {
               + เพิ่มจุด
             </button>
           </div>
+
+          {/* บังคับลงเวลาด้วย GPS */}
+          <label className="flex items-start gap-2 px-4 py-3 border-b cursor-pointer hover:bg-gray-50">
+            <input type="checkbox" className="accent-blue-600 h-4 w-4 mt-0.5" checked={requireGps} disabled={gpsSaving}
+              onChange={(e) => toggleRequireGps(e.target.checked)} />
+            <span className="text-sm text-gray-800">
+              บังคับลงเวลาด้วย GPS {gpsSaving && <span className="text-xs text-gray-400">· กำลังบันทึก…</span>}
+              <span className="block text-xs text-gray-500">
+                เปิด = ช่างต้องเปิดตำแหน่ง + อยู่ในรัศมีจุดที่กำหนด ถึงลงเวลาได้ · ปิด = ลงเวลาได้ทุกที่ (แค่บันทึกพิกัด)
+              </span>
+            </span>
+          </label>
 
           {sitesLoading ? (
             <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด…</p>

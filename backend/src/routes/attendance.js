@@ -49,6 +49,24 @@ async function resolveGeo(req, lat, lng) {
   return best ? { in_area: true, geo_site: best.name } : { in_area: false, geo_site: null };
 }
 
+// อ่าน setting require_gps ของสาขา (default false ถ้ายังไม่ตั้ง)
+async function requireGps(req) {
+  try {
+    const { rows } = await req.db('SELECT require_gps FROM attendance_settings WHERE id = 1');
+    return !!rows[0]?.require_gps;
+  } catch { return false; }
+}
+
+// ถ้าสาขาบังคับ GPS → ต้องมีพิกัด + อยู่ในพื้นที่ (ถ้ากำหนด work_sites ไว้).
+// คืน error string ถ้าไม่ผ่าน, null ถ้าผ่าน/ไม่บังคับ.
+async function gpsBlock(req, lat, lng, geo) {
+  if (!(await requireGps(req))) return null;
+  if (lat == null || lng == null) return 'สาขานี้บังคับลงเวลาด้วย GPS — กรุณาเปิดตำแหน่ง (Location) แล้วลองใหม่';
+  const { rows } = await req.db('SELECT COUNT(*)::int AS n FROM work_sites WHERE active = true');
+  if (rows[0].n > 0 && geo.in_area === false) return 'อยู่นอกพื้นที่ลงเวลาที่กำหนด';
+  return null;
+}
+
 // ── GET /me/today — แถวของวันนี้ของผู้ใช้ปัจจุบัน (หรือ null) ─────────────────
 router.get('/me/today', authMiddleware, async (req, res) => {
   try {
@@ -84,6 +102,8 @@ router.post('/check-in', authMiddleware, async (req, res) => {
     const lat = coordOf(req.body?.lat);
     const lng = coordOf(req.body?.lng);
     const geo = await resolveGeo(req, lat, lng);
+    const block = await gpsBlock(req, lat, lng, geo);
+    if (block) return res.status(400).json({ error: block });
     const { rows } = await req.db(
       `INSERT INTO tech_attendance (user_id, user_name, work_date, check_in_at, device_id, lat, lng, geo_site, in_area)
        VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, $5, $6, $7)
@@ -121,6 +141,8 @@ router.post('/check-out', authMiddleware, async (req, res) => {
     const lat = coordOf(req.body?.lat);
     const lng = coordOf(req.body?.lng);
     const geo = await resolveGeo(req, lat, lng);
+    const block = await gpsBlock(req, lat, lng, geo);
+    if (block) return res.status(400).json({ error: block });
     const { rows } = await req.db(
       `INSERT INTO tech_attendance (user_id, user_name, work_date, check_out_at, lat, lng, geo_site, in_area)
        VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, $5, $6)
@@ -237,6 +259,29 @@ router.get('/summary', authMiddleware, canSupervise, async (req, res) => {
 // GET อ่านได้ทุก authed user (ให้แอปช่างโชว์ "คุณอยู่ที่ X"); เขียนเฉพาะ admin.
 const ID_RE = /^\d+$/;
 const finite = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+// GET /settings — ค่าตั้งการลงเวลาของสาขา (authed; frontend ใช้รู้ว่าต้องบังคับ GPS ไหม)
+router.get('/settings', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db('SELECT require_gps FROM attendance_settings WHERE id = 1');
+    res.json({ require_gps: !!rows[0]?.require_gps });
+  } catch (err) { serverError(res, err); }
+});
+
+// PUT /settings — admin ตั้งค่า require_gps
+router.put('/settings', authMiddleware, canSupervise, async (req, res) => {
+  const require_gps = !!req.body?.require_gps;
+  try {
+    const { rows } = await req.db(
+      `INSERT INTO attendance_settings (id, require_gps, updated_at)
+       VALUES (1, $1, NOW())
+       ON CONFLICT (id) DO UPDATE SET require_gps = EXCLUDED.require_gps, updated_at = NOW()
+       RETURNING require_gps`,
+      [require_gps]
+    );
+    res.json({ require_gps: !!rows[0].require_gps });
+  } catch (err) { serverError(res, err); }
+});
 
 // GET /sites — รายการจุดทั้งหมด (active ก่อน แล้วเรียงชื่อ)
 router.get('/sites', authMiddleware, async (req, res) => {
