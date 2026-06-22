@@ -71,39 +71,61 @@ export default function WashReport() {
 
             {/* Row 1 */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* daily wash */}
+              {/* daily wash — ยอดวันนี้ เทียบเป้า/วัน */}
               <Card title="สรุปงานล้างประจำวัน" icon={Sparkles}>
-                <div className="flex items-baseline gap-2 mb-4">
-                  <span className="text-slate-500">รวม</span>
-                  <span className="text-4xl font-bold text-blue-900">{data.daily.total}</span>
-                  <span className="text-slate-500">งาน</span>
+                <div className="flex items-baseline justify-between mb-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-slate-500">รวม</span>
+                    <span className="text-4xl font-bold text-blue-900">{data.daily.total}</span>
+                    <span className="text-slate-500">ตัว</span>
+                  </div>
+                  <span className="text-xs text-slate-400">เป้า/วัน {data.daily.target}</span>
                 </div>
-                <div className="space-y-1.5 text-sm">
-                  {[['major', data.daily.major], ['minor', data.daily.minor], ['fan', data.daily.fan]].map(([k, v]) => (
-                    <div key={k} className="flex items-center justify-between">
-                      <span className="text-slate-600">{WT[k]}</span>
-                      <span><b className="text-blue-900 text-lg">{v}</b> <span className="text-slate-400">งาน</span></span>
-                    </div>
-                  ))}
+                <div className="space-y-2.5 text-sm">
+                  {[['major', data.daily.major, data.daily.target_major],
+                    ['minor', data.daily.minor, data.daily.target_minor],
+                    ['fan', data.daily.fan, data.daily.target_fan]].map(([k, v, tg]) => {
+                    const pct = tg > 0 ? Math.min(100, Math.round((v / tg) * 100)) : 0;
+                    const tone = tg > 0 && v >= tg ? '#059669' : '#2563eb';
+                    return (
+                      <div key={k}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-slate-600">{WT[k]}</span>
+                          <span><b className="text-blue-900">{v}</b><span className="text-slate-400"> / {tg} ตัว</span></span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
 
-              {/* daily repair */}
-              <Card title="สรุปรายงานซ่อมประจำวัน" icon={ClipboardCheck}>
+              {/* monthly repair */}
+              <Card title="สรุปงานซ่อมประจำเดือน" icon={ClipboardCheck}>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-emerald-50 rounded-xl p-3">
                     <div className="text-2xl font-bold text-emerald-600">{data.repair.done}</div>
-                    <div className="text-xs text-slate-500 mt-1">งานเสร็จ ✓</div>
+                    <div className="text-xs text-slate-500 mt-1">สำเร็จ ✓</div>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-3">
                     <div className="text-2xl font-bold text-slate-700">{data.repair.total}</div>
-                    <div className="text-xs text-slate-500 mt-1">งานทั้งหมด</div>
+                    <div className="text-xs text-slate-500 mt-1">ทั้งหมด</div>
                   </div>
                   <div className="bg-red-50 rounded-xl p-3">
                     <div className="text-2xl font-bold text-red-500">{data.repair.pending}</div>
-                    <div className="text-xs text-slate-500 mt-1">งานคงค้าง ✗</div>
+                    <div className="text-xs text-slate-500 mt-1">คงค้าง ✗</div>
                   </div>
                 </div>
+                {data.repair.total > 0 && (
+                  <div className="mt-3">
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round((data.repair.done / data.repair.total) * 100)}%` }} />
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1 text-center">สำเร็จ {Math.round((data.repair.done / data.repair.total) * 100)}%</p>
+                  </div>
+                )}
               </Card>
 
               {/* monthly target bar */}
@@ -153,12 +175,34 @@ export default function WashReport() {
 
               {/* weekly */}
               <Card title="รวมยอดล้างแอร์รายสัปดาห์ (Weekly)" icon={Target}>
+                {(() => {
+                  const cur = weeks.find((w) => w.no === data.weekly.current_no);
+                  if (!cur) return null;
+                  const tone = cur.pct >= 100 ? '#059669' : cur.pct >= 60 ? '#0ea5e9' : '#f59e0b';
+                  return (
+                    <div className="mb-3 rounded-xl bg-sky-50 border border-sky-100 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-semibold text-blue-900">สัปดาห์นี้ (Week {cur.no})</span>
+                        <span className="text-xs text-slate-500">{cur.label}</span>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1.5 text-sm">
+                        <span>ยอด <b className="text-blue-900">{cur.done}</b>/{cur.target}</span>
+                        <span className="text-amber-600">คงค้าง {cur.remaining}</span>
+                        <span className="ml-auto font-bold" style={{ color: tone }}>{cur.pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-slate-500 text-xs border-b">
                         <th className="py-2 text-left">รายการ</th>
-                        {weeks.map((w) => <th key={w.no} className="py-2 text-center">Week {w.no}</th>)}
+                        {weeks.map((w) => (
+                          <th key={w.no} className={`py-2 text-center ${w.no === data.weekly.current_no ? 'text-blue-900 bg-sky-50 rounded' : ''}`}>
+                            Week {w.no}
+                          </th>
+                        ))}
                         <th className="py-2 text-center">รวม</th>
                       </tr>
                     </thead>
