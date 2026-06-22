@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet } from 'lucide-react';
+import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import api from '../api/client';
 import Layout from '../components/Layout';
+import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition';
 
 const TH_MONTHS = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -34,11 +35,14 @@ export default function WashReport() {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const [cond, setCond] = useState(null);
+
   useEffect(() => {
     api.get('/dashboard/wash-report')
       .then((r) => setData(r.data))
       .catch((e) => setErr(e.response?.status === 400 ? 'เลือกสาขาก่อนเพื่อดูรายงาน' : (e.response?.data?.error || e.message)))
       .finally(() => setLoading(false));
+    api.get('/simple-wo/condition-summary').then((r) => setCond(r.data)).catch(() => {});
   }, []);
 
   const [exporting, setExporting] = useState(false);
@@ -251,6 +255,29 @@ export default function WashReport() {
                 </div>
               </Card>
             </div>
+
+            {/* แอร์เสื่อมสภาพ แยกตามอาการ */}
+            {cond && cond.total > 0 && (
+              <Card title={`แอร์เสื่อมสภาพ / ต้องแก้ (${cond.total})`} icon={AlertTriangle}>
+                {/* priority chips */}
+                <div className="flex gap-2 mb-3">
+                  {['urgent', 'normal', 'low'].filter((p) => cond.byPriority?.[p]).map((p) => (
+                    <span key={p} className="text-xs font-medium px-2.5 py-1 rounded-lg text-white" style={{ background: PRIORITY_COLOR[p] }}>
+                      {PRIORITY_LABEL[p]} {cond.byPriority[p]}
+                    </span>
+                  ))}
+                </div>
+                {/* จำนวนต่อแต่ละอาการ */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5">
+                  {Object.entries(cond.byIssue || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
+                    <div key={k} className="flex items-center justify-between text-sm border-b border-slate-50 py-0.5">
+                      <span className="text-slate-600 truncate">{CONDITION_ISSUE_LABEL[k] || k}</span>
+                      <b className="text-blue-900">{n}</b>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
           </>
         )}
       </div>
