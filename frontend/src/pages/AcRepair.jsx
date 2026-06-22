@@ -43,20 +43,75 @@ function fmt(dt) {
 function PartsEditor({ parts, onChange }) {
   const rows = Array.isArray(parts) ? parts : [];
   const setRow = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const addRow = () => onChange([...rows, { name: '', qty: '', note: '' }]);
+  const addRow = () => onChange([...rows, { name: '', qty: '', unit_price: 0, note: '' }]);
   const delRow = (i) => onChange(rows.filter((_, j) => j !== i));
+
+  const grandTotal = rows.reduce((sum, r) => {
+    const qty = parseFloat(r.qty) || 0;
+    const price = parseFloat(r.unit_price) || 0;
+    return sum + qty * price;
+  }, 0);
+
   return (
     <div className="space-y-2">
       {rows.length > 0 && (
         <div className="space-y-2">
-          {rows.map((r, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <input className="flex-1 border rounded-lg px-2 py-1.5 text-sm" value={r.name || ''} onChange={(e) => setRow(i, { name: e.target.value })} placeholder="ชื่ออะไหล่" />
-              <input className="w-16 border rounded-lg px-2 py-1.5 text-sm" value={r.qty || ''} onChange={(e) => setRow(i, { qty: e.target.value })} placeholder="จำนวน" />
-              <input className="w-24 border rounded-lg px-2 py-1.5 text-sm" value={r.note || ''} onChange={(e) => setRow(i, { note: e.target.value })} placeholder="หมายเหตุ" />
-              <button type="button" onClick={() => delRow(i)} className="text-red-400 hover:text-red-600 px-1.5 py-1.5 text-lg leading-none">&times;</button>
+          {/* Column headers */}
+          <div className="flex gap-2 items-center text-xs text-gray-400 font-medium px-0.5">
+            <span className="flex-1">ชื่ออะไหล่</span>
+            <span className="w-16 text-center">จำนวน</span>
+            <span className="w-24 text-center">ราคา/หน่วย (บาท)</span>
+            <span className="w-20 text-right">รวม (บาท)</span>
+            <span className="w-24">หมายเหตุ</span>
+            <span className="w-6" />
+          </div>
+          {rows.map((r, i) => {
+            const lineCost = (parseFloat(r.qty) || 0) * (parseFloat(r.unit_price) || 0);
+            return (
+              <div key={i} className="flex gap-2 items-start">
+                <input
+                  className="flex-1 border rounded-lg px-2 py-1.5 text-sm"
+                  value={r.name || ''}
+                  onChange={(e) => setRow(i, { name: e.target.value })}
+                  placeholder="ชื่ออะไหล่"
+                />
+                <input
+                  className="w-16 border rounded-lg px-2 py-1.5 text-sm text-center"
+                  value={r.qty || ''}
+                  onChange={(e) => setRow(i, { qty: e.target.value })}
+                  placeholder="จำนวน"
+                  type="number"
+                  min="0"
+                />
+                <input
+                  className="w-24 border rounded-lg px-2 py-1.5 text-sm text-right"
+                  value={r.unit_price ?? 0}
+                  onChange={(e) => setRow(i, { unit_price: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+                <div className="w-20 py-1.5 text-sm text-right text-gray-600 tabular-nums">
+                  {lineCost > 0 ? lineCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                </div>
+                <input
+                  className="w-24 border rounded-lg px-2 py-1.5 text-sm"
+                  value={r.note || ''}
+                  onChange={(e) => setRow(i, { note: e.target.value })}
+                  placeholder="หมายเหตุ"
+                />
+                <button type="button" onClick={() => delRow(i)} className="text-red-400 hover:text-red-600 px-1.5 py-1.5 text-lg leading-none">&times;</button>
+              </div>
+            );
+          })}
+          {grandTotal > 0 && (
+            <div className="flex justify-end pt-1 border-t mt-1">
+              <span className="text-sm font-semibold text-gray-700">
+                รวมงานนี้: ฿{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              </span>
             </div>
-          ))}
+          )}
         </div>
       )}
       <button type="button" onClick={addRow} className="text-sm text-blue-600 hover:underline">+ เพิ่มอะไหล่</button>
@@ -67,16 +122,52 @@ function PartsEditor({ parts, onChange }) {
 // ── Parts summary modal (รวมอะไหล่ที่ต้องสั่ง ทุกงานที่ยังไม่ปิด) ──────────────
 function PartsSummaryModal({ onClose }) {
   const [rows, setRows] = useState([]);
+  const [totalCost, setTotalCost] = useState(0);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     api.get('/ac-repair-jobs/parts-summary')
-      .then((r) => setRows(r.data || []))
+      .then((r) => {
+        // Defensive: handle { items, total_cost } OR plain array
+        const data = r.data;
+        if (data && Array.isArray(data.items)) {
+          setRows(data.items);
+          setTotalCost(data.total_cost || 0);
+        } else {
+          const arr = Array.isArray(data) ? data : [];
+          setRows(arr);
+          const computed = arr.reduce((s, row) => s + (parseFloat(row.cost_total) || 0), 0);
+          setTotalCost(computed);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  function downloadCsv() {
+    const BOM = '﻿';
+    const header = ['ชื่ออะไหล่', 'จำนวนรวม', 'ราคา/หน่วย (บาท)', 'รวม (บาท)'];
+    const dataRows = rows.map((r) => [
+      r.name || '',
+      r.qty_total ?? r.qty_list ?? '',
+      r.unit_price != null ? r.unit_price : '',
+      r.cost_total != null ? r.cost_total : '',
+    ]);
+    const csvContent = [header, ...dataRows]
+      .map((cols) => cols.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `parts-order-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold">สรุปอะไหล่ที่ต้องสั่ง</h2>
@@ -89,24 +180,61 @@ function PartsSummaryModal({ onClose }) {
             : rows.length === 0 ? <p className="text-center text-gray-400 py-8">ยังไม่มีรายการอะไหล่</p>
             : (
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-gray-500 border-b">
-                  <th className="py-2">รายการ</th><th className="py-2 w-24 text-center">จำนวน</th><th className="py-2 w-14 text-center">งาน</th>
-                </tr></thead>
+                <thead>
+                  <tr className="text-left text-gray-500 border-b text-xs">
+                    <th className="py-2 pr-2">รายการ</th>
+                    <th className="py-2 w-20 text-center">จำนวนรวม</th>
+                    <th className="py-2 w-10 text-center">งาน</th>
+                    <th className="py-2 w-28 text-right">ราคา/หน่วย</th>
+                    <th className="py-2 w-28 text-right">รวม</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.key} className="border-b last:border-0">
-                      <td className="py-2">{r.name}</td>
-                      <td className="py-2 text-center text-gray-600">{r.qty_list || '—'}</td>
-                      <td className="py-2 text-center text-gray-400">{r.jobs}</td>
-                    </tr>
-                  ))}
+                  {rows.map((r, idx) => {
+                    const unitPrice = parseFloat(r.unit_price) || 0;
+                    const costTotal = parseFloat(r.cost_total) || 0;
+                    return (
+                      <tr key={r.key || idx} className="border-b last:border-0">
+                        <td className="py-2 pr-2">{r.name}</td>
+                        <td className="py-2 text-center text-gray-600">{r.qty_total ?? r.qty_list ?? '—'}</td>
+                        <td className="py-2 text-center text-gray-400">{r.jobs ?? '—'}</td>
+                        <td className="py-2 text-right text-gray-600 tabular-nums">
+                          {unitPrice > 0 ? `฿${unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        <td className="py-2 text-right font-medium tabular-nums">
+                          {costTotal > 0 ? `฿${costTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
         </div>
-        <div className="px-6 py-3 border-t flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
-        </div>
+        {!loading && rows.length > 0 && (
+          <div className="px-6 py-3 border-t flex items-center justify-between">
+            <span className="text-sm font-bold text-gray-800">
+              รวมงบประมาณ{' '}
+              <span className="text-blue-700">
+                ฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              </span>
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={downloadCsv}
+                className="px-3 py-1.5 rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 text-sm"
+              >
+                ดาวน์โหลด CSV (สั่งซื้อ)
+              </button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
+            </div>
+          </div>
+        )}
+        {(loading || rows.length === 0) && (
+          <div className="px-6 py-3 border-t flex justify-end">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -552,15 +680,48 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
             <section>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">อะไหล่ที่ต้องใช้ / สั่งของ</h3>
               <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-400 border-b">
+                    <th className="py-1 text-left font-normal">ชื่ออะไหล่</th>
+                    <th className="py-1 w-16 text-center font-normal">จำนวน</th>
+                    <th className="py-1 w-24 text-right font-normal">ราคา/หน่วย</th>
+                    <th className="py-1 w-24 text-right font-normal">รวม</th>
+                    <th className="py-1 w-24 text-left font-normal pl-2">หมายเหตุ</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {job.parts.map((p, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="py-1.5">{p.name}</td>
-                      <td className="py-1.5 w-20 text-center text-gray-600">{p.qty || '—'}</td>
-                      <td className="py-1.5 w-28 text-gray-400">{p.note || ''}</td>
-                    </tr>
-                  ))}
+                  {job.parts.map((p, i) => {
+                    const unitPrice = parseFloat(p.unit_price) || 0;
+                    const lineCost = (parseFloat(p.qty) || 0) * unitPrice;
+                    return (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="py-1.5">{p.name}</td>
+                        <td className="py-1.5 text-center text-gray-600">{p.qty || '—'}</td>
+                        <td className="py-1.5 text-right text-gray-600 tabular-nums">
+                          {unitPrice > 0 ? `฿${unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums font-medium">
+                          {lineCost > 0 ? `฿${lineCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        <td className="py-1.5 text-gray-400 pl-2">{p.note || ''}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                {(() => {
+                  const jobTotal = job.parts.reduce((s, p) => s + (parseFloat(p.qty) || 0) * (parseFloat(p.unit_price) || 0), 0);
+                  return jobTotal > 0 ? (
+                    <tfoot>
+                      <tr className="border-t">
+                        <td colSpan={3} className="py-1.5 text-right text-xs text-gray-500 font-medium">รวมงานนี้</td>
+                        <td className="py-1.5 text-right text-sm font-bold text-blue-700 tabular-nums">
+                          ฿{jobTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  ) : null;
+                })()}
               </table>
             </section>
           )}
