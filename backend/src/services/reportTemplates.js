@@ -1428,18 +1428,50 @@ function fmtDateTime(v) {
   if (isNaN(d.getTime())) return '—';
   return `${fmtDate(d)} ${fmtTime(d)}`;
 }
+// Parse the leading numeric run of a free-text qty ("2 ตัว" → 2), else 0.
+function partQty(v) {
+  if (v === null || v === undefined) return 0;
+  const m = String(v).match(/^\s*([0-9]+(?:\.[0-9]+)?)/);
+  return m ? Number(m[1]) : 0;
+}
+// Coerce a unit_price to a non-negative number.
+function partPrice(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+// THB amount with thousands separators and 2 decimals.
+function fmtTHB(n) {
+  return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function buildAcRepairReportHtml(job, branch) {
   const j = job || {};
   const parts = Array.isArray(j.parts) ? j.parts : [];
   const row = (k, v) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${dash(v)}</td></tr>`;
   const tl = (label, t) => t ? `<tr><td class="k">${escapeHtml(label)}</td><td class="v">${fmtDateTime(t)}</td></tr>` : '';
+  // Show pricing columns only when at least one part carries a price > 0,
+  // so legacy jobs without prices stay clean.
+  const hasPricing = parts.some((p) => partPrice(p && p.unit_price) > 0);
+  const partsTotal = parts.reduce((s, p) => s + partQty(p && p.qty) * partPrice(p && p.unit_price), 0);
+  const colCount = hasPricing ? 6 : 4;
   const partsRows = parts.length
-    ? parts.map((p, i) => `<tr>
+    ? parts.map((p, i) => {
+        const priceCells = hasPricing
+          ? `<td style="text-align:right">${fmtTHB(partPrice(p.unit_price))}</td>
+        <td style="text-align:right">${fmtTHB(partQty(p.qty) * partPrice(p.unit_price))}</td>`
+          : '';
+        return `<tr>
         <td style="text-align:center">${i + 1}</td>
         <td>${dash(p.name)}</td>
         <td style="text-align:center">${dash(p.qty)}</td>
-        <td>${dash(p.note)}</td></tr>`).join('')
-    : `<tr><td colspan="4" style="text-align:center;color:#888">— ไม่มีรายการอะไหล่ —</td></tr>`;
+        <td>${dash(p.note)}</td>${priceCells}</tr>`;
+      }).join('')
+    : `<tr><td colspan="${colCount}" style="text-align:center;color:#888">— ไม่มีรายการอะไหล่ —</td></tr>`;
+  const partsHead = hasPricing
+    ? `<tr><th style="width:6%;text-align:center">#</th><th>รายการ</th><th style="width:10%;text-align:center">จำนวน</th><th style="width:24%">หมายเหตุ</th><th style="width:15%;text-align:center">ราคา/หน่วย</th><th style="width:15%;text-align:center">รวม</th></tr>`
+    : `<tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>`;
+  const partsTotalRow = hasPricing
+    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#eff6ff;color:#1e40af">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#eff6ff;color:#1e40af">${fmtTHB(partsTotal)}</td></tr>`
+    : '';
   const afterImg = j.after_image_url
     ? `<div class="sec"><div class="sec-h">รูปหลังซ่อม</div>
          <img src="${escapeHtml(j.after_image_url)}" style="max-width:100%;max-height:280px;border:1px solid #ddd;border-radius:6px"/></div>`
@@ -1490,8 +1522,9 @@ function buildAcRepairReportHtml(job, branch) {
 
   <div class="sec"><div class="sec-h">อะไหล่ที่ต้องใช้ / สั่งของ</div>
     <table class="parts">
-      <tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>
+      ${partsHead}
       ${partsRows}
+      ${partsTotalRow}
     </table></div>
 
   ${afterImg}
