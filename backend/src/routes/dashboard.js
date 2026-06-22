@@ -193,14 +193,15 @@ router.get('/wash-report', authMiddleware, async (req, res) => {
       total: (dailyBy.major || 0) + (dailyBy.minor || 0) + (dailyBy.fan || 0),
     };
 
-    // repair — snapshot ภาพรวม ac_repair_jobs
+    // repair — งานซ่อมประจำเดือนนี้ (สร้างในเดือน) ทั้งหมด/สำเร็จ/คงค้าง
     const repRows = await safeRows(db,
       `SELECT COUNT(*) FILTER (WHERE status <> 'Cancel')::int AS total,
               COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int AS done,
               COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On'))::int AS pending
-         FROM ac_repair_jobs`);
+         FROM ac_repair_jobs
+        WHERE to_char(created_at,'YYYY-MM') = $1`, [month]);
     const r0 = (repRows && repRows[0]) || {};
-    const repair = { done: r0.done || 0, total: r0.total || 0, pending: r0.pending || 0 };
+    const repair = { done: r0.done || 0, total: r0.total || 0, pending: r0.pending || 0, month };
 
     // service_targets sums: per work_type (monthly) and grand total (weekly split)
     const tgtRows = await safeRows(db,
@@ -212,6 +213,12 @@ router.get('/wash-report', authMiddleware, async (req, res) => {
       grandMonthlyTarget += t.target || 0;
       if (t.work_type) targetByType[t.work_type] = (targetByType[t.work_type] || 0) + (t.target || 0);
     }
+    // เป้า/วัน = เป้าเดือน ÷ จำนวนวันในเดือน (เทียบยอดวันนี้ในการ์ดสรุปรายวัน)
+    const perDay = (v) => (dim > 0 ? Math.round((v || 0) / dim) : 0);
+    daily.target_major = perDay(targetByType.major);
+    daily.target_minor = perDay(targetByType.minor);
+    daily.target_fan = perDay(targetByType.fan);
+    daily.target = perDay(grandMonthlyTarget);
 
     // monthly done per work_type (current month)
     const monRows = await safeRows(db,
@@ -276,7 +283,10 @@ router.get('/wash-report', authMiddleware, async (req, res) => {
         target: bucketTarget, done, remaining, pct,
       };
     });
-    const weekly = { month, weeks };
+    // สัปดาห์ปัจจุบัน (bucket ที่วันนี้อยู่) → การ์ด "สัปดาห์นี้"
+    const today = parseInt(date.slice(8), 10);
+    const currentNo = ranges.findIndex(([f, t]) => today >= f && today <= t) + 1 || weeks.length;
+    const weekly = { month, weeks, current_no: currentNo };
 
     res.json({ date, daily, repair, monthly, yearly, weekly });
   } catch (err) { serverError(res, err); }
