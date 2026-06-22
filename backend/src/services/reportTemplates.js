@@ -896,16 +896,31 @@ function lmtHeader(data, titleHtml) {
   </div>`;
 }
 
-// LEFT-column "ความเห็นทีมช่าง" condition checkboxes, derived from data.wo.
+// อาการเสื่อมสภาพ (ตรงกับ frontend lib/condition.js) สำหรับดึงเข้าความเห็นช่าง
+const CONDITION_LABELS = {
+  insulation: 'ฉนวนเสื่อมสภาพ', drain_pan: 'ถาดน้ำทิ้งเสื่อมสภาพ', pipe_rust: 'ท่อเป็นสนิม',
+  coil: 'คอยล์ผุ/เสื่อม', fan_motor: 'มอเตอร์/พัดลมเสื่อม', capacitor: 'แคปาซิเตอร์เสื่อม',
+  electrical: 'แผงไฟ/สายไฟเสื่อม', compressor: 'คอมเพรสเซอร์เสื่อม', refrigerant: 'น้ำยารั่ว/ขาด',
+  remote: 'รีโมท/คอนโทรลเสีย', age_5_7: 'อายุ 5-7 ปี', age_over_7: 'อายุเกิน 7 ปี',
+};
+
+// LEFT-column "ความเห็นทีมช่าง" — ดึงเฉพาะ "อาการที่มีปัญหา" (ที่ติ๊ก/เลือก):
+// team_comment flags ที่เปิด + condition.issues (ฉนวน/ถาดน้ำทิ้ง ฯลฯ) + เหตุผล/สภาพ%.
 function conditionOpts(wo) {
   const w = wo || {};
-  const box = (on) => `<span class="bx">${on ? TICK : ''}</span>`;
   const det = (v) => (v ? ` <span class="det">(${escapeHtml(v)})</span>` : '');
-  return `
-    <div class="cond-opt">${box(w.cond_ac_degraded)}แอร์เสื่อมสภาพ</div>
-    <div class="cond-opt">${box(w.cond_ac_old_5_7yr)}แอร์เก่า 5-7 ปี</div>
-    <div class="cond-opt">${box(w.cond_external_degraded)}สภาพภายนอกเสื่อม${det(w.cond_external_detail)}</div>
-    <div class="cond-opt">${box(w.cond_internal_degraded)}สภาพภายในเสื่อม${det(w.cond_internal_detail)}</div>`;
+  const items = [];
+  if (w.cond_ac_degraded) items.push('แอร์เสื่อมสภาพ');
+  if (w.cond_ac_old_5_7yr) items.push('แอร์เก่า 5-7 ปี');
+  if (w.cond_external_degraded) items.push('สภาพภายนอกเสื่อม' + det(w.cond_external_detail));
+  if (w.cond_internal_degraded) items.push('สภาพภายในเสื่อม' + det(w.cond_internal_detail));
+  const c = w.condition || {};
+  for (const k of (Array.isArray(c.issues) ? c.issues : [])) items.push(CONDITION_LABELS[k] || k);
+  if (c.issues_other) items.push(escapeHtml(c.issues_other));
+  if (c.health_pct) items.push(`สภาพแอร์ ${escapeHtml(String(c.health_pct))}%` + det(c.health_reason));
+  else if (c.health_reason) items.push('หมายเหตุสภาพ' + det(c.health_reason));
+  if (!items.length) return `<div class="cond-opt" style="color:#94a3b8">— ไม่มีอาการผิดปกติ —</div>`;
+  return items.map((t) => `<div class="cond-opt">${TICK} ${t}</div>`).join('');
 }
 
 // "ผลงาน" result checkboxes (□เรียบร้อย □ไม่เรียบร้อย) for the .major-c strip.
