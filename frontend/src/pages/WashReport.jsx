@@ -36,7 +36,8 @@ export default function WashReport() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
-  const [openIssue, setOpenIssue] = useState(null);   // อาการที่กดดูรายการงาน
+  const [openIssue, setOpenIssue] = useState(null);   // อาการที่กดดู → popup
+  const [selPr, setSelPr] = useState(null);           // filter ตามความเร่งด่วน
 
   const [cond, setCond] = useState(null);
 
@@ -63,6 +64,18 @@ export default function WashReport() {
   const barData = data?.monthly?.types?.map((t) => ({
     name: WT[t.work_type] || t.work_type, เป้าหมาย: t.target, ยอดล้าง: t.done,
   })) || [];
+
+  // แอร์เสื่อมสภาพ — นับต่ออาการ (เคารพ filter ความเร่งด่วน) + รายการสำหรับ popup
+  const condItems = cond?.items || [];
+  const issuePr = (it, k) => it.condition?.issue_priority?.[k] || it.condition?.priority || 'normal';
+  const issueCounts = {};
+  for (const it of condItems) for (const k of (it.condition?.issues || [])) {
+    if (selPr && issuePr(it, k) !== selPr) continue;
+    issueCounts[k] = (issueCounts[k] || 0) + 1;
+  }
+  const modalItems = openIssue
+    ? condItems.filter((it) => (it.condition?.issues || []).includes(openIssue) && (!selPr || issuePr(it, openIssue) === selPr))
+    : [];
 
   const weeks = data?.weekly?.weeks || [];
   const sum = (k) => weeks.reduce((s, w) => s + (w[k] || 0), 0);
@@ -262,55 +275,74 @@ export default function WashReport() {
             {/* แอร์เสื่อมสภาพ แยกตามอาการ */}
             {cond && cond.total > 0 && (
               <Card title={`แอร์เสื่อมสภาพ / ต้องแก้ (${cond.total})`} icon={AlertTriangle}>
-                {/* priority chips */}
+                {/* priority chips — คลิกเพื่อกรองดูแต่ละสถานะ */}
                 <div className="flex gap-2 mb-3">
-                  {['urgent', 'normal', 'low'].filter((p) => cond.byPriority?.[p]).map((p) => (
-                    <span key={p} className="text-xs font-medium px-2.5 py-1 rounded-lg text-white" style={{ background: PRIORITY_COLOR[p] }}>
-                      {PRIORITY_LABEL[p]} {cond.byPriority[p]}
-                    </span>
-                  ))}
+                  {['urgent', 'normal', 'low'].filter((p) => cond.byPriority?.[p]).map((p) => {
+                    const on = selPr === p;
+                    return (
+                      <button key={p} onClick={() => setSelPr(on ? null : p)}
+                        className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${on ? 'text-white ring-2 ring-offset-1' : 'text-white opacity-80 hover:opacity-100'}`}
+                        style={{ background: PRIORITY_COLOR[p], borderColor: PRIORITY_COLOR[p] }}>
+                        {PRIORITY_LABEL[p]} {cond.byPriority[p]}
+                      </button>
+                    );
+                  })}
+                  {selPr && <button onClick={() => setSelPr(null)} className="text-xs text-slate-500 underline">ล้างตัวกรอง</button>}
                 </div>
-                {/* จำนวนต่อแต่ละอาการ — คลิกดูรายการงาน + ความเร่งด่วน */}
+                {/* จำนวนต่อแต่ละอาการ — คลิกเลข → popup ใบงาน */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
-                  {Object.entries(cond.byIssue || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
-                    <button key={k} onClick={() => setOpenIssue(openIssue === k ? null : k)}
-                      className={`flex items-center justify-between text-sm border-b py-1 px-1 rounded transition-colors ${openIssue === k ? 'bg-sky-50 border-sky-200' : 'border-slate-50 hover:bg-slate-50'}`}>
+                  {Object.entries(issueCounts).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
+                    <button key={k} onClick={() => setOpenIssue(k)}
+                      className="flex items-center justify-between text-sm border-b border-slate-50 py-1 px-1 rounded hover:bg-sky-50 transition-colors">
                       <span className="text-slate-600 truncate text-left">{CONDITION_ISSUE_LABEL[k] || k}</span>
                       <b className="text-blue-900 ml-2">{n}</b>
                     </button>
                   ))}
+                  {!Object.keys(issueCounts).length && <p className="text-sm text-slate-400 col-span-full py-2">ไม่มีอาการในสถานะนี้</p>}
                 </div>
-                {/* drilldown: ใบงานที่มีอาการที่เลือก + ความเร่งด่วนของอาการนั้น */}
-                {openIssue && (
-                  <div className="mt-3 border-t border-slate-100 pt-2">
-                    <div className="text-xs text-slate-500 mb-1.5">
-                      งานที่มีอาการ: <b className="text-slate-700">{CONDITION_ISSUE_LABEL[openIssue] || openIssue}</b>
-                    </div>
-                    <div className="space-y-1">
-                      {(cond.items || []).filter((it) => (it.condition?.issues || []).includes(openIssue)).map((it) => {
-                        const pr = it.condition?.issue_priority?.[openIssue] || it.condition?.priority;
-                        return (
-                          <button key={it.id} onClick={() => navigate(`/simple-wo/${it.id}`)}
-                            className="w-full flex items-center gap-2 text-sm hover:bg-blue-50/40 rounded px-1.5 py-1 text-left">
-                            <span className="text-slate-700 truncate flex-1">
-                              {[it.building, it.room || it.location].filter(Boolean).join(' › ') || it.asset_code || it.wo_number}
-                            </span>
-                            {pr && (
-                              <span className="text-[11px] font-medium text-white px-1.5 py-0.5 rounded shrink-0" style={{ background: PRIORITY_COLOR[pr] || '#94a3b8' }}>
-                                {PRIORITY_LABEL[pr] || pr}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </Card>
             )}
           </>
         )}
       </div>
+
+      {/* Popup — ใบงานที่มีอาการที่เลือก → คลิกเข้าดูรายละเอียดงาน */}
+      {openIssue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOpenIssue(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl">
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-sky-50 sticky top-0">
+              <div>
+                <h3 className="font-bold text-blue-900">{CONDITION_ISSUE_LABEL[openIssue] || openIssue}</h3>
+                <p className="text-xs text-slate-500">แอร์ที่มีอาการนี้ {modalItems.length} เครื่อง{selPr ? ` · ${PRIORITY_LABEL[selPr]}` : ''} — คลิกเพื่อดูใบงาน</p>
+              </div>
+              <button onClick={() => setOpenIssue(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+            </div>
+            <div className="p-3 space-y-1">
+              {modalItems.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">ไม่มีงาน</p>
+              ) : modalItems.map((it) => {
+                const pr = it.condition?.issue_priority?.[openIssue] || it.condition?.priority;
+                return (
+                  <button key={it.id} onClick={() => navigate(`/simple-wo/${it.id}`)}
+                    className="w-full flex items-center gap-2 text-sm hover:bg-blue-50 rounded-lg px-3 py-2 text-left border border-slate-100">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-slate-800 truncate font-medium">{it.asset_code || it.wo_number}</div>
+                      <div className="text-xs text-slate-500 truncate">{[it.location, it.building, it.room].filter(Boolean).join(' › ') || '—'}</div>
+                    </div>
+                    {pr && (
+                      <span className="text-[11px] font-medium text-white px-1.5 py-0.5 rounded shrink-0" style={{ background: PRIORITY_COLOR[pr] || '#94a3b8' }}>
+                        {PRIORITY_LABEL[pr] || pr}
+                      </span>
+                    )}
+                    <span className="text-blue-600 text-xs shrink-0">ดู →</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
