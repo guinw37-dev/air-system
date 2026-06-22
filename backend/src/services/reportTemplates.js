@@ -915,7 +915,12 @@ function conditionOpts(wo) {
   if (w.cond_external_degraded) items.push('สภาพภายนอกเสื่อม' + det(w.cond_external_detail));
   if (w.cond_internal_degraded) items.push('สภาพภายในเสื่อม' + det(w.cond_internal_detail));
   const c = w.condition || {};
-  for (const k of (Array.isArray(c.issues) ? c.issues : [])) items.push(CONDITION_LABELS[k] || k);
+  const PR_TH = { urgent: 'เร่งด่วน', low: 'ไม่เร่ง' };   // normal ไม่ติดป้าย (ลดความรก)
+  const ip = (c.issue_priority && typeof c.issue_priority === 'object') ? c.issue_priority : {};
+  for (const k of (Array.isArray(c.issues) ? c.issues : [])) {
+    const tag = PR_TH[ip[k] || c.priority];
+    items.push((CONDITION_LABELS[k] || k) + (tag ? ` <span class="det">[${tag}]</span>` : ''));
+  }
   if (c.issues_other) items.push(escapeHtml(c.issues_other));
   if (c.health_pct) items.push(`สภาพแอร์ ${escapeHtml(String(c.health_pct))}%` + det(c.health_reason));
   else if (c.health_reason) items.push('หมายเหตุสภาพ' + det(c.health_reason));

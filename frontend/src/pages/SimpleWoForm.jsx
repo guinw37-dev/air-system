@@ -111,10 +111,19 @@ export default function SimpleWoForm() {
   })
 
   // สภาพแอร์ / แจ้งเปลี่ยนอะไหล่ (ไม่ใช่งานซ่อม — ประเมินตอนล้าง)
-  const CONDITION_DEFAULT = { issues: [], issues_other: '', health_pct: '', health_reason: '', priority: '' }
+  const CONDITION_DEFAULT = { issues: [], issue_priority: {}, issues_other: '', health_pct: '', health_reason: '', priority: '' }
   const [condition, setCondition] = useState(CONDITION_DEFAULT)
-  const toggleIssue = (key) => setCondition((c) => ({
-    ...c, issues: c.issues.includes(key) ? c.issues.filter((k) => k !== key) : [...c.issues, key],
+  // ติ๊ก/เอาออกอาการ — กำหนดความเร่งด่วนเริ่มต้น 'normal' ต่ออาการที่เลือก
+  const toggleIssue = (key) => setCondition((c) => {
+    const has = c.issues.includes(key)
+    const issues = has ? c.issues.filter((k) => k !== key) : [...c.issues, key]
+    const issue_priority = { ...(c.issue_priority || {}) }
+    if (has) delete issue_priority[key]
+    else issue_priority[key] = issue_priority[key] || 'normal'
+    return { ...c, issues, issue_priority }
+  })
+  const setIssuePriority = (key, p) => setCondition((c) => ({
+    ...c, issue_priority: { ...(c.issue_priority || {}), [key]: p },
   }))
 
   // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
@@ -225,7 +234,9 @@ export default function SimpleWoForm() {
             internal_degraded: !!w.team_comment?.internal_degraded,
             internal_detail: w.team_comment?.internal_detail || '',
           })
-          setCondition({ ...CONDITION_DEFAULT, ...(w.condition || {}), issues: Array.isArray(w.condition?.issues) ? w.condition.issues : [] })
+          setCondition({ ...CONDITION_DEFAULT, ...(w.condition || {}),
+            issues: Array.isArray(w.condition?.issues) ? w.condition.issues : [],
+            issue_priority: (w.condition && typeof w.condition.issue_priority === 'object' && w.condition.issue_priority) || {} })
           setSignatures({
             engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
             department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
@@ -788,35 +799,40 @@ export default function SimpleWoForm() {
           <h2 className="section-header">สภาพแอร์ / แจ้งเปลี่ยนอะไหล่</h2>
           <p className="text-xs text-ink-muted -mt-1">แอร์ใช้งานได้ แต่อะไหล่เสื่อม — แจ้งให้พิจารณาเปลี่ยน (ไม่ใช่งานซ่อม)</p>
           <div>
-            <label className="label">รายการที่เสื่อมสภาพ</label>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              {CONDITION_ISSUES.map((it) => (
-                <CheckRow key={it.key} label={it.label}
-                  checked={condition.issues.includes(it.key)} onChange={() => toggleIssue(it.key)} />
-              ))}
+            <label className="label">รายการที่เสื่อมสภาพ (เลือกแล้วตั้งความเร่งด่วนต่ออาการ)</label>
+            <div className="flex flex-col gap-1.5">
+              {CONDITION_ISSUES.map((it) => {
+                const on = condition.issues.includes(it.key)
+                return (
+                  <div key={it.key} className="flex items-center gap-2 flex-wrap py-0.5">
+                    <label className="flex items-center gap-2 cursor-pointer" style={{ minWidth: '11rem' }}>
+                      <input type="checkbox" className="accent-primary h-4 w-4" checked={on} onChange={() => toggleIssue(it.key)} />
+                      <span className="text-sm text-ink">{it.label}</span>
+                    </label>
+                    {on && (
+                      <div className="flex gap-1">
+                        {PRIORITIES.map((p) => {
+                          const sel = (condition.issue_priority?.[it.key] || 'normal') === p.key
+                          return (
+                            <button key={p.key} type="button" onClick={() => setIssuePriority(it.key, p.key)}
+                              className={`px-2 py-0.5 rounded text-xs font-medium border ${sel ? 'text-white' : 'bg-white text-ink-muted border-line'}`}
+                              style={sel ? { background: p.color, borderColor: p.color } : undefined}>
+                              {p.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
           <Text label="อื่นๆ (ระบุ)" value={condition.issues_other} onChange={(v) => setCondition((c) => ({ ...c, issues_other: v }))} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">สภาพแอร์โดยรวม (%)</label>
-              <input className="input" inputMode="numeric" placeholder="เช่น 70"
-                value={condition.health_pct} onChange={(e) => setCondition((c) => ({ ...c, health_pct: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">ความเร่งด่วน</label>
-              <div className="flex gap-2">
-                {PRIORITIES.map((p) => (
-                  <button key={p.key} type="button"
-                    onClick={() => setCondition((c) => ({ ...c, priority: c.priority === p.key ? '' : p.key }))}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      condition.priority === p.key ? 'text-white' : 'bg-white text-ink-muted border-line'}`}
-                    style={condition.priority === p.key ? { background: p.color, borderColor: p.color } : undefined}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div>
+            <label className="label">สภาพแอร์โดยรวม (%)</label>
+            <input className="input" inputMode="numeric" placeholder="เช่น 70"
+              value={condition.health_pct} onChange={(e) => setCondition((c) => ({ ...c, health_pct: e.target.value }))} />
           </div>
           <div>
             <label className="label">เหตุผล / รายละเอียด (ทำไมควรเปลี่ยน)</label>
