@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle } from 'lucide-react';
+import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle, ChevronRight } from 'lucide-react';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition';
@@ -289,13 +289,15 @@ export default function WashReport() {
                   })}
                   {selPr && <button onClick={() => setSelPr(null)} className="text-xs text-slate-500 underline">ล้างตัวกรอง</button>}
                 </div>
-                {/* จำนวนต่อแต่ละอาการ — คลิกเลข → popup ใบงาน */}
+                {/* จำนวนต่อแต่ละอาการ — คลิกได้ทั้งช่อง (ข้อความหรือเลข) → popup ใบงาน */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
                   {Object.entries(issueCounts).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
-                    <button key={k} onClick={() => setOpenIssue(k)}
-                      className="flex items-center justify-between text-sm border-b border-slate-50 py-1 px-1 rounded hover:bg-sky-50 transition-colors">
-                      <span className="text-slate-600 truncate text-left">{CONDITION_ISSUE_LABEL[k] || k}</span>
-                      <b className="text-blue-900 ml-2">{n}</b>
+                    <button key={k} onClick={() => setOpenIssue(k)} title="คลิกดูใบงาน"
+                      className="group flex items-center gap-1 text-sm border-b border-slate-50 py-1.5 px-1.5 rounded cursor-pointer hover:bg-sky-50 transition-colors">
+                      <span className="text-slate-600 group-hover:text-blue-700 group-hover:underline truncate text-left">{CONDITION_ISSUE_LABEL[k] || k}</span>
+                      <span className="flex-1" />
+                      <b className="text-blue-900 group-hover:text-blue-700">{n}</b>
+                      <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500 shrink-0" />
                     </button>
                   ))}
                   {!Object.keys(issueCounts).length && <p className="text-sm text-slate-400 col-span-full py-2">ไม่มีอาการในสถานะนี้</p>}
