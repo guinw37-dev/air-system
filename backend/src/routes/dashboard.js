@@ -165,9 +165,7 @@ async function safeRows(db, sql, params) {
   catch (e) { return null; }   // null = table unavailable → caller treats as zeros
 }
 
-router.get('/wash-report', authMiddleware, async (req, res) => {
-  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
-  try {
+async function buildWashReport(req) {
     const db = req.db;
     // server "today" / period anchors — computed in SQL so they match the DB tz.
     const meta = (await db(
@@ -288,7 +286,56 @@ router.get('/wash-report', authMiddleware, async (req, res) => {
     const currentNo = ranges.findIndex(([f, t]) => today >= f && today <= t) + 1 || weeks.length;
     const weekly = { month, weeks, current_no: currentNo };
 
-    res.json({ date, daily, repair, monthly, yearly, weekly });
+    return { date, daily, repair, monthly, yearly, weekly };
+}
+
+router.get('/wash-report', authMiddleware, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
+  try { res.json(await buildWashReport(req)); }
+  catch (err) { serverError(res, err); }
+});
+
+// ── GET /wash-report/excel — export รายงานล้างแอร์เป็น Excel (หลาย sheet) ──────
+router.get('/wash-report/excel', authMiddleware, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
+  try {
+    const XLSX = require('xlsx');
+    const r = await buildWashReport(req);
+    const WTL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
+    const wb = XLSX.utils.book_new();
+
+    const summary = [
+      ['รายงานงานล้างแอร์', r.date],
+      [],
+      ['สรุปงานล้างประจำวัน', 'จำนวน (ตัว)', 'เป้า/วัน'],
+      ['ล้างใหญ่', r.daily.major, r.daily.target_major],
+      ['ล้างย่อย', r.daily.minor, r.daily.target_minor],
+      ['พัดลม', r.daily.fan, r.daily.target_fan],
+      ['รวม', r.daily.total, r.daily.target],
+      [],
+      ['สรุปงานซ่อมประจำเดือน', 'จำนวน'],
+      ['สำเร็จ', r.repair.done],
+      ['ทั้งหมด', r.repair.total],
+      ['คงค้าง', r.repair.pending],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'สรุป');
+
+    const monthly = [['ประเภท', 'เป้าหมายเดือน', 'ยอดล้าง'],
+      ...r.monthly.types.map((t) => [WTL[t.work_type] || t.work_type, t.target, t.done])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monthly), 'เป้าหมายเดือน');
+
+    const yearly = [['ประเภท', 'เป้าหมายปี', 'ยอดล้าง', 'เหลือ'],
+      ...r.yearly.types.map((t) => [WTL[t.work_type] || t.work_type, t.target, t.done, Math.max(0, t.target - t.done)])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(yearly), 'สะสมปี');
+
+    const weekly = [['สัปดาห์', 'ช่วง', 'เป้าหมาย', 'ยอดล้าง', 'คงค้าง', '% สำเร็จ'],
+      ...r.weekly.weeks.map((w) => [`Week ${w.no}`, w.label, w.target, w.done, w.remaining, w.pct])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(weekly), 'รายสัปดาห์');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="wash-report-${r.date}.xlsx"`);
+    res.send(buf);
   } catch (err) { serverError(res, err); }
 });
 
