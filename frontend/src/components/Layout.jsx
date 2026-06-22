@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, ChevronDown, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2, ClipboardList,
-  Clock, BarChart3,
+  Clock, BarChart3, FileBarChart,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -15,6 +15,7 @@ import Logo from './Logo'
 // อะไหล่, สรุปยอดล้าง) — routes still resolve by URL; just no sidebar link.
 const NAV = [
   { path: '/dashboard',    icon: LayoutDashboard,  label: 'ภาพรวม',         roles: null },
+  { path: '/wash-report',  icon: FileBarChart,     label: 'รายงานล้างแอร์',  roles: null },
   { path: '/simple-wo',    icon: FilePlus2,        label: 'ใบงาน',          roles: null,
     children: [
       { to: '/simple-wo',                              label: 'งานค้าง (ยังไม่เสร็จ)' },

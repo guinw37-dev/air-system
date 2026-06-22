@@ -25,6 +25,7 @@ import Branches from './pages/Branches'
 import Landing from './pages/Landing'
 import SelectBranch from './pages/SelectBranch'
 import Dashboard from './pages/Dashboard'
+import WashReport from './pages/WashReport'
 import Targets from './pages/Targets'
 import UnitHistory from './pages/UnitHistory'
 import WashUnits from './pages/WashUnits'
@@ -78,6 +79,7 @@ export default function App() {
 
         <Route path="/" element={<Home />} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+        <Route path="/wash-report" element={<RequireAuth><WashReport /></RequireAuth>} />
         <Route path="/select-branch" element={<RequireAuth><SelectBranch /></RequireAuth>} />
 
         {/* Work Orders — phase-2 routes */}

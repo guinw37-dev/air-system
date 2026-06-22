@@ -147,4 +147,139 @@ router.get('/', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── GET /wash-report — รายงานงานล้างแอร์ (per-branch, schema-per-tenant) ───────
+// Branch-scoped: needs req.branch (set by the global resolveBranch when on a
+// branch). Reuses the serviceTargets "done" expression (major = 1 ใบ/เครื่อง;
+// minor/fan = นับแถวใน grid). Tolerant: a half-migrated branch (missing
+// service_targets / wash_units) returns zeros instead of a 500.
+const DONE_EXPR = `SUM(CASE WHEN work_type IN ('minor','fan')
+                            THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
+                            ELSE 1 END)::int`;
+const WASH_TYPES = ['major', 'minor', 'fan'];
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+// Run a query, returning [] (not throwing) if the table is missing mid-migration.
+async function safeRows(db, sql, params) {
+  try { const { rows } = await db(sql, params); return rows; }
+  catch (e) { return null; }   // null = table unavailable → caller treats as zeros
+}
+
+router.get('/wash-report', authMiddleware, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
+  try {
+    const db = req.db;
+    // server "today" / period anchors — computed in SQL so they match the DB tz.
+    const meta = (await db(
+      `SELECT CURRENT_DATE::text AS date,
+              to_char(CURRENT_DATE,'YYYY-MM') AS month,
+              EXTRACT(YEAR FROM CURRENT_DATE)::int AS year,
+              EXTRACT(MONTH FROM CURRENT_DATE)::int AS mon,
+              EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE)
+                                + interval '1 month - 1 day'))::int AS dim`
+    )).rows[0];
+    const { date, month, year, mon, dim } = meta;
+
+    // daily — งานล้างของวันนี้ ต่อ work_type (work_date fallback created_at::date)
+    const dailyRows = await safeRows(db,
+      `SELECT work_type, ${DONE_EXPR} AS done
+         FROM simple_work_orders
+        WHERE deleted_at IS NULL
+          AND COALESCE(work_date, created_at::date) = CURRENT_DATE
+        GROUP BY work_type`) || [];
+    const dailyBy = Object.fromEntries(dailyRows.map((r) => [r.work_type, r.done || 0]));
+    const daily = {
+      major: dailyBy.major || 0, minor: dailyBy.minor || 0, fan: dailyBy.fan || 0,
+      total: (dailyBy.major || 0) + (dailyBy.minor || 0) + (dailyBy.fan || 0),
+    };
+
+    // repair — snapshot ภาพรวม ac_repair_jobs
+    const repRows = await safeRows(db,
+      `SELECT COUNT(*) FILTER (WHERE status <> 'Cancel')::int AS total,
+              COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int AS done,
+              COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On'))::int AS pending
+         FROM ac_repair_jobs`);
+    const r0 = (repRows && repRows[0]) || {};
+    const repair = { done: r0.done || 0, total: r0.total || 0, pending: r0.pending || 0 };
+
+    // service_targets sums: per work_type (monthly) and grand total (weekly split)
+    const tgtRows = await safeRows(db,
+      `SELECT work_type, SUM(monthly_target)::int AS target
+         FROM service_targets GROUP BY work_type`) || [];
+    const targetByType = {};
+    let grandMonthlyTarget = 0;
+    for (const t of tgtRows) {
+      grandMonthlyTarget += t.target || 0;
+      if (t.work_type) targetByType[t.work_type] = (targetByType[t.work_type] || 0) + (t.target || 0);
+    }
+
+    // monthly done per work_type (current month)
+    const monRows = await safeRows(db,
+      `SELECT work_type, ${DONE_EXPR} AS done
+         FROM simple_work_orders
+        WHERE deleted_at IS NULL
+          AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
+        GROUP BY work_type`, [month]) || [];
+    const monDoneBy = Object.fromEntries(monRows.map((r) => [r.work_type, r.done || 0]));
+    const monthly = {
+      month,
+      types: WASH_TYPES.map((wt) => ({
+        work_type: wt, target: targetByType[wt] || 0, done: monDoneBy[wt] || 0,
+      })),
+    };
+
+    // yearly target from wash_units freq (active); done per work_type (current year)
+    const freqRows = await safeRows(db,
+      `SELECT COALESCE(SUM(freq_major),0)::int AS major,
+              COALESCE(SUM(freq_minor),0)::int AS minor,
+              COALESCE(SUM(freq_fan),0)::int   AS fan
+         FROM wash_units WHERE active = true`);
+    const freq = (freqRows && freqRows[0]) || { major: 0, minor: 0, fan: 0 };
+    const yrRows = await safeRows(db,
+      `SELECT work_type, ${DONE_EXPR} AS done
+         FROM simple_work_orders
+        WHERE deleted_at IS NULL
+          AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1
+        GROUP BY work_type`, [year]) || [];
+    const yrDoneBy = Object.fromEntries(yrRows.map((r) => [r.work_type, r.done || 0]));
+    const yearly = {
+      year,
+      types: WASH_TYPES.map((wt) => ({
+        work_type: wt, target: freq[wt] || 0, done: yrDoneBy[wt] || 0,
+      })),
+    };
+
+    // weekly — 4 buckets of the current month (1-7, 8-14, 15-21, 22-end)
+    const bucketTarget = grandMonthlyTarget > 0 ? Math.round(grandMonthlyTarget / 4) : 0;
+    const ranges = [[1, 7], [8, 14], [15, 21], [22, dim]];
+    const pad = (n) => String(n).padStart(2, '0');
+    const ymPrefix = `${year}-${pad(mon)}`;
+    // done per day-of-month (all work_types combined) → bucket in JS
+    const dayRows = await safeRows(db,
+      `SELECT EXTRACT(DAY FROM COALESCE(work_date, created_at::date))::int AS d,
+              ${DONE_EXPR} AS done
+         FROM simple_work_orders
+        WHERE deleted_at IS NULL
+          AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
+        GROUP BY d`, [month]) || [];
+    const doneByDay = Object.fromEntries(dayRows.map((r) => [r.d, r.done || 0]));
+    const weeks = ranges.map(([from, to], i) => {
+      let done = 0;
+      for (let d = from; d <= to; d++) done += doneByDay[d] || 0;
+      const remaining = Math.max(0, bucketTarget - done);
+      const pct = bucketTarget > 0 ? Math.round((done / bucketTarget) * 100) : 0;
+      return {
+        no: i + 1,
+        from: `${ymPrefix}-${pad(from)}`,
+        to: `${ymPrefix}-${pad(to)}`,
+        label: `${from}-${to} ${TH_MONTHS[mon - 1]}`,
+        target: bucketTarget, done, remaining, pct,
+      };
+    });
+    const weekly = { month, weeks };
+
+    res.json({ date, daily, repair, monthly, yearly, weekly });
+  } catch (err) { serverError(res, err); }
+});
+
 module.exports = router;
