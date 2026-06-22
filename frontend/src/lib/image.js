@@ -54,6 +54,12 @@ async function downscale(file, maxDim, quality, stamp) {
   if (stamp) drawTimestamp(ctx, w, h)
 
   const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality))
+  // Release the canvas backing store immediately. iOS Safari caps total canvas
+  // memory and does NOT reclaim it on GC alone — without shrinking to 0 the
+  // store lingers, so uploading several photos in a row exhausts it and the tab
+  // freezes (the WebView only recovers when the page is reloaded). Set to 0 now.
+  canvas.width = 0
+  canvas.height = 0
   if (!blob) return file
   // When stamping we MUST return the stamped image even if it's not smaller —
   // the timestamp is the point. Without a stamp, keep the original if smaller.
@@ -62,14 +68,20 @@ async function downscale(file, maxDim, quality, stamp) {
 }
 
 export async function compressImage(file, { maxDim = 1600, quality = 0.7, timeoutMs = 15000, stamp = false } = {}) {
+  let timer
   try {
     // Time-box: if decoding hangs (corrupt/unsupported file), fall back to the
     // original after timeoutMs so the upload — and the UI — never get stuck.
+    // clearTimeout on the way out: otherwise the timer's closure keeps the
+    // original File (3–8 MB) alive for 15 s after a fast compress — upload a few
+    // photos quickly and those held references pile up into a memory spike.
     return await Promise.race([
       downscale(file, maxDim, quality, stamp),
-      new Promise((resolve) => setTimeout(() => resolve(file), timeoutMs)),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(file), timeoutMs) }),
     ])
   } catch {
     return file // never block capture on a compression failure
+  } finally {
+    clearTimeout(timer)
   }
 }
