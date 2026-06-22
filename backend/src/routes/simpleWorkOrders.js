@@ -518,16 +518,25 @@ router.get('/condition-summary', authMiddleware, async (req, res) => {
         OR COALESCE(condition->>'issues_other','') <> '')
       ORDER BY work_date DESC NULLS LAST, id DESC`);
     const byIssue = {}, byPriority = {}, byLocation = {};
+    const RANK = { urgent: 3, normal: 2, low: 1 };
     for (const r of rows) {
       const c = r.condition || {};
-      for (const k of (Array.isArray(c.issues) ? c.issues : [])) byIssue[k] = (byIssue[k] || 0) + 1;
-      const p = c.priority || 'normal';
-      byPriority[p] = (byPriority[p] || 0) + 1;
-      // "ที่ไหนบ้าง" — รวมจำนวน + นับ priority เร่งด่วน ต่อสถานที่ (location → อาคาร → ลูกค้า)
+      const ip = (c.issue_priority && typeof c.issue_priority === 'object') ? c.issue_priority : {};
+      const issues = Array.isArray(c.issues) ? c.issues : [];
+      let topRank = 0, topP = '';
+      const bump = (pr) => {
+        if (!pr) return;
+        byPriority[pr] = (byPriority[pr] || 0) + 1;       // นับ priority ต่อ "อาการ"
+        if ((RANK[pr] || 0) > topRank) { topRank = RANK[pr]; topP = pr; }
+      };
+      for (const k of issues) { byIssue[k] = (byIssue[k] || 0) + 1; bump(ip[k] || c.priority || 'normal'); }
+      if (!issues.length && c.priority) bump(c.priority);   // ใบเก่า: priority รวมเดี่ยว
+      // items dot ใช้ priority สูงสุดของอาการในใบนั้น
+      r.condition = { ...c, priority: topP || c.priority || '' };
       const loc = (r.location || r.building || r.client_name || 'ไม่ระบุ').trim() || 'ไม่ระบุ';
       const slot = byLocation[loc] || (byLocation[loc] = { count: 0, urgent: 0 });
       slot.count += 1;
-      if (p === 'urgent') slot.urgent += 1;
+      if (topRank === 3) slot.urgent += 1;
     }
     res.json({ total: rows.length, byIssue, byPriority, byLocation, items: rows });
   } catch (err) { serverError(res, err); }
