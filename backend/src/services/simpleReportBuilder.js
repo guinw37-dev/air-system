@@ -127,6 +127,7 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
     cond_ac_old_5_7yr: !!tc.ac_old_5_7yr,
     cond_external_degraded: !!tc.external_degraded, cond_external_detail: tc.external_detail || '',
     cond_internal_degraded: !!tc.internal_degraded, cond_internal_detail: tc.internal_detail || '',
+    condition: r.condition || {},   // อาการเสื่อมสภาพ (ฉนวน/ถาดน้ำทิ้ง ฯลฯ) → ดึงเข้าความเห็นช่าง
   };
 
   const unit = {
