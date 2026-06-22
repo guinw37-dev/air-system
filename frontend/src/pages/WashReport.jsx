@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { CalendarDays, Sparkles, ClipboardCheck, Target } from 'lucide-react';
+import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet } from 'lucide-react';
 import api from '../api/client';
 import Layout from '../components/Layout';
 
@@ -41,6 +41,18 @@ export default function WashReport() {
       .finally(() => setLoading(false));
   }, []);
 
+  const [exporting, setExporting] = useState(false);
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/dashboard/wash-report/excel', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url; a.download = `รายงานล้างแอร์-${data?.date || ''}.xlsx`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ } finally { setExporting(false); }
+  };
+
   const barData = data?.monthly?.types?.map((t) => ({
     name: WT[t.work_type] || t.work_type, เป้าหมาย: t.target, ยอดล้าง: t.done,
   })) || [];
@@ -67,6 +79,10 @@ export default function WashReport() {
             <div className="flex items-center gap-2 text-blue-900 font-semibold">
               <CalendarDays size={18} />
               <span>รายงานประจำวันที่ : {thaiDate(data.date)}</span>
+              <button onClick={exportExcel} disabled={exporting}
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                <FileSpreadsheet size={16} /> {exporting ? 'กำลังออก…' : 'Export Excel'}
+              </button>
             </div>
 
             {/* Row 1 */}
