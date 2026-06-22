@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -31,9 +32,11 @@ function Card({ title, icon: Icon, children, className = '' }) {
 }
 
 export default function WashReport() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [openIssue, setOpenIssue] = useState(null);   // อาการที่กดดูรายการงาน
 
   const [cond, setCond] = useState(null);
 
@@ -267,15 +270,42 @@ export default function WashReport() {
                     </span>
                   ))}
                 </div>
-                {/* จำนวนต่อแต่ละอาการ */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5">
+                {/* จำนวนต่อแต่ละอาการ — คลิกดูรายการงาน + ความเร่งด่วน */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
                   {Object.entries(cond.byIssue || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
-                    <div key={k} className="flex items-center justify-between text-sm border-b border-slate-50 py-0.5">
-                      <span className="text-slate-600 truncate">{CONDITION_ISSUE_LABEL[k] || k}</span>
-                      <b className="text-blue-900">{n}</b>
-                    </div>
+                    <button key={k} onClick={() => setOpenIssue(openIssue === k ? null : k)}
+                      className={`flex items-center justify-between text-sm border-b py-1 px-1 rounded transition-colors ${openIssue === k ? 'bg-sky-50 border-sky-200' : 'border-slate-50 hover:bg-slate-50'}`}>
+                      <span className="text-slate-600 truncate text-left">{CONDITION_ISSUE_LABEL[k] || k}</span>
+                      <b className="text-blue-900 ml-2">{n}</b>
+                    </button>
                   ))}
                 </div>
+                {/* drilldown: ใบงานที่มีอาการที่เลือก + ความเร่งด่วนของอาการนั้น */}
+                {openIssue && (
+                  <div className="mt-3 border-t border-slate-100 pt-2">
+                    <div className="text-xs text-slate-500 mb-1.5">
+                      งานที่มีอาการ: <b className="text-slate-700">{CONDITION_ISSUE_LABEL[openIssue] || openIssue}</b>
+                    </div>
+                    <div className="space-y-1">
+                      {(cond.items || []).filter((it) => (it.condition?.issues || []).includes(openIssue)).map((it) => {
+                        const pr = it.condition?.issue_priority?.[openIssue] || it.condition?.priority;
+                        return (
+                          <button key={it.id} onClick={() => navigate(`/simple-wo/${it.id}`)}
+                            className="w-full flex items-center gap-2 text-sm hover:bg-blue-50/40 rounded px-1.5 py-1 text-left">
+                            <span className="text-slate-700 truncate flex-1">
+                              {[it.building, it.room || it.location].filter(Boolean).join(' › ') || it.asset_code || it.wo_number}
+                            </span>
+                            {pr && (
+                              <span className="text-[11px] font-medium text-white px-1.5 py-0.5 rounded shrink-0" style={{ background: PRIORITY_COLOR[pr] || '#94a3b8' }}>
+                                {PRIORITY_LABEL[pr] || pr}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
           </>
