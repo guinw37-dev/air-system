@@ -331,6 +331,7 @@ function ConditionSection({ navigate }) {
 // ล้างได้/เหลือ · แอร์เสื่อมสภาพ · เป้าหมาย · กราฟ → ย้ายไปหน้า Dashboard (WashReport).
 function BranchDashboard({ b, navigate }) {
   const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
+  const woSegments = WO_TYPE.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const washDone = (b.wo_ready || 0) + (b.wo_billed || 0);          // เซ็นครบ (รอวางบิล + วางบิลแล้ว)
   const repairPending = (b.ac_register || 0) + (b.ac_assign || 0) + (b.ac_work || 0);
 
@@ -376,9 +377,13 @@ function BranchDashboard({ b, navigate }) {
         </div>
       </div>
 
-      {/* donut งานซ่อมแอร์ — เก็บไว้ดูสถานะย่อย */}
-      <DonutCard icon={Wrench} accent={C.primary} title="งานซ่อมแอร์ (รายละเอียดสถานะ)"
-        segments={acSegments} total={b.ac_active} onGo={() => navigate('/ac-repair')} />
+      {/* donut ซ่อม + ล้าง — เก็บไว้ดูสถานะย่อย */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <DonutCard icon={Wrench} accent={C.primary} title="งานซ่อมแอร์ (รายละเอียดสถานะ)"
+          segments={acSegments} total={b.ac_active} onGo={() => navigate('/ac-repair')} />
+        <DonutCard icon={Sparkles} accent="#0F6E56" title="งานล้างแอร์ (ค้าง)"
+          segments={woSegments} total={b.wo_active} onGo={() => navigate('/simple-wo')} />
+      </div>
     </div>
   );
 }
