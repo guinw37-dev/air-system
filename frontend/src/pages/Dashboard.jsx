@@ -337,13 +337,6 @@ function BranchDashboard({ b, navigate }) {
 
   return (
     <div className="space-y-5">
-      {/* KPI — บนสุด */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Highlight icon={Wrench}      value={b.ac_active}  label="งานซ่อมค้าง" tone="blue" />
-        <Highlight icon={Sparkles}    value={b.wo_active}  label="งานล้างค้าง" tone="teal" />
-        <Highlight icon={ReceiptText} value={b.wo_ready}   label="รอวางบิล"   tone="blue" />
-        <Highlight icon={Clock}       value={b.wo_billed}  label="วางบิลแล้ว" tone="teal" />
-      </div>
 
       {/* ภาพรวมงานล้างแอร์ — แยกตาม stage การเซ็น (กดเข้าดูเฉพาะใบที่ต้องเซ็น) */}
       <div>
