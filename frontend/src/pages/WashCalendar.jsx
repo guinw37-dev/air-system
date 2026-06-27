@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw } from 'lucide-react'
 import Layout from '../components/Layout'
@@ -13,6 +14,7 @@ const monthTitle = (m) => `${TH_MONTHS[m.month()]} ${m.year() + 543}`
 const thDay = (d) => `${d.date()} ${TH_MONTHS[d.month()]} ${d.year() + 543}`
 
 export default function WashCalendar() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const canEdit = user?.role === 'admin' || user?.role === 'super_admin'
 
