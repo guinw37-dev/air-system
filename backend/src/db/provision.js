@@ -98,6 +98,9 @@ async function provisionBranchSchema(schemaName) {
     // ac_repair_jobs.parts added after the table first shipped — ADD on branches
     // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);
+    // wash_units last-wash dates (backfill ประวัติ → ปฏิทิน generate คำนวณ overdue)
+    await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_major_at DATE`);
+    await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);
     // device_id added to tech_attendance after the table first shipped (#165 → device tracking)
     await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)`);
     // GPS geofence (monitor only) added to tech_attendance later — ADD on existing branches.
