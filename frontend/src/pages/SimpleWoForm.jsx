@@ -416,6 +416,32 @@ export default function SimpleWoForm() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
+    // ติ๊กถูกครบตามประเภทเครื่อง — check-type ในหมวดที่ใช้กับเครื่องนี้ต้องติ๊ก
+    // (all3/other ไม่บังคับ — แต่ละที่ตรวจไม่ครบทุกอัน). refrigerant บังคับเฉพาะแอร์น้ำยา;
+    // fcu/ahu บังคับตาม ac_type (AHU/OAU → ahu, อื่น → fcu).
+    if (!isGrid) {
+      const acType = (header.ac_type || '').toUpperCase()
+      const isAhu = acType === 'AHU' || acType === 'OAU'
+      const catRequired = (cat) => {
+        if (cat === 'refrigerant') return acInfo.kind === 'refrigerant'
+        if (cat === 'fcu') return !isAhu
+        if (cat === 'ahu') return isAhu
+        return false // all3 / other / fan → ไม่บังคับ
+      }
+      const missingChecks = []
+      for (const section of schema.sections || []) {
+        if (!catRequired(section.key)) continue
+        for (const field of (section.fields || [])) {
+          if (field.value_type !== 'check') continue
+          if (!checklistValues[field.id]?.checked) missingChecks.push(field.item_label)
+        }
+      }
+      if (missingChecks.length > 0) {
+        setError(`กรุณาติ๊กรายการตรวจเช็คให้ครบ: ${missingChecks.join(', ')}`)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+    }
     setError('')
     setSubmitting(true)
     try {
@@ -1074,8 +1100,16 @@ function ChecklistField({ field, value, onChange }) {
       const airflow = (unit_label || '').toLowerCase() === 'ft/m'
       return (
         <div>
-          {/* airflow already shows its unit in the select + item_label, skip the duplicate */}
-          {airflow ? <label className="label">{item_label}</label> : labelEl}
+          {/* number rows are tickable too — ติ๊กถูกเมื่อมีข้อมูล */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-primary h-4 w-4"
+              checked={!!value.checked}
+              onChange={(e) => onChange({ checked: e.target.checked })}
+            />
+            <span className="text-sm text-ink">{item_label}{!airflow && unit_label ? ` (${unit_label})` : ''}</span>
+          </label>
           <NumPair
             value={value}
             onChange={onChange}
@@ -1181,9 +1215,16 @@ function ChecklistField({ field, value, onChange }) {
             <option value="">-- น้ำยา --</option>
             {REFRIGERANTS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
+          <p className="text-xs text-ink-muted">Suction / Discharge (ก่อนล้าง)</p>
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" inputMode="decimal" placeholder="Suction" value={value.val_suction || ''} onChange={(e) => onChange({ val_suction: e.target.value })} />
-            <input className="input" inputMode="decimal" placeholder="Discharge" value={value.val_discharge || ''} onChange={(e) => onChange({ val_discharge: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="Suction" value={value.val_suction_before || ''} onChange={(e) => onChange({ val_suction_before: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="Discharge" value={value.val_discharge_before || ''} onChange={(e) => onChange({ val_discharge_before: e.target.value })} />
+          </div>
+          <p className="text-xs text-ink-muted">Suction / Discharge (หลังล้าง)</p>
+          <div className="grid grid-cols-2 gap-2">
+            {/* old records stored a single value as the "after" reading → fall back to it */}
+            <input className="input" inputMode="decimal" placeholder="Suction" value={value.val_suction_after ?? value.val_suction ?? ''} onChange={(e) => onChange({ val_suction_after: e.target.value })} />
+            <input className="input" inputMode="decimal" placeholder="Discharge" value={value.val_discharge_after ?? value.val_discharge ?? ''} onChange={(e) => onChange({ val_discharge_after: e.target.value })} />
           </div>
         </div>
       )

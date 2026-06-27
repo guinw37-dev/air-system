@@ -329,12 +329,14 @@ function styleBlock(brand) {
     }
     .major-c table.lmt td.tk { text-align: center; width: 30px; }
     .major-c table.lmt td.tk.on { color: var(--teal); font-weight: 700; }
-    .major-c table.lmt td.ba { text-align: center; width: 64px; }
+    .major-c table.lmt td.ba { text-align: center; width: 88px; word-break: break-word; line-height: 1.25; }
     .major-c table.lmt td.ba.bval { color: #0B3A47; font-weight: 600; }
     .major-c table.lmt td.ba.aval { color: #0E7C86; font-weight: 600; }
+    .major-c table.lmt td.ba.note { text-align: left; color: #45595d; font-weight: 400; }
     .major-c table.lmt tr.na td { background: #eef1f1; color: #9fb0b4; }
     .major-c table.lmt tr.na td.catlbl { background: #0E7C86; color: #fff; }
     .major-c table.lmt .itnote { color: #8a999d; font-size: 6.5pt; }
+    .major-c table.lmt .itpre { color: #0B3A47; font-weight: 700; font-size: 6.5pt; }
     .major-c .subbox {
       margin-top: 2px; background: #f6faf9; border: 1px solid #d9e6e5; border-radius: 3px;
       padding: 2px 4px; font-size: 6.5pt; color: #45595d; line-height: 1.3;
@@ -696,35 +698,47 @@ function categoryApplies(catKey, unit) {
   return true;
 }
 
-// Render the rst_amp / ln_vi / pressure_pair sub-box that lives under the
-// รายการ cell. Returns '' for non-measurement rows.
-function measurementSubBox(it) {
+// Small prefix shown in the รายการ cell for a measurement row (380V 3φ / สาร: R32).
+function measurePrefix(it) {
   const vt = it.value_type;
+  if (vt === 'rst_amp') return String(it.power_system) === '220' ? '220V 1φ' : '380V 3φ';
+  if (vt === 'ln_vi') return String(it.power_system) === '380' ? '3 เฟส' : '1 เฟส';
+  if (vt === 'pressure_pair') return `สาร: ${rawOrUnderscore(it.refrigerant_type)} · Suc 135-140 · Dis <450-500 (PSI)`;
+  return '';
+}
+
+// Format a measurement row's reading for the ก่อน / หลัง column. phase ∈ 'before'|'after'.
+// Before/after values live in their own columns now (was crammed in a sub-box).
+function measureCell(it, phase) {
+  const vt = it.value_type;
+  const u = (k) => rawOrUnderscore(it[k]);
   if (vt === 'rst_amp') {
-    // 220V (1φ) → LN/L only; 380V (3φ) → R/S/T only. Mutually exclusive.
     if (String(it.power_system) === '220') {
-      const line = `<span class="lbl">ก่อน</span> LN=${rawOrUnderscore(it.val_ln_before)} V L=${rawOrUnderscore(it.val_l_before)} A · `
-        + `<span class="lbl">หลัง</span> LN=${rawOrUnderscore(it.val_ln_after)} V L=${rawOrUnderscore(it.val_l_after)} A`;
-      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">220V 1φ</span> ${line}</div>`;
+      return phase === 'before'
+        ? `LN=${u('val_ln_before')}V L=${u('val_l_before')}A`
+        : `LN=${u('val_ln_after')}V L=${u('val_l_after')}A`;
     }
-    const line = `<span class="lbl">ก่อน</span> R=${rawOrUnderscore(it.val_r_before)} S=${rawOrUnderscore(it.val_s_before)} T=${rawOrUnderscore(it.val_t_before)} A · `
-      + `<span class="lbl">หลัง</span> R=${rawOrUnderscore(it.val_r_after)} S=${rawOrUnderscore(it.val_s_after)} T=${rawOrUnderscore(it.val_t_after)} A`;
-    return `<div class="subbox"><span class="lbl" style="color:var(--teal)">380V 3φ</span> ${line}</div>`;
-  }
-  if (vt === 'ln_vi') {
-    if (String(it.power_system) === '380') {
-      const ph = (lbl, v, a) => `${lbl}=${rawOrUnderscore(v)}V/${rawOrUnderscore(a)}A`;
-      return `<div class="subbox"><span class="lbl" style="color:var(--teal)">3 เฟส</span> `
-        + `${ph('R', it.val_r_v_after, it.val_r_after)} · ${ph('S', it.val_s_v_after, it.val_s_after)} · ${ph('T', it.val_t_v_after, it.val_t_after)}</div>`;
-    }
-    return `<div class="subbox"><span class="lbl" style="color:var(--teal)">1 เฟส</span> LN=${rawOrUnderscore(it.val_ln_after)} V · L=${rawOrUnderscore(it.val_l_after)} A</div>`;
+    return phase === 'before'
+      ? `R=${u('val_r_before')} S=${u('val_s_before')} T=${u('val_t_before')} A`
+      : `R=${u('val_r_after')} S=${u('val_s_after')} T=${u('val_t_after')} A`;
   }
   if (vt === 'pressure_pair') {
-    return `<div class="subbox">สาร: ${rawOrUnderscore(it.refrigerant_type)} · `
-      + `Suction=${rawOrUnderscore(it.val_suction)} PSI (135-140) · `
-      + `Discharge=${rawOrUnderscore(it.val_discharge)} PSI (&lt;450-500)</div>`;
+    // before+after both kept now; fall back to legacy single value (stored as after).
+    const suc = phase === 'before' ? it.val_suction_before : (it.val_suction_after ?? it.val_suction);
+    const dis = phase === 'before' ? it.val_discharge_before : (it.val_discharge_after ?? it.val_discharge);
+    return `Suc=${rawOrUnderscore(suc)} Dis=${rawOrUnderscore(dis)}`;
   }
-  return '';
+  if (vt === 'ln_vi') {
+    // ln_vi is after-only (legacy rows; the live template no longer has it).
+    if (phase === 'before') return '—';
+    if (String(it.power_system) === '380') {
+      return `R ${u('val_r_v_after')}V/${u('val_r_after')}A · `
+        + `S ${u('val_s_v_after')}V/${u('val_s_after')}A · `
+        + `T ${u('val_t_v_after')}V/${u('val_t_after')}A`;
+    }
+    return `LN=${u('val_ln_after')}V L=${u('val_l_after')}A`;
+  }
+  return '—';
 }
 
 // Build the ONE full-width TW checklist table for a unit. Renders all 5
@@ -744,44 +758,52 @@ function checklistTable(unit) {
     items.forEach((it, idx) => {
       const vt = it.value_type;
       const isMeasure = MEASUREMENT_TYPES.has(vt);
+      const isCheckLike = vt === 'check' || vt === 'text';
 
-      // ตรวจเช็ค column
+      // ตรวจเช็ค column — measurement rows leave tick blank; check + number rows
+      // tick from it.checked (number rows are now tickable when they have data).
       let tickCellHtml;
       if (!applies) {
         tickCellHtml = '<td class="tk">—</td>';
       } else if (isMeasure) {
-        tickCellHtml = '<td class="tk"></td>'; // measurement rows leave tick blank
+        tickCellHtml = '<td class="tk"></td>';
       } else if (it.checked) {
         tickCellHtml = `<td class="tk on">${TICK}</td>`;
       } else {
         tickCellHtml = '<td class="tk"></td>';
       }
 
-      // ก่อน / หลัง columns
-      let beforeCell = '<td class="ba">—</td>';
-      let afterCell = '<td class="ba">—</td>';
-      if (applies && (vt === 'number' || vt === 'before_after')) {
-        beforeCell = `<td class="ba bval">${blankOrNum(it.value_before, it.unit_label)}</td>`;
-        afterCell = `<td class="ba aval">${blankOrNum(it.value_after, it.unit_label)}</td>`;
-      }
-
-      // รายการ cell: label + (note/sub-detail for check/text) + measurement sub-box
+      // รายการ cell: label + small measurement prefix (380V 3φ / สาร: R32 …).
       let detail = '';
-      if (vt === 'check' || vt === 'text') {
-        const sub = it.note || it.val_text;
-        if (sub) detail += `<div class="itnote">${escapeHtml(sub)}</div>`;
-      } else if (it.note) {
-        detail += `<div class="itnote">${escapeHtml(it.note)}</div>`;
+      if (applies && isMeasure) {
+        const pre = measurePrefix(it);
+        if (pre) detail += `<div class="itpre">${escapeHtml(pre)}</div>`;
       }
-      if (applies && isMeasure) detail += measurementSubBox(it);
-
       const labelCell = `<td>${dash(it.item_label)}${detail}</td>`;
+
+      // ก่อน / หลัง columns.
+      //  • check/text → merge into ONE หมายเหตุ cell (colspan 2)
+      //  • number/before_after → before/after scalar values
+      //  • measurement → before/after readings split across the two columns
+      let baCells;
+      if (isCheckLike) {
+        const note = (applies && (it.note || it.val_text)) ? escapeHtml(it.note || it.val_text) : '—';
+        baCells = `<td class="ba note" colspan="2">${note}</td>`;
+      } else if (applies && (vt === 'number' || vt === 'before_after')) {
+        baCells = `<td class="ba bval">${blankOrNum(it.value_before, it.unit_label)}</td>`
+          + `<td class="ba aval">${blankOrNum(it.value_after, it.unit_label)}</td>`;
+      } else if (applies && isMeasure) {
+        baCells = `<td class="ba bval">${measureCell(it, 'before')}</td>`
+          + `<td class="ba aval">${measureCell(it, 'after')}</td>`;
+      } else {
+        baCells = '<td class="ba">—</td><td class="ba">—</td>';
+      }
 
       let row = `<tr class="${applies ? '' : 'na'}">`;
       if (idx === 0) {
         row += `<td class="catlbl" rowspan="${rowspan}"><span>${escapeHtml(cat.label)}</span></td>`;
       }
-      row += `${labelCell}${tickCellHtml}${beforeCell}${afterCell}</tr>`;
+      row += `${labelCell}${tickCellHtml}${baCells}</tr>`;
       bodyRows.push(row);
     });
   }
@@ -795,8 +817,8 @@ function checklistTable(unit) {
       <th style="width:22px;">หมวด</th>
       <th>รายการ</th>
       <th style="width:30px;">ตรวจเช็ค</th>
-      <th style="width:64px;">ก่อน</th>
-      <th style="width:64px;">หลัง</th>
+      <th style="width:88px;">ก่อน</th>
+      <th style="width:88px;">หลัง</th>
     </tr></thead>
     <tbody>${bodyRows.join('')}</tbody>
   </table>`;
