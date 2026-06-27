@@ -343,13 +343,13 @@ function BranchDashboard({ b, navigate }) {
         <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานล้างแอร์</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_supervisor || 0}
-            label="รอหัวหน้าช่างตรวจเช็ค" sub="ช่างเซ็นแล้ว · รอหัวหน้าช่าง"
+            label="รอหัวหน้าช่างตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=supervisor')} />
           <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_buildeng || 0}
-            label="รออาคาร / วิศวกรรมตรวจเช็ค" sub="ช่าง + หัวหน้าช่างเซ็นแล้ว"
+            label="รออาคาร / วิศวกรรมตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=building_engineer')} />
           <StatCard icon={Sparkles} tone="teal" value={washDone}
-            label="ดำเนินการเสร็จสิ้น" sub="เซ็นครบ · จบ process"
+            label="ดำเนินการเสร็จสิ้น"
             onClick={() => navigate('/simple-wo?view=ready')} />
         </div>
       </div>
@@ -359,13 +359,13 @@ function BranchDashboard({ b, navigate }) {
         <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานซ่อม</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard icon={Wrench} tone="amber" value={repairPending}
-            label="งานซ่อมคงค้าง" sub="แจ้งซ่อม · รับงาน · กำลังซ่อม"
+            label="งานซ่อมคงค้าง"
             onClick={() => navigate('/ac-repair')} />
           <StatCard icon={Wrench} tone="blue" value={b.ac_clear || 0}
-            label="งานซ่อม (รอตรวจเช็ค)" sub="ซ่อมเสร็จแล้ว · รอตรวจเช็ค"
+            label="งานซ่อม (รอตรวจเช็ค)"
             onClick={() => navigate('/ac-repair')} />
           <StatCard icon={Wrench} tone="teal" value={b.ac_close || 0}
-            label="ดำเนินการเสร็จสิ้น" sub="ปิดงานแล้ว"
+            label="ดำเนินการเสร็จสิ้น"
             onClick={() => navigate('/ac-repair')} />
         </div>
       </div>
