@@ -169,13 +169,16 @@ export default function SimpleWoForm() {
     }))
   }
 
-  // QR scan → /simple-wo/new?unit=<asset_code> → auto-fill เครื่องนั้นเมื่อทะเบียนโหลด
+  // QR scan / ปฏิทิน → /simple-wo/new?unit=<asset_code>&wt=<work_type> → auto-fill
   const [searchParams] = useSearchParams()
   const unitParam = searchParams.get('unit')
+  const wtParam = searchParams.get('wt')
   useEffect(() => {
-    if (!isEdit && unitParam && washMap[unitParam]) applyUnit(unitParam)
+    if (isEdit) return
+    if (unitParam && washMap[unitParam]) applyUnit(unitParam)
+    if (wtParam && ['major', 'minor', 'fan'].includes(wtParam)) setHeader((h) => ({ ...h, work_type: wtParam }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [washMap, unitParam])
+  }, [washMap, unitParam, wtParam])
 
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },
