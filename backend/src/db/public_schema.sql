@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
   branch_slug   VARCHAR(63),                 -- NULL = global super-admin; else local to that branch
   phone         VARCHAR(20),
   active        BOOLEAN DEFAULT true,
+  ui_prefs      JSONB DEFAULT '{}'::jsonb,    -- per-user UI prefs (dashboard layout ฯลฯ)
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
