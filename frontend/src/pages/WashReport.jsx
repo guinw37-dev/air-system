@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle, ChevronRight } from 'lucide-react';
+import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle, ChevronRight, Wrench, Layers } from 'lucide-react';
+import dayjs from 'dayjs';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition';
@@ -19,6 +20,12 @@ function thaiDate(ymd) {
   return `${d} ${TH_MONTHS[m]} ${y + 543}`;
 }
 
+// month picker options — ย้อนหลัง 12 เดือน (YYYY-MM → "MM/พ.ศ.")
+const monthOptions = () => Array.from({ length: 12 }, (_, i) => dayjs().subtract(i, 'month').format('YYYY-MM'));
+const monthLabel = (m) => `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}`;
+const pctOf = (done, target) => (target > 0 ? Math.round((done / target) * 100) : 0);
+const pctTone = (p) => (p >= 100 ? '#059669' : p >= 60 ? '#0ea5e9' : '#f59e0b');
+
 function Card({ title, icon: Icon, children, className = '' }) {
   return (
     <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden ${className}`}>
@@ -28,6 +35,135 @@ function Card({ title, icon: Icon, children, className = '' }) {
       </div>
       <div className="p-4">{children}</div>
     </div>
+  );
+}
+
+// แยกประเภทแอร์ (ac_type) — done/target per work_type → ac_type. period: 'month'|'year'
+function ByTypeCard({ title, byType, period }) {
+  const dk = period === 'year' ? 'done_year' : 'done_month';
+  const tk = period === 'year' ? 'target_year' : 'target_month';
+  const groups = (byType || []).filter((g) => (g.rows || []).length);
+  return (
+    <Card title={title} icon={Layers}>
+      {groups.length === 0 ? (
+        <p className="text-sm text-slate-400 py-2">ยังไม่มีข้อมูลแยกประเภท</p>
+      ) : (
+        <div className="space-y-3">
+          {groups.map((g) => (
+            <div key={g.work_type}>
+              <div className="text-sm font-semibold text-blue-900 mb-1">{WT[g.work_type] || g.work_type}</div>
+              <div className="space-y-1.5">
+                {g.rows.map((r) => {
+                  const p = pctOf(r[dk], r[tk]);
+                  return (
+                    <div key={r.ac_type}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 truncate">{r.ac_type}</span>
+                        <span className="shrink-0"><b className="text-blue-900">{r[dk]}</b><span className="text-slate-400">/{r[tk]}</span>
+                          <b className="ml-2" style={{ color: pctTone(p) }}>{p}%</b></span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, p)}%`, background: pctTone(p) }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// เป้าหมายล้าง (per zone × work_type) — ย้ายมาจากหน้า landing. month = YYYY-MM
+function TargetSection({ month, navigate }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get('/targets/progress', { params: month ? { month } : {} }).then((r) => setData(r.data)).catch(() => {});
+  }, [month]);
+  if (!data || !data.targets?.length) return null;
+  const isThisMonth = month === dayjs().format('YYYY-MM');
+  const daysLeft = isThisMonth ? Math.max(1, dayjs().daysInMonth() - dayjs().date() + 1) : 0;
+  const perDay = (remaining) => (isThisMonth && remaining > 0 ? Math.ceil(remaining / daysLeft) : 0);
+  return (
+    <Card title="เป้าหมายล้าง" icon={Target}>
+      <div className="space-y-3">
+        {data.targets.map((t) => {
+          const tone = pctTone(t.pct);
+          return (
+            <div key={t.id}>
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-slate-700">
+                  {t.zone} <span className="text-slate-400">· {WT[t.work_type || ''] || t.work_type || 'รวม'}</span>
+                  {t.carry_in > 0 && <span className="ml-1.5 text-xs text-amber-600">+คงค้าง {t.carry_in}</span>}
+                </span>
+                <span className="text-slate-500">
+                  <b className="text-slate-800">{t.done}</b>/{t.effective_target}
+                  {t.remaining > 0 && <span className="text-amber-600"> · เหลือ {t.remaining}</span>}
+                  <b className="ml-2" style={{ color: tone }}>{t.pct}%</b>
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.min(100, t.pct)}%`, background: tone }} />
+              </div>
+              {perDay(t.remaining) > 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  ต้องล้าง <b className="text-blue-600">{perDay(t.remaining)}</b> เครื่อง/วัน
+                  <span className="text-slate-400"> (เหลือ {daysLeft} วันในเดือนนี้)</span>
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={() => navigate('/targets')} className="mt-3 text-xs text-blue-600 hover:underline">จัดการเป้าหมาย →</button>
+    </Card>
+  );
+}
+
+// ล้างได้/เหลือ เทียบทะเบียนแอร์ (per zone × ประเภท) — ย้ายมาจากหน้า landing
+function CoverageSection({ month }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get('/wash-units/coverage', { params: month ? { month } : {} }).then((r) => setData(r.data)).catch(() => {});
+  }, [month]);
+  if (!data || !data.groups?.length) return null;
+  const byZone = {};
+  for (const g of data.groups) (byZone[g.zone] ||= []).push(g);
+  return (
+    <Card title="ล้างได้ / เหลือ (เทียบทะเบียนแอร์)" icon={ClipboardCheck}>
+      <div className="space-y-4">
+        {Object.entries(byZone).map(([zone, rows]) => (
+          <div key={zone}>
+            <div className="text-sm font-semibold text-slate-700 mb-1.5">{zone}</div>
+            <div className="space-y-2">
+              {rows.map((g) => {
+                const p = pctOf(g.done, g.total);
+                return (
+                  <div key={g.kind + g.label}>
+                    <div className="flex items-center justify-between text-sm mb-0.5">
+                      <span className="text-slate-600 truncate flex-1">
+                        {g.kind === 'clinic' && <span className="text-amber-600 mr-1">📍</span>}{g.label}
+                      </span>
+                      <span className="text-slate-500 text-xs shrink-0">
+                        <b className="text-slate-800">{g.done}</b>/{g.total}
+                        {g.remaining > 0 && <span className="text-amber-600"> · เหลือ {g.remaining}</span>}
+                        <b className="ml-2" style={{ color: pctTone(p) }}>{p}%</b>
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, p)}%`, background: pctTone(p) }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -41,11 +177,22 @@ export default function WashReport() {
 
   const [cond, setCond] = useState(null);
 
+  // เลือกวัน (daily) / เลือกเดือน (monthly+weekly+แยกประเภท). '' = ใช้ค่าปัจจุบันจาก server.
+  const [selDate, setSelDate] = useState('');
+  const [selMonth, setSelMonth] = useState(dayjs().format('YYYY-MM'));
+
   useEffect(() => {
-    api.get('/dashboard/wash-report')
+    setLoading(true);
+    const params = {};
+    if (selDate) params.date = selDate;
+    if (selMonth) params.month = selMonth;
+    api.get('/dashboard/wash-report', { params })
       .then((r) => setData(r.data))
       .catch((e) => setErr(e.response?.status === 400 ? 'เลือกสาขาก่อนเพื่อดูรายงาน' : (e.response?.data?.error || e.message)))
       .finally(() => setLoading(false));
+  }, [selDate, selMonth]);
+
+  useEffect(() => {
     api.get('/simple-wo/condition-summary').then((r) => setCond(r.data)).catch(() => {});
   }, []);
 
@@ -109,6 +256,11 @@ export default function WashReport() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* daily wash — ยอดวันนี้ เทียบเป้า/วัน */}
               <Card title="สรุปงานล้างประจำวัน" icon={Sparkles}>
+                <div className="mb-3">
+                  <input type="date" value={selDate || data.date}
+                    onChange={(e) => setSelDate(e.target.value)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 w-full" />
+                </div>
                 <div className="flex items-baseline justify-between mb-3">
                   <div className="flex items-baseline gap-2">
                     <span className="text-slate-500">รวม</span>
@@ -162,11 +314,24 @@ export default function WashReport() {
                     <p className="text-xs text-slate-400 mt-1 text-center">สำเร็จ {Math.round((data.repair.done / data.repair.total) * 100)}%</p>
                   </div>
                 )}
+                {/* อะไหล่ที่ใช้เดือนนี้ — นับจากใบงานซ่อม */}
+                <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+                  <Wrench size={15} className="text-amber-600 shrink-0" />
+                  <span className="text-sm text-slate-600">อะไหล่ที่ใช้</span>
+                  <b className="text-amber-700 ml-auto">{data.repair.parts_lines || 0}</b>
+                  <span className="text-xs text-slate-400">รายการ · {data.repair.parts_jobs || 0} งาน</span>
+                </div>
               </Card>
 
-              {/* monthly target bar */}
-              <Card title="เป้าหมายการล้าง (เดือนนี้)" icon={Target}>
-                <ResponsiveContainer width="100%" height={210}>
+              {/* monthly — เลือกเดือน, กราฟ เป้า/ยอด แยกประเภท + % */}
+              <Card title="สรุปงานล้างประจำเดือน" icon={Target}>
+                <div className="mb-2">
+                  <select value={selMonth} onChange={(e) => setSelMonth(e.target.value)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 w-full">
+                    {monthOptions().map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                  </select>
+                </div>
+                <ResponsiveContainer width="100%" height={170}>
                   <BarChart data={barData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
@@ -177,31 +342,57 @@ export default function WashReport() {
                     <Bar dataKey="ยอดล้าง" fill="#1e3a8a" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                <div className="mt-2 space-y-1 text-sm">
+                  {(data.monthly?.types || []).map((t) => {
+                    const p = pctOf(t.done, t.target);
+                    return (
+                      <div key={t.work_type} className="flex items-center justify-between">
+                        <span className="text-slate-600">{WT[t.work_type] || t.work_type}</span>
+                        <span><b className="text-blue-900">{t.done}</b><span className="text-slate-400">/{t.target}</span>
+                          <b className="ml-2" style={{ color: pctTone(p) }}>{p}%</b></span>
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
             </div>
 
             {/* Row 2 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* yearly */}
-              <Card title={`ยอดล้างสะสม (ประจำปี ${(data.yearly.year || 0) + 543})`} icon={Sparkles}>
-                <table className="w-full text-sm">
+              {/* yearly — กราฟยอดรายเดือน (เป้า/ยอด) + ตารางสะสมแยกประเภท + % */}
+              <Card title={`สรุปงานล้างสะสมประจำปี ${(data.yearly.year || 0) + 543}`} icon={Sparkles}>
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={data.yearly.series || []} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={0} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="target" name="เป้า/เดือน" fill="#60a5fa" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="total" name="ยอดล้าง" fill="#1e3a8a" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <table className="w-full text-sm mt-2">
                   <thead>
                     <tr className="text-left text-slate-500 text-xs border-b">
                       <th className="py-2">ประเภท</th>
                       <th className="py-2 text-right">เป้าหมาย</th>
                       <th className="py-2 text-right">ยอดล้าง</th>
                       <th className="py-2 text-right">เหลือ</th>
+                      <th className="py-2 text-right">%</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.yearly.types.map((t) => {
                       const rem = Math.max(0, t.target - t.done);
+                      const p = pctOf(t.done, t.target);
                       return (
                         <tr key={t.work_type} className="border-b last:border-0">
                           <td className="py-2.5 text-slate-700">{WT_LONG[t.work_type] || t.work_type}</td>
                           <td className="py-2.5 text-right tabular-nums text-slate-600">{t.target}</td>
                           <td className="py-2.5 text-right tabular-nums font-bold text-blue-900">{t.done}</td>
                           <td className="py-2.5 text-right tabular-nums text-amber-600">{rem}</td>
+                          <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: pctTone(p) }}>{p}%</td>
                         </tr>
                       );
                     })}
@@ -270,6 +461,20 @@ export default function WashReport() {
                   {weeks.map((w) => <div key={w.no}>Week {w.no} : {w.label}</div>)}
                 </div>
               </Card>
+            </div>
+
+            {/* แยกประเภทแอร์ พัดลม — เดือน + สะสมปี */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ByTypeCard title={`แยกประเภทแอร์ — ประจำเดือน ${monthLabel(data.monthly?.month || selMonth)}`}
+                byType={data.byType} period="month" />
+              <ByTypeCard title={`แยกประเภทแอร์ — สะสมประจำปี ${(data.yearly.year || 0) + 543}`}
+                byType={data.byType} period="year" />
+            </div>
+
+            {/* ล้างได้/เหลือ + เป้าหมายล้าง (ย้ายมาจากหน้า landing) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <CoverageSection month={selMonth} />
+              <TargetSection month={selMonth} navigate={navigate} />
             </div>
 
             {/* แอร์เสื่อมสภาพ แยกตามอาการ */}
