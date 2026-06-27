@@ -703,7 +703,7 @@ function measurePrefix(it) {
   const vt = it.value_type;
   if (vt === 'rst_amp') return String(it.power_system) === '220' ? '220V 1φ' : '380V 3φ';
   if (vt === 'ln_vi') return String(it.power_system) === '380' ? '3 เฟส' : '1 เฟส';
-  if (vt === 'pressure_pair') return `สาร: ${rawOrUnderscore(it.refrigerant_type)}`;
+  if (vt === 'pressure_pair') return `สาร: ${rawOrUnderscore(it.refrigerant_type)} · Suc 135-140 · Dis <450-500 (PSI)`;
   return '';
 }
 
