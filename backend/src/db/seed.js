@@ -61,18 +61,18 @@ async function seed() {
 
     const TW = [
       // หมวด 1: ใช้งานทั้ง 3 ประเภท (all3) — major + minor
-      { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์ Blower (380V/220V)', type: 'rst_amp', minor: true },
+      { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์คอยล์เย็น(แอร์น้ำ) หรือมอเตอร์คอยล์ร้อน(แอร์น้ำยา)', type: 'rst_amp', minor: true },
       { cat: 'all3', sort: 20, label: 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', type: 'number', unit: 'Ft/m', minor: true },
       { cat: 'all3', sort: 21, label: 'ตรวจวัดฝุ่น PM2.5 (µg/m³)', type: 'number', unit: 'µg/m³', minor: true },
       { cat: 'all3', sort: 22, label: 'ตรวจวัดก๊าซ CO₂ (ppm)', type: 'number', unit: 'ppm', minor: true },
       { cat: 'all3', sort: 23, label: 'ตรวจวัดระดับเสียง (dB)', type: 'number', unit: 'dB', minor: true },
-      { cat: 'all3', sort: 30, label: 'ตรวจวัดอุณหภูมิ °C', type: 'number', unit: '°C', minor: true },
+      { cat: 'all3', sort: 30, label: 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น', type: 'number', unit: '°C', minor: true },
       { cat: 'all3', sort: 40, label: 'ฉีดล้างทำความสะอาด Fan coil โดยใช้สารเคมีทิ้งไว้ 15 นาที และใช้ Water High Pressure Jet ฉีดล้างทำความสะอาด', type: 'check', minor: true },
       { cat: 'all3', sort: 50, label: 'ตรวจสอบเสียง และการสั่นสะเทือนที่ผิดปกติของอุปกรณ์', type: 'check', minor: true },
       { cat: 'all3', sort: 60, label: 'ตรวจสอบ และทำความสะอาด Filter', type: 'check', minor: true },
       // หมวด 2: แอร์น้ำยา (refrigerant) — major only
       { cat: 'refrigerant', sort: 110, label: 'ตรวจสอบแรงดันของสารทำความเย็น (R32/R410/R22)', type: 'pressure_pair' },
-      { cat: 'refrigerant', sort: 120, label: 'ตรวจวัดแรงดันไฟฟ้า และกระแสไฟฟ้าขณะที่ Compressor ทำงาน', type: 'ln_vi' },
+      // Compressor ln_vi row removed — duplicate of the Blower แรงดัน/กระแส row above (all3 #10).
       { cat: 'refrigerant', sort: 130, label: 'ตรวจสอบการทำงานของรีโมท', type: 'check' },
       { cat: 'refrigerant', sort: 140, label: 'ตรวจสอบความหนาแน่นของสายไฟฟ้า และสายชุดควบคุม', type: 'check' },
       { cat: 'refrigerant', sort: 150, label: 'ตรวจสอบ และทำความสะอาดคอยล์เย็นด้วยสารเคมี (Cooling Coil)', type: 'check' },
@@ -86,8 +86,8 @@ async function seed() {
       { cat: 'fcu', sort: 250, label: 'ตรวจสอบฉนวนหุ้มท่อให้อยู่ในสภาพพร้อมใช้งาน', type: 'check' },
       { cat: 'fcu', sort: 260, label: 'ตรวจสอบ และทำความสะอาด เก็บขยะ บริเวณบนฝ้า', type: 'check' },
       { cat: 'fcu', sort: 270, label: 'ตรวจสอบและทำความสะอาด Stainer และตรวจสอบวาล์วน้ำเย็นปิดสนิทหรือไม่', type: 'check' },
-      { cat: 'fcu', sort: 280, label: 'ตรวจสอบ Pilot lamp, Selector Switch และอุปกรณ์ภายในตู้ Starter', type: 'check' },
       // หมวด 4: AHU (ahu) — major
+      { cat: 'ahu', sort: 305, label: 'ตรวจสอบ Pilot lamp, Selector Switch และอุปกรณ์ภายในตู้ Starter', type: 'check' },
       { cat: 'ahu', sort: 310, label: 'ตรวจสอบปรับตั้ง Pulley และสายพาน', type: 'check' },
       { cat: 'ahu', sort: 320, label: 'เติมจาระบีลูกปืนมอเตอร์ และลูกปืน Blower', type: 'check' },
       { cat: 'ahu', sort: 330, label: 'ตรวจสอบน้ำรั่วซึมตาม Fan Coil', type: 'check' },

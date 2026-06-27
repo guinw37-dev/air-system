@@ -93,6 +93,8 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
       val_ln_before: v.val_ln_before ?? null, val_l_before: v.val_l_before ?? null,
       val_ln_after: v.val_ln_after ?? null, val_l_after: v.val_l_after ?? null,
       val_suction: v.val_suction ?? null, val_discharge: v.val_discharge ?? null,
+      val_suction_before: v.val_suction_before ?? null, val_suction_after: v.val_suction_after ?? null,
+      val_discharge_before: v.val_discharge_before ?? null, val_discharge_after: v.val_discharge_after ?? null,
       refrigerant_type: v.refrigerant_type ?? null,
     };
   });
