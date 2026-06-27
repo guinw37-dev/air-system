@@ -60,4 +60,30 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// ── per-user UI prefs (dashboard layout ฯลฯ) — เก็บใน users.ui_prefs ───────────
+// ใช้ runner เดียวกับ /me: บน branch → req.db (users ใน schema สาขา), apex → public.
+const PREF_KEY_OK = /^[a-z0-9_]{1,40}$/;
+
+// GET /api/auth/prefs/:key → คืน value (หรือ null ถ้ายังไม่ตั้ง)
+router.get('/prefs/:key', authMiddleware, async (req, res) => {
+  if (!PREF_KEY_OK.test(req.params.key)) return res.status(400).json({ error: 'key ไม่ถูกต้อง' });
+  try {
+    const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
+    const { rows } = await runner('SELECT ui_prefs -> $1 AS value FROM users WHERE id = $2', [req.params.key, req.user.id]);
+    res.json({ value: rows[0]?.value ?? null });
+  } catch (err) { serverError(res, err); }
+});
+
+// PUT /api/auth/prefs/:key  { value } → set users.ui_prefs[key]
+router.put('/prefs/:key', authMiddleware, async (req, res) => {
+  if (!PREF_KEY_OK.test(req.params.key)) return res.status(400).json({ error: 'key ไม่ถูกต้อง' });
+  try {
+    const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
+    await runner(
+      `UPDATE users SET ui_prefs = jsonb_set(COALESCE(ui_prefs,'{}'::jsonb), ARRAY[$1], $2::jsonb, true) WHERE id = $3`,
+      [req.params.key, JSON.stringify(req.body.value ?? null), req.user.id]);
+    res.json({ ok: true });
+  } catch (err) { serverError(res, err); }
+});
+
 module.exports = router;

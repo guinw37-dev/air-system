@@ -35,6 +35,7 @@ async function migratePublic(client) {
     // else the user is local to that branch.
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
     // Role model: DROP the old CHECK FIRST, then remap retired legacy roles (incl.
     // single 'approver' → approve_engineer), then ADD the new CHECK. Order matters —
     // the remap produces values (approve_engineer/approve_building) the OLD CHECK
@@ -101,6 +102,8 @@ async function provisionBranchSchema(schemaName) {
     // wash_units last-wash dates (backfill ประวัติ → ปฏิทิน generate คำนวณ overdue)
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_major_at DATE`);
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);
+    // per-user UI prefs (dashboard layout) on branch users table
+    await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
     // device_id added to tech_attendance after the table first shipped (#165 → device tracking)
     await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)`);
     // GPS geofence (monitor only) added to tech_attendance later — ADD on existing branches.

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
                 )),
   phone         VARCHAR(20),
   active        BOOLEAN DEFAULT true,
+  ui_prefs      JSONB DEFAULT '{}'::jsonb,    -- per-user UI prefs (dashboard layout ฯลฯ)
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
