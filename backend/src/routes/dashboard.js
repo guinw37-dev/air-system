@@ -30,6 +30,15 @@ const WO_SQL = `
   SELECT
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND status <> 'rejected' AND NOT ${ALL_SIGNED})      AS wo_pending,
+    -- stage buckets for ภาพรวมงานล้างแอร์ (landing): ช่างเซ็นแล้วรอหัวหน้า /
+    -- หัวหน้าเซ็นแล้วรออาคารหรือวิศวกรรม. building/engineer = คู่ขนาน.
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND status <> 'rejected'
+                     AND sig_team IS NOT NULL AND sig_supervisor IS NULL) AS wo_wait_supervisor,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND status <> 'rejected'
+                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
+                     AND NOT ${ALL_SIGNED})                               AS wo_wait_buildeng,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND ${ALL_SIGNED})                                   AS wo_ready,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'approved')    AS wo_billed,
@@ -44,7 +53,8 @@ const WO_SQL = `
 async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
   const z = { ac_register:0, ac_assign:0, ac_work:0, ac_clear:0, ac_close:0, ac_cancel:0,
-              wo_pending:0, wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
+              wo_pending:0, wo_wait_supervisor:0, wo_wait_buildeng:0,
+              wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
   const out = { id: branch.id, slug: branch.slug, name: branch.name, ...z };
   try {
     const ac = await query(schema, AC_SQL);

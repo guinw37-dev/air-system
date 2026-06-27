@@ -66,6 +66,28 @@ function Highlight({ icon: Icon, value, label, tone = 'blue' }) {
   );
 }
 
+// clickable stat tile — big number + label + small sub-note (สำหรับ stage cards)
+function StatCard({ icon: Icon, value, label, sub, tone = 'blue', onClick }) {
+  const chip = {
+    blue: 'bg-blue-50 text-blue-600', teal: 'bg-teal-50 text-teal-600',
+    amber: 'bg-amber-50 text-amber-600', slate: 'bg-slate-100 text-slate-500',
+    indigo: 'bg-indigo-50 text-indigo-600',
+  }[tone] || 'bg-blue-50 text-blue-600';
+  return (
+    <button onClick={onClick} disabled={!onClick}
+      className={`text-left bg-white rounded-2xl border border-slate-100 shadow-sm p-4 transition-all ${
+        onClick ? 'hover:border-blue-300 hover:shadow-md cursor-pointer' : 'cursor-default'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className={`w-9 h-9 rounded-xl ${chip} flex items-center justify-center`}><Icon size={18} /></div>
+        {onClick && <ArrowUpRight size={15} className="text-slate-300" />}
+      </div>
+      <div className="text-2xl font-bold text-slate-800 leading-none">{value}</div>
+      <div className="text-xs font-medium text-slate-600 mt-1">{label}</div>
+      {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
+    </button>
+  );
+}
+
 // reusable donut with a centre total + legend (used for ซ่อม and ล้าง)
 function DonutCard({ icon: Icon, accent, title, segments, total, onGo }) {
   const data = segments.filter((s) => s.value > 0);
@@ -304,16 +326,17 @@ function ConditionSection({ navigate }) {
   );
 }
 
-// ── branch-mode rich dashboard ───────────────────────────────────────────────
+// ── branch-mode landing — "รายการดำเนินงาน : นับใบงาน" ────────────────────────
+// เน้นให้วิศวกรรม/ช่างอาคาร เข้ามาเห็นว่ามีใบงานรอเซ็นกี่ใบ แล้วกดเข้าไปเซ็นได้เลย.
+// ล้างได้/เหลือ · แอร์เสื่อมสภาพ · เป้าหมาย · กราฟ → ย้ายไปหน้า Dashboard (WashReport).
 function BranchDashboard({ b, navigate }) {
   const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
-  const woSegments = WO_TYPE.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
-  const billTotal = (b.wo_pending || 0) + (b.wo_ready || 0) + (b.wo_billed || 0);
-  const openTickets = (b.recentRepair || []).filter((j) => j.status === 'Register');
+  const washDone = (b.wo_ready || 0) + (b.wo_billed || 0);          // เซ็นครบ (รอวางบิล + วางบิลแล้ว)
+  const repairPending = (b.ac_register || 0) + (b.ac_assign || 0) + (b.ac_work || 0);
 
   return (
-    <div className="space-y-4">
-      {/* highlights */}
+    <div className="space-y-5">
+      {/* KPI — บนสุด */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Highlight icon={Wrench}      value={b.ac_active}  label="งานซ่อมค้าง" tone="blue" />
         <Highlight icon={Sparkles}    value={b.wo_active}  label="งานล้างค้าง" tone="teal" />
@@ -321,78 +344,41 @@ function BranchDashboard({ b, navigate }) {
         <Highlight icon={Clock}       value={b.wo_billed}  label="วางบิลแล้ว" tone="teal" />
       </div>
 
-      {/* เป้าหมายล้างเดือนนี้ */}
-      <TargetSection navigate={navigate} />
-
-      {/* ล้างได้/เหลือ เทียบทะเบียนแอร์ */}
-      <CoverageSection />
-
-      {/* two donuts: ซ่อม + ล้าง */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <DonutCard icon={Wrench} accent={C.primary} title="งานซ่อมแอร์"
-          segments={acSegments} total={b.ac_active} onGo={() => navigate('/ac-repair')} />
-        <DonutCard icon={Sparkles} accent="#0F6E56" title="งานล้างแอร์ (ค้าง)"
-          segments={woSegments} total={b.wo_active} onGo={() => navigate('/simple-wo')} />
-      </div>
-
-      {/* trend full width */}
-      <Card title="แนวโน้มงาน 6 เดือน">
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={b.trend || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="gRepair" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={C.primary} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={C.primary} stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gWash" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={C.cyan} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={C.cyan} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-            <Tooltip />
-            <Area type="monotone" dataKey="repair" name="ซ่อม" stroke={C.primary} strokeWidth={2.5} fill="url(#gRepair)" />
-            <Area type="monotone" dataKey="wash" name="ล้าง" stroke={C.cyan} strokeWidth={2.5} fill="url(#gWash)" />
-          </AreaChart>
-        </ResponsiveContainer>
-        <div className="flex gap-4 justify-center mt-2 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: C.primary }} /> งานซ่อม</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: C.cyan }} /> งานล้าง</span>
+      {/* ภาพรวมงานล้างแอร์ — แยกตาม stage การเซ็น (กดเข้าดูเฉพาะใบที่ต้องเซ็น) */}
+      <div>
+        <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานล้างแอร์</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_supervisor || 0}
+            label="รอหัวหน้าช่างตรวจเช็ค" sub="ช่างเซ็นแล้ว · รอหัวหน้าช่าง"
+            onClick={() => navigate('/simple-wo?pending=supervisor')} />
+          <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_buildeng || 0}
+            label="รออาคาร / วิศวกรรมตรวจเช็ค" sub="ช่าง + หัวหน้าช่างเซ็นแล้ว"
+            onClick={() => navigate('/simple-wo?pending=building_engineer')} />
+          <StatCard icon={Sparkles} tone="teal" value={washDone}
+            label="ดำเนินการเสร็จสิ้น" sub="เซ็นครบ · จบ process"
+            onClick={() => navigate('/simple-wo?view=ready')} />
         </div>
-      </Card>
-
-      {/* invoice progress + open repair tickets */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card title="สถานะวางบิล (งานล้าง)"
-          action={<button onClick={() => navigate('/simple-wo?view=ready')} className="text-blue-600"><ArrowUpRight size={16} /></button>}>
-          <div className="space-y-4">
-            <ProgressRow label="งานค้าง (ยังไม่เซ็นครบ)" value={b.wo_pending} total={billTotal} color={C.slate} />
-            <ProgressRow label="รอวางบิล" value={b.wo_ready} total={billTotal} color={C.sky} />
-            <ProgressRow label="วางบิลแล้ว" value={b.wo_billed} total={billTotal} color={C.teal} />
-          </div>
-        </Card>
-
-        <Card title="งานซ่อมรอรับ"
-          action={<button onClick={() => navigate('/ac-repair')} className="text-blue-600 text-xs hover:underline flex items-center gap-0.5">ทั้งหมด <ChevronRight size={13} /></button>}>
-          <div className="space-y-2">
-            {openTickets.length ? openTickets.map((j) => (
-              <button key={j.id} onClick={() => navigate('/ac-repair')}
-                className="w-full text-left flex items-start gap-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 p-3 transition-colors">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                  <Wrench size={15} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-700 line-clamp-1">{j.description}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{j.department || '—'} · {fmtDate(j.register_time)}</p>
-                </div>
-              </button>
-            )) : <p className="text-center text-slate-400 text-sm py-8">ไม่มีงานรอรับ</p>}
-          </div>
-        </Card>
       </div>
 
-      <ConditionSection navigate={navigate} />
+      {/* ภาพรวมงานซ่อม */}
+      <div>
+        <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานซ่อม</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon={Wrench} tone="amber" value={repairPending}
+            label="งานซ่อมคงค้าง" sub="แจ้งซ่อม · รับงาน · กำลังซ่อม"
+            onClick={() => navigate('/ac-repair')} />
+          <StatCard icon={Wrench} tone="blue" value={b.ac_clear || 0}
+            label="งานซ่อม (รอตรวจเช็ค)" sub="ซ่อมเสร็จแล้ว · รอตรวจเช็ค"
+            onClick={() => navigate('/ac-repair')} />
+          <StatCard icon={Wrench} tone="teal" value={b.ac_close || 0}
+            label="ดำเนินการเสร็จสิ้น" sub="ปิดงานแล้ว"
+            onClick={() => navigate('/ac-repair')} />
+        </div>
+      </div>
+
+      {/* donut งานซ่อมแอร์ — เก็บไว้ดูสถานะย่อย */}
+      <DonutCard icon={Wrench} accent={C.primary} title="งานซ่อมแอร์ (รายละเอียดสถานะ)"
+        segments={acSegments} total={b.ac_active} onGo={() => navigate('/ac-repair')} />
     </div>
   );
 }
@@ -475,8 +461,8 @@ export default function Dashboard() {
         {/* header */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-slate-400">จัดการและติดตามงานซ่อม-ล้างแอร์</p>
-            <h1 className="text-2xl font-bold text-slate-900">ภาพรวมระบบ</h1>
+            <p className="text-sm text-slate-400">นับใบงาน · สำหรับวิศวกรรม/ช่างอาคารเข้ามาเซ็นเอกสาร</p>
+            <h1 className="text-2xl font-bold text-slate-900">รายการดำเนินงาน</h1>
             <p className="text-sm text-blue-600 mt-0.5">
               {data?.scope === 'all' ? 'ทุกสาขา' : (name || 'สาขาปัจจุบัน')}
             </p>
