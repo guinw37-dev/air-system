@@ -79,6 +79,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/deductions',  requireBranch, require('./routes/deductions'));
 app.use('/api/targets',     requireBranch, require('./routes/serviceTargets'));
 app.use('/api/wash-units',  requireBranch, require('./routes/washUnits'));
+app.use('/api/wash-schedule', requireBranch, require('./routes/washSchedule'));
 app.use('/api/attendance',  requireBranch, require('./routes/attendance'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 

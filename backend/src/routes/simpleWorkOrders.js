@@ -395,6 +395,19 @@ router.post('/', authMiddleware, async (req, res) => {
         throw e;
       }
     }
+    // ปฏิทินแผนล้าง: ผูกนัด planned ของ asset+work_type นี้ (ใกล้ work_date สุด) → done.
+    // best-effort — ถ้าไม่มี wash_schedule/นัด ก็ข้าม (ไม่กระทบการสร้างใบงาน).
+    if (b.asset_code) {
+      try {
+        await req.db(
+          `UPDATE wash_schedule SET status='done', done_wo_id=$1, done_at=NOW(), updated_at=NOW()
+            WHERE id = (SELECT id FROM wash_schedule
+                         WHERE asset_code=$2 AND work_type=$3 AND status='planned'
+                         ORDER BY abs(planned_date - COALESCE($4::date, CURRENT_DATE)) LIMIT 1)`,
+          [rows[0].id, String(b.asset_code).trim(), b.work_type || 'major', b.work_date || null]);
+      } catch { /* wash_schedule อาจยังไม่ migrate — ข้าม */ }
+    }
+
     // New ใบงาน starts as 'submitted' → alert the signing roles (หัวหน้าช่าง/ช่างอาคาร/วิศวกรรม).
     await notifyWo(req, {
       woId: rows[0].id, type: 'wo_submitted',

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, ChevronDown, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2, ClipboardList,
-  Clock, BarChart3, FileBarChart,
+  Clock, BarChart3, FileBarChart, CalendarRange,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -29,6 +29,7 @@ const NAV = [
   { path: '/attendance-summary', icon: BarChart3,  label: 'สรุปการลงเวลาช่าง',   roles: ['admin', 'super_admin'] },
   { path: '/unit-history', icon: Activity,         label: 'ประวัติแอร์',     roles: null },
   { path: '/wash-units',   icon: ClipboardList,    label: 'ทะเบียนแอร์',    roles: null },
+  { path: '/wash-calendar', icon: CalendarRange,   label: 'ปฏิทินล้างแอร์',  roles: null },
   { path: '/targets',      icon: CalendarCheck,    label: 'เป้าหมายล้าง',   roles: ['admin', 'super_admin'] },
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin'] },

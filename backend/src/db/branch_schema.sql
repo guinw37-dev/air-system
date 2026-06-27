@@ -251,6 +251,26 @@ CREATE TABLE IF NOT EXISTS wash_units (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wash_units_code ON wash_units (asset_code);
 CREATE INDEX IF NOT EXISTS idx_wash_units_zone ON wash_units (pts_zone);
 
+-- ── ปฏิทินแผนล้างแอร์ — แต่ละแถว = นัดล้าง 1 เครื่อง 1 วัน ──────────────────────
+-- hybrid: ระบบ generate กระจายให้ (status planned) → admin/ช่างย้าย/ข้ามได้.
+-- เสร็จ = ผูกอัตโนมัติเมื่อสร้างใบงาน simple-wo ของ asset+work_type นั้น (done_wo_id).
+CREATE TABLE IF NOT EXISTS wash_schedule (
+  id           SERIAL PRIMARY KEY,
+  asset_code   VARCHAR(60) NOT NULL,
+  work_type    VARCHAR(10) NOT NULL,        -- major | minor | fan
+  planned_date DATE NOT NULL,
+  status       VARCHAR(12) DEFAULT 'planned', -- planned | done | skipped
+  done_wo_id   INT,                          -- simple_work_orders.id เมื่อเสร็จ
+  done_at      TIMESTAMPTZ,
+  note         TEXT,
+  created_by   INT REFERENCES users(id),
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wash_sched_date ON wash_schedule (planned_date);
+CREATE INDEX IF NOT EXISTS idx_wash_sched_asset ON wash_schedule (asset_code);
+CREATE INDEX IF NOT EXISTS idx_wash_sched_status ON wash_schedule (status);
+
 -- การลงเวลาเข้า-ออกงานของช่างรายวัน (per-branch). 1 แถว/ช่าง/วัน.
 CREATE TABLE IF NOT EXISTS tech_attendance (
   id           SERIAL PRIMARY KEY,
