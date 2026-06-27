@@ -17,12 +17,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const COLS = [
   'asset_code', 'pts_zone', 'location', 'is_clinic', 'building', 'floor', 'room',
   'equipment', 'ac_type', 'brand', 'model', 'cooling_size',
-  'freq_major', 'freq_minor', 'freq_fan', 'active', 'note',
+  'freq_major', 'freq_minor', 'freq_fan', 'last_major_at', 'last_minor_at', 'active', 'note',
 ];
 
 // ── value coercion (shared by POST/PUT/import) ──────────────────────────────
 const str = (v) => (v == null ? null : String(v).trim() || null);
 const toInt0 = (v) => Math.max(0, parseInt(v, 10) || 0);
+// ISO date (YYYY-MM-DD) only; anything else → null. (xlsx import ส่งเป็น ISO string)
+const toDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v == null ? '' : v).trim()) ? String(v).trim() : null);
 function toBool(v, dflt = false) {
   if (v == null || v === '') return dflt;
   if (typeof v === 'boolean') return v;
@@ -52,6 +54,8 @@ function rowFromInput(b) {
     freq_major: toInt0(b.freq_major),
     freq_minor: toInt0(b.freq_minor),
     freq_fan: toInt0(b.freq_fan),
+    last_major_at: toDate(b.last_major_at),
+    last_minor_at: toDate(b.last_minor_at),
     active: toBool(b.active, true),
     note: b.note ? String(b.note) : null,
   };
@@ -205,6 +209,8 @@ const HEADER_MAP = {
   freq_major:   ['ล้างใหญ่/ปี', 'ล้างใหญ่ต่อปี', 'freq_major', 'freqmajor'],
   freq_minor:   ['ล้างย่อย/ปี', 'ล้างย่อยต่อปี', 'freq_minor', 'freqminor'],
   freq_fan:     ['พัดลม/ปี', 'พัดลมต่อปี', 'freq_fan', 'freqfan'],
+  last_major_at: ['ล้างใหญ่ล่าสุด', 'last_major_at', 'lastmajorat'],
+  last_minor_at: ['ล้างย่อยล่าสุด', 'last_minor_at', 'lastminorat'],
   active:       ['ใช้งาน', 'active', 'สถานะใช้งาน'],
   note:         ['หมายเหตุ', 'note'],
 };

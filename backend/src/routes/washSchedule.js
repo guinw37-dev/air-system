@@ -65,28 +65,42 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
       `DELETE FROM wash_schedule WHERE status = 'planned' AND planned_date >= $1`, [fromStr]);
 
     const { rows: units } = await client.query(
-      `SELECT asset_code, freq_major, freq_minor, freq_fan
+      `SELECT asset_code, freq_major, freq_minor, freq_fan,
+              last_major_at::text AS last_major_at, last_minor_at::text AS last_minor_at
          FROM wash_units WHERE active = true
         ORDER BY building NULLS LAST, floor NULLS LAST, room NULLS LAST, asset_code`);
 
     const from = new Date(`${fromStr}T00:00:00`);
+    const dayDiff = (a, b) => Math.round((a - b) / 86400000);
     const out = [];
     for (const wt of WORK_TYPES) {
       const freqCol = `freq_${wt}`;
+      const lastCol = `last_${wt}_at`;
       const list = units.filter((u) => (u[freqCol] || 0) > 0);
       if (!list.length) continue;
-      // typical freq → window length
+      // typical freq → interval (วัน) + horizon (interval + เผื่อ catch-up 45 วัน)
       const freqs = list.map((u) => u[freqCol]);
       const typical = freqs.sort((a, b) => freqs.filter((f) => f === a).length - freqs.filter((f) => f === b).length).pop() || 1;
-      const windowDays = Math.max(7, Math.round(365 / typical));
-      // working dates (skip Sundays) inside the window
+      const interval = Math.max(7, Math.round(365 / typical));
+      // working dates (skip Sundays) ตลอด horizon
       const dates = [];
-      for (let i = 0; i < windowDays; i++) { const d = addDays(from, i); if (d.getDay() !== 0) dates.push(ymd(d)); }
-      const n = list.length;
-      list.forEach((u, i) => {
-        const di = Math.min(dates.length - 1, Math.floor((i * dates.length) / n));
-        out.push([u.asset_code, wt, dates[di]]);
-      });
+      for (let i = 0; i < interval + 45; i++) { const d = addDays(from, i); if (d.getDay() !== 0) dates.push(ymd(d)); }
+      // due ต่อเครื่อง: last + interval ; ไม่เคยล้าง → overdue (วันนี้)
+      const overdue = [], timed = [];
+      for (const u of list) {
+        const last = u[lastCol] ? new Date(`${u[lastCol]}T00:00:00`) : null;
+        const dueIdx = last ? interval + dayDiff(last, from) : -1;   // index จาก from (วันปฏิทิน)
+        if (dueIdx <= 0) overdue.push(u); else timed.push({ u, dueIdx });
+      }
+      // overdue → เกลี่ยลง working day ช่วงแรก (catch-up ~ครึ่ง interval แต่ไม่เกิน 40 วัน)
+      const spreadDays = Math.min(dates.length, Math.max(10, Math.min(40, Math.ceil(interval / 2))));
+      overdue.forEach((u, i) => out.push([u.asset_code, wt, dates[i % spreadDays]]));
+      // timed → working day แรกที่ >= due (ไม่เกิน horizon → ตัวสุดท้าย)
+      const firstOnOrAfter = (calIdx) => {
+        const target = ymd(addDays(from, Math.max(0, calIdx)));
+        return dates.find((d) => d >= target) || dates[dates.length - 1];
+      };
+      timed.forEach(({ u, dueIdx }) => out.push([u.asset_code, wt, firstOnOrAfter(dueIdx)]));
     }
 
     // chunked multi-row insert

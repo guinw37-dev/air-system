@@ -243,6 +243,8 @@ CREATE TABLE IF NOT EXISTS wash_units (
   freq_major   INT DEFAULT 0,              -- contract: ครั้ง/ปี ต่อเครื่อง
   freq_minor   INT DEFAULT 0,
   freq_fan     INT DEFAULT 0,
+  last_major_at DATE,                       -- ล้างใหญ่ล่าสุด (backfill ประวัติ → คำนวณ overdue)
+  last_minor_at DATE,                       -- ล้างย่อยล่าสุด
   active       BOOLEAN DEFAULT true,
   note         TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
