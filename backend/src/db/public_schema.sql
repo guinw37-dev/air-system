@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS clients (
   schema_name VARCHAR(63),                 -- Postgres schema: acme_co
   card_image  TEXT,                        -- logo/รูปหน้า card (URL or data URI)
   repair_slug VARCHAR(63),                 -- maps this branch → repair-system hospital slug (AC-repair bridge)
+  line_group_id TEXT,                       -- LINE group/room id สำหรับแจ้งเตือนแผนล้างประจำวัน
   active      BOOLEAN DEFAULT true,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
