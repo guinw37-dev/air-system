@@ -40,12 +40,21 @@ router.get('/', authMiddleware, async (req, res) => {
     const params = [from, to];
     let where = 's.planned_date BETWEEN $1 AND $2';
     if (status && ['planned', 'done', 'skipped'].includes(status)) { params.push(status); where += ` AND s.status = $${params.length}`; }
+    // washed_at/washed_wo_id = ใบงานล้างจริง (asset+ประเภทเดียวกัน) ภายใน 90 วันล่าสุด
+    // → ถ้านัดยัง planned แต่มี washed_at = "ทำไปแล้ว/ซ้ำ" ให้ frontend เตือน
     const { rows } = await req.db(
       `SELECT s.id, s.asset_code, s.work_type, s.planned_date::text AS planned_date,
               s.status, s.done_wo_id, s.note,
-              u.pts_zone, u.building, u.floor, u.room, u.ac_type, u.location
+              u.pts_zone, u.building, u.floor, u.room, u.ac_type, u.location,
+              w.work_date::text AS washed_at, w.id AS washed_wo_id
          FROM wash_schedule s
          LEFT JOIN wash_units u ON u.asset_code = s.asset_code
+         LEFT JOIN LATERAL (
+           SELECT id, work_date FROM simple_work_orders w
+            WHERE w.deleted_at IS NULL AND w.asset_code = s.asset_code AND w.work_type = s.work_type
+              AND COALESCE(w.work_date, w.created_at::date) >= CURRENT_DATE - INTERVAL '90 days'
+            ORDER BY COALESCE(w.work_date, w.created_at::date) DESC LIMIT 1
+         ) w ON true
         WHERE ${where}
         ORDER BY s.planned_date, u.building, u.floor, u.room, s.asset_code`, params);
     res.json({ items: rows });
@@ -174,7 +183,10 @@ router.patch('/:id', authMiddleware, canEdit, async (req, res) => {
   if (isDate(req.body.planned_date)) add('planned_date', req.body.planned_date);
   if (['planned', 'done', 'skipped'].includes(req.body.status)) {
     add('status', req.body.status);
-    if (req.body.status !== 'done') { add('done_wo_id', null); add('done_at', null); }
+    if (req.body.status === 'done') {
+      add('done_at', new Date().toISOString());
+      if (req.body.done_wo_id) add('done_wo_id', req.body.done_wo_id);
+    } else { add('done_wo_id', null); add('done_at', null); }
   }
   if (req.body.note !== undefined) add('note', req.body.note || null);
   if (!sets.length) return res.status(400).json({ error: 'ไม่มีฟิลด์ให้แก้' });
