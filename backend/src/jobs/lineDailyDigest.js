@@ -101,19 +101,29 @@ async function runDigestForBranch(branch) {
   await pushLine(branch.line_group_id, await buildText(branch));
 }
 
-// minute-tick scheduler — ยิงตอน 08:45 (Asia/Bangkok) วันละครั้ง
-function startLineDigestScheduler(targetHHMM = '08:45') {
+// เวลาแจ้งเตือน (HH:MM) — system_settings ก่อน, default 08:45
+async function getDigestTime() {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM system_settings WHERE key = 'LINE_DIGEST_TIME'`);
+    if (rows[0] && /^\d{2}:\d{2}$/.test(rows[0].value)) return rows[0].value;
+  } catch { /* ไม่มีตาราง */ }
+  return '08:45';
+}
+
+// minute-tick scheduler — ยิงตามเวลาที่ตั้ง (Asia/Bangkok) วันละครั้ง
+function startLineDigestScheduler() {
   let lastRun = '';
-  setInterval(() => {
+  setInterval(async () => {
     const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     const hhmm = `${pad(bkk.getHours())}:${pad(bkk.getMinutes())}`;
     const dayKey = `${bkk.getFullYear()}-${pad(bkk.getMonth() + 1)}-${pad(bkk.getDate())}`;
-    if (hhmm === targetHHMM && lastRun !== dayKey) {
+    if (lastRun === dayKey) return;
+    if (hhmm === await getDigestTime()) {
       lastRun = dayKey;
       runDigest().catch((e) => console.error('[line] digest error:', e.message));
     }
   }, 60 * 1000);
-  console.log(`[line] daily digest scheduler started (${targetHHMM} Asia/Bangkok)`);
+  console.log('[line] daily digest scheduler started (time from settings, Asia/Bangkok)');
 }
 
-module.exports = { runDigest, runDigestForBranch, startLineDigestScheduler, getLineToken };
+module.exports = { runDigest, runDigestForBranch, startLineDigestScheduler, getLineToken, getDigestTime };

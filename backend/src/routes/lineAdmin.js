@@ -5,7 +5,7 @@ const router = express.Router();
 const { pool } = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
-const { runDigestForBranch } = require('../jobs/lineDailyDigest');
+const { runDigestForBranch, getDigestTime } = require('../jobs/lineDailyDigest');
 
 const onlySuper = requireRole('super_admin');
 
@@ -22,6 +22,7 @@ router.get('/config', authMiddleware, onlySuper, async (req, res) => {
       hasToken: !!(token || envToken),
       tokenSource: token ? 'db' : (envToken ? 'env' : 'none'),
       tokenPreview: token ? `${token.slice(0, 8)}…${token.slice(-4)}` : (envToken ? '(จาก env)' : ''),
+      digestTime: await getDigestTime(),
       branches,
     });
   } catch (err) { serverError(res, err); }
@@ -38,6 +39,18 @@ router.put('/token', authMiddleware, onlySuper, async (req, res) => {
         `INSERT INTO system_settings (key, value, updated_at) VALUES ('LINE_CHANNEL_ACCESS_TOKEN', $1, NOW())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [token]);
     }
+    res.json({ ok: true });
+  } catch (err) { serverError(res, err); }
+});
+
+// PUT /time { time: "HH:MM" } — ตั้งเวลาแจ้งเตือน
+router.put('/time', authMiddleware, onlySuper, async (req, res) => {
+  const time = String(req.body.time || '').trim();
+  if (!/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: 'เวลาไม่ถูกต้อง (HH:MM)' });
+  try {
+    await pool.query(
+      `INSERT INTO system_settings (key, value, updated_at) VALUES ('LINE_DIGEST_TIME', $1, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [time]);
     res.json({ ok: true });
   } catch (err) { serverError(res, err); }
 });
