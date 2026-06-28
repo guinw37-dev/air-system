@@ -305,6 +305,43 @@ router.get('/export-all', authMiddleware, async (req, res) => {
               sig_team_name, sig_supervisor_name, sig_building_name, sig_engineer_name,
               ${ALL_SIGNED} AS all_signed, created_at
          FROM simple_work_orders WHERE deleted_at IS NULL ORDER BY created_at DESC`);
+    // ── ประวัติเครื่องจักร — ทุกเครื่อง + timeline งานล้าง + สภาพ (1 แถว/บริการ) ──
+    try {
+      const { rows: hist } = await req.db(
+        `SELECT u.asset_code, u.ac_type, u.cooling_size, u.brand, u.model, u.pts_zone, u.location,
+                u.building AS u_building, u.floor AS u_floor, u.room AS u_room,
+                u.freq_major, u.freq_minor, u.last_major_at, u.last_minor_at, u.active,
+                s.work_date, s.work_type, s.result, s.status, s.tech_name, s.wo_number, s.condition
+           FROM wash_units u
+           LEFT JOIN simple_work_orders s ON s.asset_code = u.asset_code AND s.deleted_at IS NULL
+          ORDER BY u.pts_zone NULLS LAST, u.asset_code, s.work_date NULLS FIRST, s.created_at NULLS FIRST`);
+      const WTL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
+      const RES = { ok: 'ปกติ', not_ok: 'พบปัญหา' };
+      const STT = { submitted: 'รอเซ็น', checked: 'หัวหน้าเซ็นแล้ว', approved: 'วางบิลแล้ว', rejected: 'ตีกลับ' };
+      const condText = (c) => {
+        if (!c || typeof c !== 'object') return '';
+        const parts = [];
+        if (Array.isArray(c.issues) && c.issues.length) parts.push(`อาการ: ${c.issues.join(', ')}`);
+        if (c.issues_other) parts.push(c.issues_other);
+        if (c.health_pct != null) parts.push(`สภาพ ${c.health_pct}%`);
+        if (c.priority) parts.push(`เร่งด่วน: ${c.priority}`);
+        if (c.health_reason) parts.push(c.health_reason);
+        return parts.join(' · ');
+      };
+      const histRows = hist.map((r) => ({
+        'เลขเครื่อง': r.asset_code, 'ประเภทแอร์': r.ac_type, 'BTU': r.cooling_size,
+        'ยี่ห้อ': r.brand, 'รุ่น': r.model, 'โซน': r.pts_zone, 'สถานที่': r.location,
+        'อาคาร': r.u_building, 'ชั้น': r.u_floor, 'ห้อง': r.u_room,
+        'ล้างใหญ่/ปี': r.freq_major, 'ล้างย่อย/ปี': r.freq_minor,
+        'ล้างใหญ่ล่าสุด': r.last_major_at, 'ล้างย่อยล่าสุด': r.last_minor_at,
+        'ใช้งาน': r.active ? 'ใช่' : 'ไม่',
+        'วันที่บริการ': r.work_date || '', 'งาน': WTL[r.work_type] || r.work_type || '',
+        'ผล': RES[r.result] || r.result || '', 'สถานะใบงาน': STT[r.status] || r.status || '',
+        'ช่าง': r.tech_name || '', 'เลขใบงาน': r.wo_number || '', 'สภาพ/อาการ': condText(r.condition),
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(histRows.length ? histRows : [{ '—': 'ไม่มีข้อมูล' }]), 'ประวัติเครื่องจักร');
+    } catch { /* ตารางอาจยังไม่ migrate → ข้าม */ }
+
     await sheet('งานซ่อม', `SELECT * FROM ac_repair_jobs ORDER BY register_time DESC`);
     await sheet('ปฏิทินแผน',
       `SELECT asset_code, work_type, planned_date, status, done_wo_id, done_at, note, created_at
@@ -342,8 +379,9 @@ router.get('/export-all', authMiddleware, async (req, res) => {
       ['เสร็จ (done)', sch.done || 0],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'สรุป');
-    // จัด สรุป ไว้ sheet แรก
-    wb.SheetNames = ['สรุป', ...wb.SheetNames.filter((n) => n !== 'สรุป')];
+    // จัดลำดับ sheet: สรุป → ประวัติเครื่องจักร → ที่เหลือ
+    const front = ['สรุป', 'ประวัติเครื่องจักร'];
+    wb.SheetNames = [...front.filter((n) => wb.SheetNames.includes(n)), ...wb.SheetNames.filter((n) => !front.includes(n))];
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
