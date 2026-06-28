@@ -424,11 +424,11 @@ export default function SimpleWoForm() {
     // fcu/ahu บังคับตาม ac_type (AHU/OAU → ahu, อื่น → fcu).
     if (!isGrid) {
       const acType = (header.ac_type || '').toUpperCase()
-      const isAhu = acType === 'AHU' || acType === 'OAU'
       const catRequired = (cat) => {
+        // ตรงกับหมวดที่ฟอร์มแสดง: fcu→เฉพาะ FCU, ahu→เฉพาะ AHU/OAU
         if (cat === 'refrigerant') return acInfo.kind === 'refrigerant'
-        if (cat === 'fcu') return !isAhu
-        if (cat === 'ahu') return isAhu
+        if (cat === 'fcu') return acType === 'FCU'
+        if (cat === 'ahu') return acType === 'AHU' || acType === 'OAU'
         return false // all3 / other / fan → ไม่บังคับ
       }
       const missingChecks = []
@@ -682,7 +682,13 @@ export default function SimpleWoForm() {
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           )}
-          {!schemaLoading && schema.sections.map((section) => (
+          {!schemaLoading && schema.sections.filter((section) => {
+            // กรองหมวดตามประเภทเครื่อง: FCU→เฉพาะ FCU, AHU/OAU→เฉพาะ AHU; ที่เหลือแสดงเสมอ
+            const at = (header.ac_type || '').toUpperCase()
+            if (section.key === 'fcu') return at === 'FCU'
+            if (section.key === 'ahu') return at === 'AHU' || at === 'OAU'
+            return true
+          }).map((section) => (
             <div key={section.key} className="card flex flex-col gap-3">
               <h2 className="section-header">{section.label}</h2>
               <div className="flex flex-col gap-3">
