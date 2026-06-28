@@ -266,10 +266,18 @@ async function buildWashReport(req) {
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
         GROUP BY work_type`, [month]) || [];
     const monDoneBy = Object.fromEntries(monRows.map((r) => [r.work_type, r.done || 0]));
+    // เป้าเดือน = จำนวนนัดในปฏิทินของเดือนนั้น (planned+done) ต่อประเภท; fallback service_targets
+    const schedMonRows = await safeRows(db,
+      `SELECT work_type, COUNT(*)::int AS n FROM wash_schedule
+        WHERE to_char(planned_date,'YYYY-MM') = $1 AND status IN ('planned','done')
+        GROUP BY work_type`, [month]);
+    const schedMonBy = Object.fromEntries((schedMonRows || []).map((r) => [r.work_type, r.n || 0]));
+    const schedMonTotal = (schedMonRows || []).reduce((s, r) => s + (r.n || 0), 0);
+    const monTargetOf = (wt) => (schedMonTotal > 0 ? (schedMonBy[wt] || 0) : (targetByType[wt] || 0));
     const monthly = {
       month,
       types: WASH_TYPES.map((wt) => ({
-        work_type: wt, target: targetByType[wt] || 0, done: monDoneBy[wt] || 0,
+        work_type: wt, target: monTargetOf(wt), done: monDoneBy[wt] || 0,
       })),
     };
 
@@ -363,7 +371,7 @@ async function buildWashReport(req) {
     });
 
     // weekly — 4 buckets of the current month (1-7, 8-14, 15-21, 22-end)
-    const bucketTarget = grandMonthlyTarget > 0 ? Math.round(grandMonthlyTarget / 4) : 0;
+    const fallbackBucket = grandMonthlyTarget > 0 ? Math.round(grandMonthlyTarget / 4) : 0;
     const ranges = [[1, 7], [8, 14], [15, 21], [22, dim]];
     const pad = (n) => String(n).padStart(2, '0');
     const ymPrefix = `${year}-${pad(mon)}`;
@@ -376,17 +384,26 @@ async function buildWashReport(req) {
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
         GROUP BY d`, [month]) || [];
     const doneByDay = Object.fromEntries(dayRows.map((r) => [r.d, r.done || 0]));
+    // เป้ารายวันจากปฏิทิน (planned+done) → bucket ต่อสัปดาห์; fallback เป้าเดือน÷4
+    const schedDayRows = await safeRows(db,
+      `SELECT EXTRACT(DAY FROM planned_date)::int AS d, COUNT(*)::int AS n
+         FROM wash_schedule
+        WHERE to_char(planned_date,'YYYY-MM') = $1 AND status IN ('planned','done')
+        GROUP BY d`, [month]);
+    const schedByDay = Object.fromEntries((schedDayRows || []).map((r) => [r.d, r.n || 0]));
+    const hasWeekPlan = (schedDayRows || []).length > 0;
     const weeks = ranges.map(([from, to], i) => {
-      let done = 0;
-      for (let d = from; d <= to; d++) done += doneByDay[d] || 0;
-      const remaining = Math.max(0, bucketTarget - done);
-      const pct = bucketTarget > 0 ? Math.round((done / bucketTarget) * 100) : 0;
+      let done = 0, plan = 0;
+      for (let d = from; d <= to; d++) { done += doneByDay[d] || 0; plan += schedByDay[d] || 0; }
+      const target = hasWeekPlan ? plan : fallbackBucket;
+      const remaining = Math.max(0, target - done);
+      const pct = target > 0 ? Math.round((done / target) * 100) : 0;
       return {
         no: i + 1,
         from: `${ymPrefix}-${pad(from)}`,
         to: `${ymPrefix}-${pad(to)}`,
         label: `${from}-${to} ${TH_MONTHS[mon - 1]}`,
-        target: bucketTarget, done, remaining, pct,
+        target, done, remaining, pct,
       };
     });
     // สัปดาห์ปัจจุบัน (bucket ที่วันนี้อยู่) → การ์ด "สัปดาห์นี้"
