@@ -328,17 +328,38 @@ router.get('/export-all', authMiddleware, async (req, res) => {
         if (c.health_reason) parts.push(c.health_reason);
         return parts.join(' · ');
       };
-      const histRows = hist.map((r) => ({
+      const mk = (r, ev) => ({
         'เลขเครื่อง': r.asset_code, 'ประเภทแอร์': r.ac_type, 'BTU': r.cooling_size,
         'ยี่ห้อ': r.brand, 'รุ่น': r.model, 'โซน': r.pts_zone, 'สถานที่': r.location,
         'อาคาร': r.u_building, 'ชั้น': r.u_floor, 'ห้อง': r.u_room,
         'ล้างใหญ่/ปี': r.freq_major, 'ล้างย่อย/ปี': r.freq_minor,
         'ล้างใหญ่ล่าสุด': r.last_major_at, 'ล้างย่อยล่าสุด': r.last_minor_at,
         'ใช้งาน': r.active ? 'ใช่' : 'ไม่',
+        ...ev,
+      });
+      const histRows = hist.map((r) => mk(r, {
         'วันที่บริการ': r.work_date || '', 'งาน': WTL[r.work_type] || r.work_type || '',
         'ผล': RES[r.result] || r.result || '', 'สถานะใบงาน': STT[r.status] || r.status || '',
         'ช่าง': r.tech_name || '', 'เลขใบงาน': r.wo_number || '', 'สภาพ/อาการ': condText(r.condition),
       }));
+      // งานซ่อมที่ผูก asset_code → รวมเข้า timeline เครื่องเดียวกัน
+      try {
+        const { rows: rep } = await req.db(
+          `SELECT u.asset_code, u.ac_type, u.cooling_size, u.brand, u.model, u.pts_zone, u.location,
+                  u.building AS u_building, u.floor AS u_floor, u.room AS u_room,
+                  u.freq_major, u.freq_minor, u.last_major_at, u.last_minor_at, u.active,
+                  j.register_time::date AS work_date, j.description, j.status, j.assign_name, j.job_number
+             FROM ac_repair_jobs j JOIN wash_units u ON u.asset_code = j.asset_code
+            WHERE j.asset_code IS NOT NULL AND j.asset_code <> ''`);
+        for (const r of rep) histRows.push(mk(r, {
+          'วันที่บริการ': r.work_date || '', 'งาน': 'ซ่อม',
+          'ผล': '', 'สถานะใบงาน': r.status || '', 'ช่าง': r.assign_name || '',
+          'เลขใบงาน': r.job_number || '', 'สภาพ/อาการ': r.description || '',
+        }));
+      } catch { /* asset_code อาจยังไม่ migrate → ข้ามซ่อม */ }
+      // เรียงตามเครื่อง → วันที่
+      histRows.sort((a, b) => String(a['เลขเครื่อง'] || '').localeCompare(String(b['เลขเครื่อง'] || ''))
+        || String(a['วันที่บริการ'] || '').localeCompare(String(b['วันที่บริการ'] || '')));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(histRows.length ? histRows : [{ '—': 'ไม่มีข้อมูล' }]), 'ประวัติเครื่องจักร');
     } catch { /* ตารางอาจยังไม่ migrate → ข้าม */ }
 

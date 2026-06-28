@@ -243,7 +243,7 @@ function PartsSummaryModal({ onClose }) {
 // ── Create / Edit modal ──────────────────────────────────────────────────────
 function JobFormModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState({
-    building: '', floor: '', department: '', requester: '', telephone: '',
+    building: '', floor: '', department: '', requester: '', telephone: '', asset_code: '',
     description: '', assign_name: '', issue_type: '', job_detail: '', parts: [],
     ...initial,
     parts: Array.isArray(initial?.parts) ? initial.parts : [],
@@ -262,6 +262,8 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [locs, setLocs] = useState({ buildings: [], floors: [], departments: [] });
   // Full hospital location master from repair-system (อาคาร→ชั้น→แผนก, cascading).
   const [repairHier, setRepairHier] = useState([]);
+  const [acCodes, setAcCodes] = useState([]);
+  useEffect(() => { api.get('/wash-units/codes').then((r) => setAcCodes(r.data || [])).catch(() => {}); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -362,6 +364,11 @@ function JobFormModal({ initial, onSave, onClose }) {
               <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร</label>
               <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.telephone} onChange={set('telephone')} placeholder="เบอร์โทร" />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">เลขเครื่อง (ทะเบียนแอร์) <span className="text-gray-400 font-normal">— ถ้ามี ผูกประวัติเครื่อง</span></label>
+            <input list="acr-assets" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.asset_code} onChange={set('asset_code')} placeholder="เลือก/พิมพ์เลขเครื่อง (ไม่บังคับ)" />
+            <datalist id="acr-assets">{acCodes.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดอาการ <span className="text-red-500">*</span></label>

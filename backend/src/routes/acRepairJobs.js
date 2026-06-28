@@ -208,7 +208,7 @@ router.post('/import', async (req, res) => {
 // ── PUT /:id — update details (only for non-terminal jobs) ───────────────
 router.put('/:id', async (req, res) => {
   const { building, floor, department, requester, telephone, description,
-          assign_name, issue_type, job_detail, parts } = req.body;
+          assign_name, issue_type, job_detail, parts, asset_code } = req.body;
   // Normalise the parts list — keep only {name, qty, note, unit_price}, drop blank rows.
   // unit_price is THB per unit (optional); coerced to a non-negative number, default 0.
   // A part's line cost = qty × unit_price.
@@ -235,11 +235,11 @@ router.put('/:id', async (req, res) => {
     const { rows } = await req.db(
       `UPDATE ac_repair_jobs SET
          building=$1, floor=$2, department=$3, requester=$4, telephone=$5,
-         description=$6, assign_name=$7, issue_type=$8, job_detail=$9, parts=$10
-       WHERE id=$11 RETURNING *`,
+         description=$6, assign_name=$7, issue_type=$8, job_detail=$9, parts=$10, asset_code=$11
+       WHERE id=$12 RETURNING *`,
       [building || '', floor || '', department || '', requester || '', telephone || '',
        description || '', assign_name || null, issue_type || null, job_detail || null,
-       JSON.stringify(cleanParts), req.params.id]
+       JSON.stringify(cleanParts), asset_code || null, req.params.id]
     );
     res.json(rows[0]);
   } catch (err) { serverError(res, err); }
