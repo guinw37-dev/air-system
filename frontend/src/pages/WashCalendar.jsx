@@ -25,6 +25,8 @@ export default function WashCalendar() {
   const [loadingDay, setLoadingDay] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [showGen, setShowGen] = useState(false)
+  const [cfg, setCfg] = useState({ capacity: 15, workdays: 'mon_sat', byZone: true })
 
   const gridStart = month.startOf('month').startOf('week')   // อาทิตย์
   const gridDays = Array.from({ length: 42 }, (_, i) => gridStart.add(i, 'day'))
@@ -53,12 +55,18 @@ export default function WashCalendar() {
   useEffect(() => { loadSummary() }, [loadSummary])
   useEffect(() => { loadDay() }, [loadDay])
 
+  // โหลด config ที่จำไว้ (ล้างได้/วัน, วันทำงาน, แยกโซน)
+  useEffect(() => {
+    api.get('/auth/prefs/wash_plan_cfg').then((r) => { if (r.data?.value) setCfg((c) => ({ ...c, ...r.data.value })) }).catch(() => {})
+  }, [])
+
   const generate = async () => {
-    if (!window.confirm('สร้างแผนอัตโนมัติจากทะเบียนแอร์? (ลบเฉพาะแผนที่ยังไม่เสร็จตั้งแต่วันนี้ไป แล้วกระจายใหม่)')) return
     setBusy(true); setErr('')
     try {
-      const r = await api.post('/wash-schedule/generate', { from: today })
-      alert(`สร้างแผนสำเร็จ ${r.data.created} นัด`)
+      const r = await api.post('/wash-schedule/generate', { from: today, ...cfg })
+      api.put('/auth/prefs/wash_plan_cfg', { value: cfg }).catch(() => {})   // จำ default
+      setShowGen(false)
+      alert(`สร้างแผนสำเร็จ ${r.data.created} นัด (ล้างได้ ${r.data.capacity}/วัน)`)
       await loadSummary(); await loadDay()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -96,7 +104,7 @@ export default function WashCalendar() {
           <CalendarRange className="text-blue-700" size={22} />
           <h1 className="text-xl font-bold text-slate-900">ปฏิทินล้างแอร์</h1>
           {canEdit && (
-            <button onClick={generate} disabled={busy}
+            <button onClick={() => setShowGen(true)} disabled={busy}
               className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
               <Wand2 size={16} /> สร้างแผนอัตโนมัติ
             </button>
@@ -200,6 +208,40 @@ export default function WashCalendar() {
           <p className="text-xs text-slate-400 mt-4">เสร็จอัตโนมัติเมื่อสร้างใบงานล้างของเครื่องนั้น</p>
         </div>
       </div>
+
+      {/* ── modal: สร้างแผนอัตโนมัติ (กรอก capacity/วัน) ── */}
+      {showGen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !busy && setShowGen(false)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-sm shadow-xl p-5">
+            <h3 className="font-bold text-slate-800 text-lg mb-1">สร้างแผนอัตโนมัติ</h3>
+            <p className="text-xs text-slate-400 mb-4">กระจายเครื่องลงปฏิทินตามกำลังต่อวัน · ลบเฉพาะแผนที่ยังไม่เสร็จตั้งแต่วันนี้ไป</p>
+            <label className="block mb-3">
+              <span className="text-sm text-slate-600">ล้างได้ / วัน (เครื่อง)</span>
+              <input type="number" min="1" value={cfg.capacity}
+                onChange={(e) => setCfg({ ...cfg, capacity: e.target.value })}
+                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-slate-800" />
+            </label>
+            <div className="mb-3">
+              <span className="text-sm text-slate-600">วันทำงาน</span>
+              <div className="flex gap-2 mt-1">
+                {[['mon_sat', 'จ–ส'], ['mon_fri', 'จ–ศ']].map(([v, lb]) => (
+                  <button key={v} type="button" onClick={() => setCfg({ ...cfg, workdays: v })}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm border ${cfg.workdays === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>{lb}</button>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={cfg.byZone} onChange={(e) => setCfg({ ...cfg, byZone: e.target.checked })} />
+              <span className="text-sm text-slate-600">แยกโควต้าต่อโซน (PTS1/PTS2)</span>
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setShowGen(false)} disabled={busy} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+              <button onClick={generate} disabled={busy} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{busy ? 'กำลังสร้าง…' : 'สร้างแผน'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

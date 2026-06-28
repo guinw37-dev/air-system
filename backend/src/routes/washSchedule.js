@@ -64,43 +64,58 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
     await client.query(
       `DELETE FROM wash_schedule WHERE status = 'planned' AND planned_date >= $1`, [fromStr]);
 
+    // ── config (กรอกตอนสร้างแผน) ──────────────────────────────────────────────
+    const capacity = Math.max(1, parseInt(req.body.capacity, 10) || 15);   // ล้างได้/วัน
+    const workdays = req.body.workdays === 'mon_fri' ? 'mon_fri' : 'mon_sat';
+    const byZone = req.body.byZone !== false;                              // capacity แยกต่อโซน (default)
+    const isWork = (d) => {
+      const g = d.getDay();
+      if (g === 0) return false;                       // อาทิตย์หยุดเสมอ
+      if (workdays === 'mon_fri' && g === 6) return false; // เสาร์หยุด (จ-ศ)
+      return true;
+    };
+
     const { rows: units } = await client.query(
-      `SELECT asset_code, freq_major, freq_minor, freq_fan,
+      `SELECT asset_code, pts_zone, building, floor, room, freq_major, freq_minor, freq_fan,
               last_major_at::text AS last_major_at, last_minor_at::text AS last_minor_at
-         FROM wash_units WHERE active = true
-        ORDER BY building NULLS LAST, floor NULLS LAST, room NULLS LAST, asset_code`);
+         FROM wash_units WHERE active = true`);
 
     const from = new Date(`${fromStr}T00:00:00`);
     const dayDiff = (a, b) => Math.round((a - b) / 86400000);
-    const out = [];
+
+    // 1) สร้างรายการงานที่ต้องล้าง (ต่อเครื่อง × ประเภท) + due index จาก from
+    const items = [];
     for (const wt of WORK_TYPES) {
-      const freqCol = `freq_${wt}`;
-      const lastCol = `last_${wt}_at`;
+      const freqCol = `freq_${wt}`, lastCol = `last_${wt}_at`;
       const list = units.filter((u) => (u[freqCol] || 0) > 0);
       if (!list.length) continue;
-      // typical freq → interval (วัน) + horizon (interval + เผื่อ catch-up 45 วัน)
       const freqs = list.map((u) => u[freqCol]);
       const typical = freqs.sort((a, b) => freqs.filter((f) => f === a).length - freqs.filter((f) => f === b).length).pop() || 1;
       const interval = Math.max(7, Math.round(365 / typical));
-      // working dates (skip Sundays) ตลอด horizon
-      const dates = [];
-      for (let i = 0; i < interval + 45; i++) { const d = addDays(from, i); if (d.getDay() !== 0) dates.push(ymd(d)); }
-      // due ต่อเครื่อง: last + interval ; ไม่เคยล้าง → overdue (วันนี้)
-      const overdue = [], timed = [];
       for (const u of list) {
         const last = u[lastCol] ? new Date(`${u[lastCol]}T00:00:00`) : null;
-        const dueIdx = last ? interval + dayDiff(last, from) : -1;   // index จาก from (วันปฏิทิน)
-        if (dueIdx <= 0) overdue.push(u); else timed.push({ u, dueIdx });
+        const dueIdx = last ? Math.max(0, interval + dayDiff(last, from)) : 0;  // ไม่เคยล้าง/เกิน → 0 (วันนี้)
+        items.push({ asset: u.asset_code, wt, zone: u.pts_zone || '-', building: u.building || '', floor: u.floor || '', room: u.room || '', dueIdx });
       }
-      // overdue → เกลี่ยลง working day ช่วงแรก (catch-up ~ครึ่ง interval แต่ไม่เกิน 40 วัน)
-      const spreadDays = Math.min(dates.length, Math.max(10, Math.min(40, Math.ceil(interval / 2))));
-      overdue.forEach((u, i) => out.push([u.asset_code, wt, dates[i % spreadDays]]));
-      // timed → working day แรกที่ >= due (ไม่เกิน horizon → ตัวสุดท้าย)
-      const firstOnOrAfter = (calIdx) => {
-        const target = ymd(addDays(from, Math.max(0, calIdx)));
-        return dates.find((d) => d >= target) || dates[dates.length - 1];
-      };
-      timed.forEach(({ u, dueIdx }) => out.push([u.asset_code, wt, firstOnOrAfter(dueIdx)]));
+    }
+    // 2) เรียง: ครบกำหนดก่อน (due asc) → จัดกลุ่มโซน/อาคาร/ชั้น (ลดเดินทาง)
+    const cmp = (a, b) => (a > b ? 1 : a < b ? -1 : 0);
+    items.sort((a, b) => a.dueIdx - b.dueIdx || cmp(a.zone, b.zone) || cmp(a.building, b.building) || cmp(a.floor, b.floor) || cmp(a.room, b.room));
+    // 3) เติมลงวันทำงานไม่เกิน capacity (แยกต่อโซนถ้าเลือก) เกินดันวันถัดไป
+    const used = {};
+    const keyOf = (idx, zone) => (byZone ? `${idx}|${zone}` : `${idx}`);
+    const MAX_HORIZON = 1095;   // กันลูปค้าง (~3 ปี)
+    const out = [];
+    for (const it of items) {
+      let idx = it.dueIdx;
+      let guard = 0;
+      while (guard++ < MAX_HORIZON) {
+        const d = addDays(from, idx);
+        if (isWork(d) && (used[keyOf(idx, it.zone)] || 0) < capacity) break;
+        idx++;
+      }
+      used[keyOf(idx, it.zone)] = (used[keyOf(idx, it.zone)] || 0) + 1;
+      out.push([it.asset, it.wt, ymd(addDays(from, idx))]);
     }
 
     // chunked multi-row insert
@@ -119,7 +134,7 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
       created += rowCount;
     }
     await client.query('COMMIT');
-    res.json({ ok: true, from: fromStr, created });
+    res.json({ ok: true, from: fromStr, created, capacity, workdays, byZone });
   } catch (err) {
     await client.query('ROLLBACK');
     serverError(res, err);
