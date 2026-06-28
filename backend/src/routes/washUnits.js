@@ -134,8 +134,8 @@ router.get('/coverage', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
-// ── GET /:id — one row ──────────────────────────────────────────────────────
-router.get('/:id', authMiddleware, async (req, res) => {
+// ── GET /:id — one row (เฉพาะตัวเลข เพื่อไม่ชน /codes /coverage /export-all) ───
+router.get('/:id(\\d+)', authMiddleware, async (req, res) => {
   try {
     const { rows } = await req.db('SELECT * FROM wash_units WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบเครื่อง' });
