@@ -15,12 +15,12 @@ const thDay = (d) => `${d.date()} ${TH_MONTHS[d.month()]} ${d.year() + 543}`
 
 // สีประจำโซน (วนซ้ำตามจำนวนโซน)
 const ZONE_PALETTE = [
-  { dot: 'bg-indigo-500', chip: 'bg-indigo-50 text-indigo-700 border-indigo-200', text: 'text-indigo-600' },
-  { dot: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700 border-violet-200', text: 'text-violet-600' },
-  { dot: 'bg-cyan-500', chip: 'bg-cyan-50 text-cyan-700 border-cyan-200', text: 'text-cyan-600' },
+  { dot: 'bg-blue-600', chip: 'bg-blue-50 text-blue-700 border-blue-200', text: 'text-blue-600' },
   { dot: 'bg-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200', text: 'text-rose-600' },
   { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700 border-amber-200', text: 'text-amber-600' },
-  { dot: 'bg-teal-500', chip: 'bg-teal-50 text-teal-700 border-teal-200', text: 'text-teal-600' },
+  { dot: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700 border-violet-200', text: 'text-violet-600' },
+  { dot: 'bg-cyan-500', chip: 'bg-cyan-50 text-cyan-700 border-cyan-200', text: 'text-cyan-600' },
+  { dot: 'bg-fuchsia-500', chip: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', text: 'text-fuchsia-600' },
 ]
 
 export default function WashCalendar() {
