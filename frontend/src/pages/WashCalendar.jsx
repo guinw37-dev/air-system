@@ -26,7 +26,7 @@ export default function WashCalendar() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [showGen, setShowGen] = useState(false)
-  const [cfg, setCfg] = useState({ capacity: 15, workdays: 'mon_sat', byZone: true })
+  const [cfg, setCfg] = useState({ capacity: 15, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
 
   const gridStart = month.startOf('month').startOf('week')   // อาทิตย์
   const gridDays = Array.from({ length: 42 }, (_, i) => gridStart.add(i, 'day'))
@@ -57,7 +57,13 @@ export default function WashCalendar() {
 
   // โหลด config ที่จำไว้ (ล้างได้/วัน, วันทำงาน, แยกโซน)
   useEffect(() => {
-    api.get('/auth/prefs/wash_plan_cfg').then((r) => { if (r.data?.value) setCfg((c) => ({ ...c, ...r.data.value })) }).catch(() => {})
+    api.get('/auth/prefs/wash_plan_cfg').then((r) => {
+      if (!r.data?.value) return
+      const v = { ...r.data.value }
+      if (typeof v.workdays === 'string') v.workdays = v.workdays === 'mon_fri' ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6]
+      if (!Array.isArray(v.workdays)) v.workdays = [1, 2, 3, 4, 5, 6]
+      setCfg((c) => ({ ...c, ...v }))
+    }).catch(() => {})
   }, [])
 
   const generate = async () => {
@@ -223,12 +229,16 @@ export default function WashCalendar() {
                 className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-slate-800" />
             </label>
             <div className="mb-3">
-              <span className="text-sm text-slate-600">วันทำงาน</span>
-              <div className="flex gap-2 mt-1">
-                {[['mon_sat', 'จ–ส'], ['mon_fri', 'จ–ศ']].map(([v, lb]) => (
-                  <button key={v} type="button" onClick={() => setCfg({ ...cfg, workdays: v })}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm border ${cfg.workdays === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>{lb}</button>
-                ))}
+              <span className="text-sm text-slate-600">วันทำงาน (เลือกได้หลายวัน)</span>
+              <div className="flex gap-1 mt-1">
+                {[[1, 'จ'], [2, 'อ'], [3, 'พ'], [4, 'พฤ'], [5, 'ศ'], [6, 'ส'], [0, 'อา']].map(([d, lb]) => {
+                  const on = (cfg.workdays || []).includes(d)
+                  return (
+                    <button key={d} type="button"
+                      onClick={() => setCfg({ ...cfg, workdays: on ? cfg.workdays.filter((x) => x !== d) : [...(cfg.workdays || []), d] })}
+                      className={`flex-1 py-2 rounded-lg text-sm border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200'}`}>{lb}</button>
+                  )
+                })}
               </div>
             </div>
             <label className="flex items-center gap-2 mb-4 cursor-pointer">
