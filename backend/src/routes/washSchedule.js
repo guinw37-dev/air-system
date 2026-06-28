@@ -102,6 +102,8 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
     if (!allowed.length) allowed = [1, 2, 3, 4, 5, 6];
     const workSet = new Set(allowed);
     const isWork = (d) => workSet.has(d.getDay());
+    // เฉพาะคงค้าง: จัดเฉพาะเครื่องที่เกินกำหนด/ยังไม่เคยล้าง (dueIdx<=0) ข้ามที่ยังไม่ถึงรอบ
+    const onlyOutstanding = req.body.onlyOutstanding === true;
 
     const { rows: units } = await client.query(
       `SELECT asset_code, pts_zone, building, floor, room, freq_major, freq_minor, freq_fan,
@@ -126,15 +128,17 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
         items.push({ asset: u.asset_code, wt, zone: u.pts_zone || '-', building: u.building || '', floor: u.floor || '', room: u.room || '', dueIdx });
       }
     }
-    // 2) เรียง: ครบกำหนดก่อน (due asc) → จัดกลุ่มโซน/อาคาร/ชั้น (ลดเดินทาง)
+    // 2) (option) เฉพาะคงค้าง → กรองเหลือเครื่องที่ถึง/เกินกำหนดแล้ว
+    const queue = onlyOutstanding ? items.filter((it) => it.dueIdx <= 0) : items;
+    // เรียง: ครบกำหนดก่อน (due asc) → จัดกลุ่มโซน/อาคาร/ชั้น (ลดเดินทาง)
     const cmp = (a, b) => (a > b ? 1 : a < b ? -1 : 0);
-    items.sort((a, b) => a.dueIdx - b.dueIdx || cmp(a.zone, b.zone) || cmp(a.building, b.building) || cmp(a.floor, b.floor) || cmp(a.room, b.room));
+    queue.sort((a, b) => a.dueIdx - b.dueIdx || cmp(a.zone, b.zone) || cmp(a.building, b.building) || cmp(a.floor, b.floor) || cmp(a.room, b.room));
     // 3) เติมลงวันทำงานไม่เกิน capacity ต่อประเภท (แยกต่อโซนถ้าเลือก) เกินดันวันถัดไป
     const used = {};
     const keyOf = (idx, zone, wt) => (byZone ? `${idx}|${zone}|${wt}` : `${idx}|${wt}`);
     const MAX_HORIZON = 1095;   // กันลูปค้าง (~3 ปี)
     const out = [];
-    for (const it of items) {
+    for (const it of queue) {
       const c = cap[it.wt] || 0;
       if (c <= 0) continue;                 // ประเภทนี้ตั้ง 0 = ไม่จัดลงปฏิทิน
       let idx = it.dueIdx;
