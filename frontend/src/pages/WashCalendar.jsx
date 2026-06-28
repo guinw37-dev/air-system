@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -176,6 +176,18 @@ export default function WashCalendar() {
             <span className="text-sm text-slate-400">{dayItems.length} นัด · ค้าง {dayItems.filter((i) => i.status === 'planned').length} · เสร็จ {dayItems.filter((i) => i.status === 'done').length}</span>
             <span className="ml-auto text-xs text-slate-400">คลิกที่รายการเพื่อเปิด/สร้างใบงาน</span>
           </div>
+          {(() => {
+            const dups = dayItems.filter((i) => i.status === 'planned' && i.washed_at)
+            if (!dups.length) return null
+            return (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>พบ <b>{dups.length}</b> นัดที่อาจล้างไปแล้ว (มีใบงานล้างภายใน 90 วัน) — กด “ทำแล้ว” เพื่อเคลียร์ หรือ “ข้าม”</span>
+                {canEdit && <button onClick={() => dups.forEach((d) => patch(d.id, { status: 'done', done_wo_id: d.washed_wo_id }))} disabled={busy}
+                  className="ml-auto shrink-0 text-xs font-medium px-2 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">เคลียร์ทั้งหมด</button>}
+              </div>
+            )
+          })()}
           {loadingDay ? (
             <p className="text-center text-slate-400 py-8 text-sm">กำลังโหลด…</p>
           ) : dayItems.length === 0 ? (
@@ -202,10 +214,18 @@ export default function WashCalendar() {
                         <div className="text-xs text-slate-500 mt-0.5 truncate">
                           {[it.pts_zone, it.building, it.floor, it.room].filter(Boolean).join(' › ') || '—'}{it.ac_type ? ` · ${it.ac_type}` : ''}
                         </div>
+                        {it.status === 'planned' && it.washed_at && (
+                          <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5">
+                            <AlertTriangle size={12} className="shrink-0" /> ล้างไปแล้ว {it.washed_at}
+                          </div>
+                        )}
                         {canEdit && it.status !== 'done' && (
-                          <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                             <input type="date" defaultValue={it.planned_date} onChange={(e) => e.target.value !== it.planned_date && patch(it.id, { planned_date: e.target.value })}
                               className="text-xs border border-slate-200 rounded px-1.5 py-0.5 text-slate-600" title="ย้ายวัน" />
+                            {it.washed_at && it.status === 'planned' && (
+                              <button onClick={() => patch(it.id, { status: 'done', done_wo_id: it.washed_wo_id })} disabled={busy} className="text-xs flex items-center gap-0.5 text-emerald-600 hover:text-emerald-700"><Check size={13} /> ทำแล้ว</button>
+                            )}
                             {it.status === 'planned'
                               ? <button onClick={() => patch(it.id, { status: 'skipped' })} disabled={busy} className="text-xs flex items-center gap-0.5 text-slate-500 hover:text-amber-600"><SkipForward size={13} /> ข้าม</button>
                               : <button onClick={() => patch(it.id, { status: 'planned' })} disabled={busy} className="text-xs flex items-center gap-0.5 text-slate-500 hover:text-blue-600"><RotateCcw size={13} /> คืน</button>}
