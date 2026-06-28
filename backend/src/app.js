@@ -83,6 +83,7 @@ app.use('/api/wash-schedule', requireBranch, require('./routes/washSchedule'));
 app.use('/api/attendance',  requireBranch, require('./routes/attendance'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 app.use('/api/line',        require('./routes/line'));   // PUBLIC — LINE webhook
+app.use('/api/line-admin',  require('./routes/lineAdmin')); // super-admin LINE config
 
 // Health check
 app.get('/api/health', (req, res) => {

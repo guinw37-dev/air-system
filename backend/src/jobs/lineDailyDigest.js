@@ -8,6 +8,15 @@ const pad = (n) => String(n).padStart(2, '0');
 
 const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND (sig_building IS NOT NULL OR sig_engineer IS NOT NULL))`;
 
+// token: system_settings (แก้จากเว็บได้) ก่อน, fallback env
+async function getLineToken() {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM system_settings WHERE key = 'LINE_CHANNEL_ACCESS_TOKEN'`);
+    if (rows[0] && rows[0].value) return rows[0].value;
+  } catch { /* ตารางอาจยังไม่มี */ }
+  return process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+}
+
 // ดึงตัวเลขทั้งหมดของสาขา (1 schema) แล้วประกอบเป็นข้อความ
 async function buildText(branch) {
   const schema = branch.schema_name || branch.slug;
@@ -60,7 +69,9 @@ async function buildText(branch) {
 }
 
 // ส่งข้อความเข้า LINE group
-async function pushLine(token, to, text) {
+async function pushLine(to, text) {
+  const token = await getLineToken();
+  if (!token) throw new Error('ยังไม่ได้ตั้ง LINE token');
   const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -71,26 +82,23 @@ async function pushLine(token, to, text) {
 
 // รันแจ้งเตือนทุกสาขาที่ตั้ง line_group_id ไว้
 async function runDigest() {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) { console.log('[line] skip — no LINE_CHANNEL_ACCESS_TOKEN'); return { sent: 0 }; }
+  if (!(await getLineToken())) { console.log('[line] skip — no LINE token'); return { sent: 0 }; }
   const { rows } = await pool.query(
     `SELECT id, slug, name, schema_name, line_group_id FROM clients
       WHERE active = true AND schema_name IS NOT NULL AND COALESCE(line_group_id,'') <> ''`);
   let sent = 0;
   for (const b of rows) {
-    try { await pushLine(token, b.line_group_id, await buildText(b)); sent++; }
+    try { await pushLine(b.line_group_id, await buildText(b)); sent++; }
     catch (e) { console.error(`[line] ${b.slug} failed:`, e.message); }
   }
   console.log(`[line] daily digest sent to ${sent}/${rows.length} branch(es)`);
   return { sent };
 }
 
-// ส่งเฉพาะสาขาเดียว (สำหรับปุ่มทดสอบ) — req.branch
+// ส่งเฉพาะสาขาเดียว (สำหรับปุ่มทดสอบ)
 async function runDigestForBranch(branch) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) throw new Error('ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN');
   if (!branch.line_group_id) throw new Error('สาขานี้ยังไม่ได้ตั้ง line_group_id');
-  await pushLine(token, branch.line_group_id, await buildText(branch));
+  await pushLine(branch.line_group_id, await buildText(branch));
 }
 
 // minute-tick scheduler — ยิงตอน 08:45 (Asia/Bangkok) วันละครั้ง
@@ -108,4 +116,4 @@ function startLineDigestScheduler(targetHHMM = '08:45') {
   console.log(`[line] daily digest scheduler started (${targetHHMM} Asia/Bangkok)`);
 }
 
-module.exports = { runDigest, runDigestForBranch, startLineDigestScheduler };
+module.exports = { runDigest, runDigestForBranch, startLineDigestScheduler, getLineToken };

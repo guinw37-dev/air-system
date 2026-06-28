@@ -4,8 +4,9 @@
 const express = require('express');
 const router = express.Router();
 
+const { getLineToken } = require('../jobs/lineDailyDigest');
 async function reply(replyToken, text) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = await getLineToken();
   if (!token || !replyToken) return;
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
