@@ -358,6 +358,7 @@ CREATE TABLE IF NOT EXISTS ac_repair_jobs (
   repair_job_id     INT,
   repair_job_number TEXT,
   -- Location / requester (mirrors repair-system jobs columns)
+  asset_code        TEXT,                       -- ผูกกับทะเบียนแอร์ (ประวัติเครื่อง) — optional
   building          TEXT NOT NULL DEFAULT '',
   floor             TEXT NOT NULL DEFAULT '',
   department        TEXT NOT NULL DEFAULT '',
