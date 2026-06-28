@@ -38,9 +38,12 @@ export default function WashCalendar() {
   const [showGen, setShowGen] = useState(false)
   const [cfg, setCfg] = useState({ cap: { major: 10, minor: 10, fan: 5 }, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
   const [onlyOutstanding, setOnlyOutstanding] = useState(false)
-  const [codes, setCodes] = useState([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [addForm, setAddForm] = useState({ asset_code: '', work_type: 'major' })
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [units, setUnits] = useState(null)        // null = ยังไม่โหลด
+  const [uQuery, setUQuery] = useState('')
+  const [uSort, setUSort] = useState('asset_code')
+  const [addWt, setAddWt] = useState('major')
+  const [addedKeys, setAddedKeys] = useState(() => new Set())
 
   const gridStart = month.startOf('month').startOf('week')   // อาทิตย์
   const gridDays = Array.from({ length: 42 }, (_, i) => gridStart.add(i, 'day'))
@@ -111,14 +114,16 @@ export default function WashCalendar() {
     catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
 
-  // ทีมจัดแผนเอง — เพิ่มนัดเครื่องลงวันที่เลือก
-  useEffect(() => { api.get('/wash-units/codes').then((r) => setCodes(r.data || [])).catch(() => {}) }, [])
-  const addEntry = async () => {
-    if (!addForm.asset_code.trim()) return
+  // ทีมจัดแผนเอง — เปิด picker ดึงรายการแอร์ แล้วกด + เพิ่มเข้าวันที่เลือก
+  const openPicker = () => {
+    setPickerOpen(true)
+    if (!units) api.get('/wash-units').then((r) => setUnits(r.data || [])).catch(() => setUnits([]))
+  }
+  const addUnit = async (asset_code) => {
     setBusy(true); setErr('')
     try {
-      await api.post('/wash-schedule', { asset_code: addForm.asset_code.trim(), work_type: addForm.work_type, planned_date: sel })
-      setAddForm({ asset_code: '', work_type: 'major' }); setAddOpen(false)
+      await api.post('/wash-schedule', { asset_code, work_type: addWt, planned_date: sel })
+      setAddedKeys((prev) => new Set(prev).add(`${asset_code}|${addWt}`))
       await loadSummary(); await loadDay()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -136,6 +141,19 @@ export default function WashCalendar() {
     return [...set].sort()
   }, [summary])
   const zoneColor = (z) => ZONE_PALETTE[Math.max(0, zoneList.indexOf(z)) % ZONE_PALETTE.length]
+
+  // รายการแอร์สำหรับ picker — ค้นหา + sort
+  const pickList = useMemo(() => {
+    if (!units) return []
+    const q = uQuery.trim().toLowerCase()
+    let list = units.filter((u) => u.active !== false)
+    if (q) list = list.filter((u) => [u.asset_code, u.room, u.building, u.pts_zone, u.ac_type].some((x) => String(x || '').toLowerCase().includes(q)))
+    const cmp = (a, b) => String(a || '').localeCompare(String(b || ''))
+    return [...list].sort((a, b) => {
+      if (uSort === 'last_major_at') return String(b.last_major_at || '').localeCompare(String(a.last_major_at || ''))
+      return cmp(a[uSort], b[uSort]) || cmp(a.asset_code, b.asset_code)
+    })
+  }, [units, uQuery, uSort])
 
   const selM = dayjs(sel)
   // จัดกลุ่มนัดของวันที่เลือก ตามประเภทงาน (ใหญ่/ย่อย/พัดลม)
@@ -231,32 +249,12 @@ export default function WashCalendar() {
             <span className="text-sm text-slate-400">{dayItems.length} นัด · ค้าง {dayItems.filter((i) => i.status === 'planned').length} · เสร็จ {dayItems.filter((i) => i.status === 'done').length}</span>
             <span className="ml-auto text-xs text-slate-400">คลิกที่รายการเพื่อเปิด/สร้างใบงาน</span>
             {canEdit && (
-              <button onClick={() => setAddOpen((v) => !v)}
+              <button onClick={openPicker}
                 className="flex items-center gap-1 text-sm px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
-                <Plus size={15} /> เพิ่มนัด
+                <Plus size={15} /> เพิ่มแอร์เข้าแผน
               </button>
             )}
           </div>
-          {addOpen && canEdit && (
-            <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
-              <label className="flex-1 min-w-[180px]">
-                <span className="block text-xs text-slate-500 mb-0.5">เลขเครื่อง (asset)</span>
-                <input list="ws-codes" value={addForm.asset_code} onChange={(e) => setAddForm({ ...addForm, asset_code: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm" placeholder="พิมพ์/เลือกเครื่อง" />
-                <datalist id="ws-codes">{codes.map((c) => <option key={c} value={c} />)}</datalist>
-              </label>
-              <label>
-                <span className="block text-xs text-slate-500 mb-0.5">ประเภท</span>
-                <select value={addForm.work_type} onChange={(e) => setAddForm({ ...addForm, work_type: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm">
-                  <option value="major">ล้างใหญ่</option><option value="minor">ล้างย่อย</option><option value="fan">พัดลม</option>
-                </select>
-              </label>
-              <button onClick={addEntry} disabled={busy || !addForm.asset_code.trim()}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">เพิ่มลง {selM.date()}/{selM.month() + 1}</button>
-              <button onClick={() => setAddOpen(false)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600">ยกเลิก</button>
-            </div>
-          )}
           {(() => {
             const dups = dayItems.filter((i) => i.status === 'planned' && i.washed_at)
             if (!dups.length) return null
@@ -370,6 +368,70 @@ export default function WashCalendar() {
             <div className="flex gap-2">
               <button onClick={() => setShowGen(false)} disabled={busy} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
               <button onClick={generate} disabled={busy} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{busy ? 'กำลังสร้าง…' : 'สร้างแผน'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── modal: เพิ่มแอร์เข้าแผน (Manual) — ค้นหา + sort + ปุ่ม + ── */}
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPickerOpen(false)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-2xl max-h-[88vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-sky-50 rounded-t-2xl">
+              <div>
+                <h3 className="font-bold text-blue-900">เพิ่มแอร์เข้าแผน</h3>
+                <p className="text-xs text-slate-500">ลงวันที่ {thDay(selM)}</p>
+              </div>
+              <button onClick={() => setPickerOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+            </div>
+            {/* controls */}
+            <div className="px-5 py-3 border-b space-y-2">
+              <div className="flex gap-2">
+                {[['major', 'ล้างใหญ่'], ['minor', 'ล้างย่อย'], ['fan', 'พัดลม']].map(([k, lb]) => (
+                  <button key={k} onClick={() => setAddWt(k)}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-sm border ${addWt === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>{lb}</button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input value={uQuery} onChange={(e) => setUQuery(e.target.value)} placeholder="ค้นหา เลขเครื่อง/ห้อง/อาคาร/โซน/ประเภท"
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm" />
+                <select value={uSort} onChange={(e) => setUSort(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600">
+                  <option value="asset_code">เรียง: เลขเครื่อง</option>
+                  <option value="pts_zone">เรียง: โซน</option>
+                  <option value="building">เรียง: อาคาร</option>
+                  <option value="ac_type">เรียง: ประเภทแอร์</option>
+                  <option value="last_major_at">เรียง: ล้างใหญ่ล่าสุด</option>
+                </select>
+              </div>
+            </div>
+            {/* list */}
+            <div className="flex-1 overflow-y-auto px-3 py-2">
+              {!units ? <p className="text-center text-slate-400 py-8 text-sm">กำลังโหลด…</p>
+                : pickList.length === 0 ? <p className="text-center text-slate-400 py-8 text-sm">ไม่พบแอร์</p>
+                : (<>
+                  {pickList.slice(0, 300).map((u) => {
+                    const inPlan = dayItems.some((i) => i.asset_code === u.asset_code && i.work_type === addWt)
+                    const added = addedKeys.has(`${u.asset_code}|${addWt}`) || inPlan
+                    return (
+                      <div key={u.asset_code} className="flex items-center gap-2 px-2 py-2 border-b border-slate-50 hover:bg-slate-50 rounded">
+                        {u.pts_zone && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${zoneColor(u.pts_zone).dot}`} />}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-slate-800 truncate">{u.asset_code} <span className="text-xs text-slate-400">{u.ac_type}</span></div>
+                          <div className="text-xs text-slate-500 truncate">{[u.pts_zone, u.building, u.floor, u.room].filter(Boolean).join(' › ') || '—'}</div>
+                        </div>
+                        <button onClick={() => addUnit(u.asset_code)} disabled={busy || added}
+                          className={`shrink-0 flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg ${added ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}>
+                          {added ? <><Check size={13} /> ในแผน</> : <><Plus size={13} /> เพิ่ม</>}
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <p className="text-center text-xs text-slate-400 py-2">แสดง {Math.min(300, pickList.length)} / {pickList.length} เครื่อง{pickList.length > 300 ? ' (พิมพ์ค้นหาเพื่อแคบลง)' : ''}</p>
+                </>)}
+            </div>
+            <div className="px-5 py-3 border-t text-right">
+              <button onClick={() => setPickerOpen(false)} className="px-4 py-2 bg-slate-100 rounded-lg text-sm text-slate-700 hover:bg-slate-200">เสร็จ</button>
             </div>
           </div>
         </div>
