@@ -440,9 +440,13 @@ export default function SimpleWoForm() {
         }
       }
       if (missingChecks.length > 0) {
-        setError(`กรุณาติ๊กรายการตรวจเช็คให้ครบ: ${missingChecks.join(', ')}`)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-        return
+        // เตือน (ไม่บล็อค) — ช่างยืนยันส่งได้ถ้าตั้งใจ
+        const head = missingChecks.slice(0, 8).join(', ') + (missingChecks.length > 8 ? ' …' : '')
+        if (!window.confirm(`ยังไม่ได้ติ๊กตรวจเช็ค ${missingChecks.length} รายการ:\n${head}\n\nส่งใบงานเลยไหม?`)) {
+          setError(`ยังติ๊กตรวจเช็คไม่ครบ ${missingChecks.length} รายการ — ติ๊กให้ครบ หรือกดส่งแล้วยืนยันเพื่อส่งเลย`)
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+          return
+        }
       }
     }
     setError('')
@@ -955,6 +959,7 @@ export default function SimpleWoForm() {
         )}
 
         <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-page/90 backdrop-blur border-t border-line flex flex-col gap-2">
+          {error && <p className="text-sm text-danger bg-danger-soft rounded-xl px-3 py-2">{error}</p>}
           {!isEdit && <p className="text-[11px] text-ink-muted text-center">บันทึกร่างอัตโนมัติ</p>}
           <div className="flex gap-2">
             {!isEdit && (
