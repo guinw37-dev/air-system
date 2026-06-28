@@ -23,6 +23,7 @@ async function migratePublic(client) {
     // สาขาที่ต้องการ (เช่น ศรีราชา); สาขาอื่น false = อัปจาก gallery ได้เหมือนเดิม.
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS force_camera BOOLEAN DEFAULT false`);
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS line_group_id TEXT`);
+    await c.query(`CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_slug        ON clients(slug)        WHERE slug        IS NOT NULL`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_subdomain   ON clients(subdomain)   WHERE subdomain   IS NOT NULL`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_schema_name ON clients(schema_name) WHERE schema_name IS NOT NULL`);

@@ -30,6 +30,7 @@ import Targets from './pages/Targets'
 import UnitHistory from './pages/UnitHistory'
 import WashUnits from './pages/WashUnits'
 import WashCalendar from './pages/WashCalendar'
+import LineSettings from './pages/LineSettings'
 import Attendance from './pages/Attendance'
 import AttendanceSummary from './pages/AttendanceSummary'
 
@@ -114,6 +115,7 @@ export default function App() {
         <Route path="/unit-history" element={<RequireAuth><UnitHistory /></RequireAuth>} />
         <Route path="/wash-units" element={<RequireAuth><WashUnits /></RequireAuth>} />
         <Route path="/wash-calendar" element={<RequireAuth><WashCalendar /></RequireAuth>} />
+        <Route path="/line-settings" element={<RequireAuth><LineSettings /></RequireAuth>} />
         <Route path="/users" element={
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><Users /></RequireRole></RequireAuth>
         } />

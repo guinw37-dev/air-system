@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS clients (
 -- migratePublic() in provision.js AFTER the idempotent ALTER ... ADD COLUMN, so
 -- they don't fail on an existing pre-schema-per-tenant `clients`/`users` table.
 
+-- ── System settings (global key-value: LINE token ฯลฯ) ──────
+CREATE TABLE IF NOT EXISTS system_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Super-admin / global users ──────────────────────────────
 -- Cross-schema staff (TW central + field techs who serve many branches) live
 -- here and authenticate on the apex domain. Branch-local users live in each

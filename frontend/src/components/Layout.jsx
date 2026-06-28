@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Wrench, Database,
   Users, ChevronLeft, ChevronDown, LogOut, Menu, X, CalendarCheck, Activity, FileUp,
   AlertCircle, TableProperties, Bell, Package, BadgeDollarSign, FilePlus2, Building2, ClipboardList,
-  Clock, BarChart3, FileBarChart, CalendarRange,
+  Clock, BarChart3, FileBarChart, CalendarRange, MessageCircle,
 } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 import api from '../api/client'
@@ -34,6 +34,7 @@ const NAV = [
   { path: '/master',       icon: Database,         label: 'Master Data',   roles: ['admin'] },
   { path: '/import',       icon: FileUp,           label: 'Import ข้อมูล', roles: ['admin'] },
   { path: '/users',        icon: Users,            label: 'ผู้ใช้งาน',       roles: ['admin', 'super_admin'] },
+  { path: '/line-settings', icon: MessageCircle,   label: 'ตั้งค่า LINE',    superOnly: true },
   { path: '/branches',     icon: Building2,        label: 'จัดการสาขา',     superOnly: true },
 ]
 
