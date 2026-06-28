@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw, AlertTriangle, Plus } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -37,6 +37,10 @@ export default function WashCalendar() {
   const [err, setErr] = useState('')
   const [showGen, setShowGen] = useState(false)
   const [cfg, setCfg] = useState({ cap: { major: 10, minor: 10, fan: 5 }, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
+  const [onlyOutstanding, setOnlyOutstanding] = useState(false)
+  const [codes, setCodes] = useState([])
+  const [addOpen, setAddOpen] = useState(false)
+  const [addForm, setAddForm] = useState({ asset_code: '', work_type: 'major' })
 
   const gridStart = month.startOf('month').startOf('week')   // อาทิตย์
   const gridDays = Array.from({ length: 42 }, (_, i) => gridStart.add(i, 'day'))
@@ -84,7 +88,7 @@ export default function WashCalendar() {
     setBusy(true); setErr('')
     try {
       const r = await api.post('/wash-schedule/generate', {
-        from: today, workdays: cfg.workdays, byZone: cfg.byZone,
+        from: today, workdays: cfg.workdays, byZone: cfg.byZone, onlyOutstanding,
         cap_major: cfg.cap.major, cap_minor: cfg.cap.minor, cap_fan: cfg.cap.fan,
       })
       api.put('/auth/prefs/wash_plan_cfg', { value: cfg }).catch(() => {})   // จำ default
@@ -105,6 +109,18 @@ export default function WashCalendar() {
     setBusy(true)
     try { await api.delete(`/wash-schedule/${id}`); await loadSummary(); await loadDay() }
     catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
+  }
+
+  // ทีมจัดแผนเอง — เพิ่มนัดเครื่องลงวันที่เลือก
+  useEffect(() => { api.get('/wash-units/codes').then((r) => setCodes(r.data || [])).catch(() => {}) }, [])
+  const addEntry = async () => {
+    if (!addForm.asset_code.trim()) return
+    setBusy(true); setErr('')
+    try {
+      await api.post('/wash-schedule', { asset_code: addForm.asset_code.trim(), work_type: addForm.work_type, planned_date: sel })
+      setAddForm({ asset_code: '', work_type: 'major' }); setAddOpen(false)
+      await loadSummary(); await loadDay()
+    } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
 
   // คลิกนัด → เปิดใบงาน: ถ้าเสร็จแล้วเปิดใบงานนั้น, ถ้ายัง → สร้างใบงานใหม่ prefill เครื่อง+ประเภท
@@ -214,7 +230,33 @@ export default function WashCalendar() {
             <h2 className="font-bold text-slate-800 text-lg">{thDay(selM)}</h2>
             <span className="text-sm text-slate-400">{dayItems.length} นัด · ค้าง {dayItems.filter((i) => i.status === 'planned').length} · เสร็จ {dayItems.filter((i) => i.status === 'done').length}</span>
             <span className="ml-auto text-xs text-slate-400">คลิกที่รายการเพื่อเปิด/สร้างใบงาน</span>
+            {canEdit && (
+              <button onClick={() => setAddOpen((v) => !v)}
+                className="flex items-center gap-1 text-sm px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
+                <Plus size={15} /> เพิ่มนัด
+              </button>
+            )}
           </div>
+          {addOpen && canEdit && (
+            <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+              <label className="flex-1 min-w-[180px]">
+                <span className="block text-xs text-slate-500 mb-0.5">เลขเครื่อง (asset)</span>
+                <input list="ws-codes" value={addForm.asset_code} onChange={(e) => setAddForm({ ...addForm, asset_code: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm" placeholder="พิมพ์/เลือกเครื่อง" />
+                <datalist id="ws-codes">{codes.map((c) => <option key={c} value={c} />)}</datalist>
+              </label>
+              <label>
+                <span className="block text-xs text-slate-500 mb-0.5">ประเภท</span>
+                <select value={addForm.work_type} onChange={(e) => setAddForm({ ...addForm, work_type: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm">
+                  <option value="major">ล้างใหญ่</option><option value="minor">ล้างย่อย</option><option value="fan">พัดลม</option>
+                </select>
+              </label>
+              <button onClick={addEntry} disabled={busy || !addForm.asset_code.trim()}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">เพิ่มลง {selM.date()}/{selM.month() + 1}</button>
+              <button onClick={() => setAddOpen(false)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600">ยกเลิก</button>
+            </div>
+          )}
           {(() => {
             const dups = dayItems.filter((i) => i.status === 'planned' && i.washed_at)
             if (!dups.length) return null
@@ -317,9 +359,13 @@ export default function WashCalendar() {
                 })}
               </div>
             </div>
-            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+            <label className="flex items-center gap-2 mb-2 cursor-pointer">
               <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={cfg.byZone} onChange={(e) => setCfg({ ...cfg, byZone: e.target.checked })} />
               <span className="text-sm text-slate-600">แยกโควต้าต่อโซน (PTS1/PTS2)</span>
+            </label>
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input type="checkbox" className="accent-amber-600 h-4 w-4" checked={onlyOutstanding} onChange={(e) => setOnlyOutstanding(e.target.checked)} />
+              <span className="text-sm text-slate-600">เฉพาะที่คงค้าง (เกินกำหนด/ยังไม่ล้าง)</span>
             </label>
             <div className="flex gap-2">
               <button onClick={() => setShowGen(false)} disabled={busy} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
