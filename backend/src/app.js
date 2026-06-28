@@ -105,5 +105,7 @@ async function migrateOnBoot() {
 migrateOnBoot().finally(() => {
   app.listen(PORT, () => {
     console.log(`Air System API running on port ${PORT}`);
+    try { require('./jobs/lineDailyDigest').startLineDigestScheduler('08:45'); }
+    catch (e) { console.error('line digest scheduler failed:', e.message); }
   });
 });

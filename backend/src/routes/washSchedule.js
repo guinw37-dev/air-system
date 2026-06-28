@@ -222,4 +222,17 @@ router.delete('/:id', authMiddleware, canEdit, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── POST /line-test — ส่งแจ้งเตือน LINE ของสาขานี้ทันที (ทดสอบ) ────────────────
+const { pool } = require('../db');
+const { runDigestForBranch } = require('../jobs/lineDailyDigest');
+router.post('/line-test', authMiddleware, canEdit, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขา' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, slug, name, schema_name, line_group_id FROM clients WHERE id = $1', [req.branch.id]);
+    await runDigestForBranch(rows[0] || req.branch);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 module.exports = router;
