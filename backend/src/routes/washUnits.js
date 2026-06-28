@@ -281,4 +281,75 @@ router.post('/import', authMiddleware, canEdit, upload.single('file'), async (re
   }
 });
 
+// ── GET /export-all — ดาวน์โหลด Excel สรุปทั้งระบบ (backup/ตรวจสอบ/ประวัติ) ─────
+// หลาย sheet: ทะเบียนแอร์ · ใบงานล้าง · งานซ่อม · ปฏิทินแผน · สรุป.
+router.get('/export-all', authMiddleware, async (req, res) => {
+  try {
+    const wb = XLSX.utils.book_new();
+    // แปลง object/array → JSON string, อื่นๆ ปล่อยตามเดิม
+    const flat = (rows) => rows.map((r) => Object.fromEntries(Object.entries(r).map(
+      ([k, v]) => [k, v && typeof v === 'object' && !(v instanceof Date) ? JSON.stringify(v) : v])));
+    const sheet = async (name, sql, params) => {
+      try {
+        const { rows } = await req.db(sql, params || []);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? flat(rows) : [{ '—': 'ไม่มีข้อมูล' }]), name);
+      } catch { /* ตารางอาจยังไม่ migrate → ข้าม sheet */ }
+    };
+
+    const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND (sig_building IS NOT NULL OR sig_engineer IS NOT NULL))`;
+    await sheet('ทะเบียนแอร์', 'SELECT * FROM wash_units ORDER BY pts_zone NULLS LAST, asset_code');
+    // ใบงานล้าง — เลือกคอลัมน์ (เลี่ยง base64 ลายเซ็น/รูป/checklist)
+    await sheet('ใบงานล้าง',
+      `SELECT wo_number, work_date, work_type, client_name, pts_zone, building, floor, room,
+              asset_code, ac_type, result, status, tech_name,
+              sig_team_name, sig_supervisor_name, sig_building_name, sig_engineer_name,
+              ${ALL_SIGNED} AS all_signed, created_at
+         FROM simple_work_orders WHERE deleted_at IS NULL ORDER BY created_at DESC`);
+    await sheet('งานซ่อม', `SELECT * FROM ac_repair_jobs ORDER BY register_time DESC`);
+    await sheet('ปฏิทินแผน',
+      `SELECT asset_code, work_type, planned_date, status, done_wo_id, done_at, note, created_at
+         FROM wash_schedule ORDER BY planned_date`);
+
+    // สรุป
+    const one = async (sql) => { try { return (await req.db(sql)).rows[0] || {}; } catch { return {}; } };
+    const u = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE active)::int active,
+        COUNT(*) FILTER (WHERE ac_type='AHU')::int ahu, COUNT(*) FILTER (WHERE ac_type='FCU')::int fcu,
+        COUNT(*) FILTER (WHERE ac_type='SPT')::int spt, COUNT(*) FILTER (WHERE ac_type='VRF')::int vrf
+        FROM wash_units`);
+    const w = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='approved')::int billed,
+        COUNT(*) FILTER (WHERE ${ALL_SIGNED})::int signed FROM simple_work_orders WHERE deleted_at IS NULL`);
+    const r = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='Close')::int closed,
+        COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On'))::int open FROM ac_repair_jobs`);
+    const sch = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='planned')::int planned,
+        COUNT(*) FILTER (WHERE status='done')::int done FROM wash_schedule`);
+    const summary = [
+      ['สรุประบบ (export)', new Date().toISOString().slice(0, 10)],
+      [],
+      ['ทะเบียนแอร์ทั้งหมด', u.total || 0],
+      ['ใช้งาน', u.active || 0],
+      ['AHU / FCU / SPT / VRF', `${u.ahu || 0} / ${u.fcu || 0} / ${u.spt || 0} / ${u.vrf || 0}`],
+      [],
+      ['ใบงานล้างทั้งหมด', w.total || 0],
+      ['เซ็นครบ', w.signed || 0],
+      ['วางบิลแล้ว', w.billed || 0],
+      [],
+      ['งานซ่อมทั้งหมด', r.total || 0],
+      ['ปิดงาน', r.closed || 0],
+      ['คงค้าง', r.open || 0],
+      [],
+      ['นัดในปฏิทินทั้งหมด', sch.total || 0],
+      ['ค้าง (planned)', sch.planned || 0],
+      ['เสร็จ (done)', sch.done || 0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'สรุป');
+    // จัด สรุป ไว้ sheet แรก
+    wb.SheetNames = ['สรุป', ...wb.SheetNames.filter((n) => n !== 'สรุป')];
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="air-system-backup-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(buf);
+  } catch (err) { serverError(res, err); }
+});
+
 module.exports = router;

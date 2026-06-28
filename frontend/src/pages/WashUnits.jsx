@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ClipboardList, Plus, Pencil, Trash2, Upload, X, AlertCircle, QrCode, Printer } from 'lucide-react'
+import { ClipboardList, Plus, Pencil, Trash2, Upload, X, AlertCircle, QrCode, Printer, FileSpreadsheet } from 'lucide-react'
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -438,6 +438,19 @@ export default function WashUnits() {
   const importRef = useRef(null)
   const [importMsg, setImportMsg] = useState(null) // { ok, text, errors }
   const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  // ดาวน์โหลด Excel สรุปทั้งระบบ (backup/ตรวจสอบ/ประวัติ)
+  const exportAll = async () => {
+    setExporting(true); setErr('')
+    try {
+      const res = await api.get('/wash-units/export-all', { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `air-system-backup-${new Date().toISOString().slice(0, 10)}.xlsx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setExporting(false) }
+  }
 
   const load = useCallback(async (q) => {
     setLoading(true); setErr('')
@@ -532,6 +545,16 @@ export default function WashUnits() {
             >
               <QrCode className="h-4 w-4" />
               พิมพ์ QR ทั้งหมด
+            </button>
+
+            <button
+              onClick={exportAll}
+              disabled={exporting}
+              className="btn-secondary flex items-center gap-2 text-sm"
+              title="ดาวน์โหลด Excel สรุปทั้งระบบ (ทะเบียน·ล้าง·ซ่อม·ปฏิทิน) สำหรับตรวจสอบ/backup"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              {exporting ? 'กำลังออก…' : 'ดาวน์โหลด Excel (สรุป)'}
             </button>
 
             {isAdmin && (
