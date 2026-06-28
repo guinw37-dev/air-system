@@ -19,16 +19,26 @@ router.get('/summary', authMiddleware, async (req, res) => {
   const { from, to } = req.query;
   if (!isDate(from) || !isDate(to)) return res.status(400).json({ error: 'from/to ต้องเป็น YYYY-MM-DD' });
   try {
+    // ต่อวัน × โซน (join ทะเบียนเอา pts_zone) → frontend แยกสีต่อโซนได้
     const { rows } = await req.db(
-      `SELECT planned_date::text AS date,
-              COUNT(*) FILTER (WHERE status = 'planned')::int AS planned,
-              COUNT(*) FILTER (WHERE status = 'done')::int    AS done,
-              COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped,
-              COUNT(*)::int AS total
-         FROM wash_schedule
-        WHERE planned_date BETWEEN $1 AND $2
-        GROUP BY planned_date ORDER BY planned_date`, [from, to]);
-    res.json({ days: rows });
+      `SELECT s.planned_date::text AS date,
+              COALESCE(NULLIF(u.pts_zone,''),'-') AS zone,
+              COUNT(*) FILTER (WHERE s.status = 'planned')::int AS planned,
+              COUNT(*) FILTER (WHERE s.status = 'done')::int    AS done,
+              COUNT(*) FILTER (WHERE s.status = 'skipped')::int AS skipped
+         FROM wash_schedule s
+         LEFT JOIN wash_units u ON u.asset_code = s.asset_code
+        WHERE s.planned_date BETWEEN $1 AND $2
+        GROUP BY s.planned_date, zone ORDER BY s.planned_date`, [from, to]);
+    // รวมเป็นต่อวัน + แตกต่อโซน
+    const byDate = {};
+    for (const r of rows) {
+      const d = (byDate[r.date] ||= { date: r.date, planned: 0, done: 0, skipped: 0, total: 0, zones: {} });
+      d.planned += r.planned; d.done += r.done; d.skipped += r.skipped;
+      d.total += r.planned + r.done + r.skipped;
+      d.zones[r.zone] = { planned: r.planned, done: r.done, skipped: r.skipped };
+    }
+    res.json({ days: Object.values(byDate) });
   } catch (err) { serverError(res, err); }
 });
 

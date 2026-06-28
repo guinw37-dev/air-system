@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
@@ -12,6 +12,16 @@ const TH_DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const monthTitle = (m) => `${TH_MONTHS[m.month()]} ${m.year() + 543}`
 const thDay = (d) => `${d.date()} ${TH_MONTHS[d.month()]} ${d.year() + 543}`
+
+// สีประจำโซน (วนซ้ำตามจำนวนโซน)
+const ZONE_PALETTE = [
+  { dot: 'bg-indigo-500', chip: 'bg-indigo-50 text-indigo-700 border-indigo-200', text: 'text-indigo-600' },
+  { dot: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700 border-violet-200', text: 'text-violet-600' },
+  { dot: 'bg-cyan-500', chip: 'bg-cyan-50 text-cyan-700 border-cyan-200', text: 'text-cyan-600' },
+  { dot: 'bg-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200', text: 'text-rose-600' },
+  { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700 border-amber-200', text: 'text-amber-600' },
+  { dot: 'bg-teal-500', chip: 'bg-teal-50 text-teal-700 border-teal-200', text: 'text-teal-600' },
+]
 
 export default function WashCalendar() {
   const navigate = useNavigate()
@@ -103,6 +113,14 @@ export default function WashCalendar() {
     else navigate(`/simple-wo/new?unit=${encodeURIComponent(it.asset_code)}&wt=${it.work_type}`)
   }
 
+  // โซนทั้งหมดที่เห็นในเดือน → กำหนดสีคงที่
+  const zoneList = useMemo(() => {
+    const set = new Set()
+    Object.values(summary).forEach((d) => Object.keys(d.zones || {}).forEach((z) => set.add(z)))
+    return [...set].sort()
+  }, [summary])
+  const zoneColor = (z) => ZONE_PALETTE[Math.max(0, zoneList.indexOf(z)) % ZONE_PALETTE.length]
+
   const selM = dayjs(sel)
   // จัดกลุ่มนัดของวันที่เลือก ตามประเภทงาน (ใหญ่/ย่อย/พัดลม)
   const WT_ORDER = ['major', 'minor', 'fan']
@@ -128,44 +146,65 @@ export default function WashCalendar() {
         {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-sm text-red-700">{err}</div>}
 
         {/* ── ปฏิทินเต็มกว้าง ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => setMonth(month.subtract(1, 'month'))} className="p-2 rounded-lg hover:bg-slate-100"><ChevronLeft size={20} /></button>
-            <div className="font-bold text-slate-800 text-lg">{monthTitle(month)}</div>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          {/* header แถบไล่สี */}
+          <div className="flex items-center justify-between px-4 md:px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+            <button onClick={() => setMonth(month.subtract(1, 'month'))} className="p-2 rounded-lg hover:bg-white/15"><ChevronLeft size={20} /></button>
+            <div className="font-bold text-lg tracking-wide">{monthTitle(month)}</div>
             <div className="flex items-center gap-1">
-              <button onClick={() => { setMonth(dayjs().startOf('month')); setSel(today) }} className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">วันนี้</button>
-              <button onClick={() => setMonth(month.add(1, 'month'))} className="p-2 rounded-lg hover:bg-slate-100"><ChevronRight size={20} /></button>
+              <button onClick={() => { setMonth(dayjs().startOf('month')); setSel(today) }} className="text-sm px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">วันนี้</button>
+              <button onClick={() => setMonth(month.add(1, 'month'))} className="p-2 rounded-lg hover:bg-white/15"><ChevronRight size={20} /></button>
             </div>
           </div>
-          <div className="grid grid-cols-7 gap-1.5 text-center text-sm text-slate-400 mb-1.5">
-            {TH_DOW.map((d, i) => <div key={i} className={i === 0 ? 'text-red-400' : ''}>{d}</div>)}
-          </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {gridDays.map((d) => {
-              const key = d.format('YYYY-MM-DD')
-              const s = summary[key]
-              const inMonth = d.month() === month.month()
-              const isToday = key === today
-              const isSel = key === sel
-              return (
-                <button key={key} onClick={() => setSel(key)}
-                  className={`min-h-[96px] rounded-xl border p-2 text-left transition-colors flex flex-col ${
-                    isSel ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50/40'
-                      : 'border-slate-100 hover:border-blue-200'} ${inMonth ? '' : 'opacity-40'}`}>
-                  <div className={`text-sm font-semibold ${isToday ? 'text-white bg-blue-600 rounded-full w-7 h-7 flex items-center justify-center' : 'text-slate-700'}`}>{d.date()}</div>
-                  {s && s.total > 0 && (
-                    <div className="mt-auto flex flex-wrap gap-1">
-                      {s.planned > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">{s.planned}</span>}
-                      {s.done > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">✓{s.done}</span>}
+
+          <div className="p-3 md:p-5">
+            <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold text-slate-400 mb-2">
+              {TH_DOW.map((d, i) => <div key={i} className={i === 0 || i === 6 ? 'text-rose-400' : ''}>{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {gridDays.map((d) => {
+                const key = d.format('YYYY-MM-DD')
+                const s = summary[key]
+                const inMonth = d.month() === month.month()
+                const isToday = key === today
+                const isSel = key === sel
+                const wknd = d.day() === 0 || d.day() === 6
+                const zoneEntries = s ? Object.entries(s.zones || {}).filter(([, v]) => (v.planned + v.done) > 0) : []
+                return (
+                  <button key={key} onClick={() => setSel(key)}
+                    className={`group min-h-[100px] rounded-xl border p-1.5 text-left transition-all flex flex-col ${
+                      isSel ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50/50 shadow-sm'
+                        : 'border-slate-100 hover:border-blue-300 hover:shadow-md hover:-translate-y-0.5'} ${
+                      inMonth ? (wknd ? 'bg-slate-50/60' : 'bg-white') : 'opacity-35'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-bold ${isToday ? 'text-white bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full w-7 h-7 flex items-center justify-center shadow' : wknd ? 'text-rose-400' : 'text-slate-700'}`}>{d.date()}</span>
+                      {s && s.done > 0 && <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-0.5"><Check size={11} />{s.done}</span>}
                     </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-          <div className="flex gap-4 mt-4 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-200" /> ค้าง (planned)</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-200" /> เสร็จ (done)</span>
+                    {zoneEntries.length > 0 && (
+                      <div className="mt-auto flex flex-col gap-0.5">
+                        {zoneEntries.map(([z, v]) => {
+                          const c = zoneColor(z)
+                          return (
+                            <span key={z} className={`flex items-center gap-1 text-[10px] font-medium px-1 py-0.5 rounded border ${c.chip}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${c.dot} shrink-0`} />
+                              <span className="truncate">{z}</span>
+                              <span className="ml-auto font-bold">{v.planned + v.done}</span>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            {/* legend โซน + สถานะ */}
+            <div className="flex flex-wrap gap-3 mt-4 text-xs text-slate-500">
+              {zoneList.map((z) => (
+                <span key={z} className="flex items-center gap-1.5"><span className={`w-3 h-3 rounded-full ${zoneColor(z).dot}`} /> {z}</span>
+              ))}
+              <span className="flex items-center gap-1.5 ml-auto text-emerald-600"><Check size={13} /> เสร็จแล้ว</span>
+            </div>
           </div>
         </div>
 
@@ -207,6 +246,7 @@ export default function WashCalendar() {
                           it.status === 'done' ? 'border-emerald-100 bg-emerald-50/40'
                             : it.status === 'skipped' ? 'border-slate-100 bg-slate-50 opacity-70' : 'border-slate-100'}`}>
                         <div className="flex items-center gap-2">
+                          {it.pts_zone && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${zoneColor(it.pts_zone).dot}`} title={it.pts_zone} />}
                           <span className="text-sm font-semibold text-slate-800 truncate">{it.asset_code}</span>
                           {it.status === 'done' && <Check size={15} className="text-emerald-600 ml-auto shrink-0" />}
                           {it.status === 'skipped' && <span className="text-[11px] text-slate-400 ml-auto">ข้าม</span>}
