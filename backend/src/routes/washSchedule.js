@@ -66,14 +66,15 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
 
     // ── config (กรอกตอนสร้างแผน) ──────────────────────────────────────────────
     const capacity = Math.max(1, parseInt(req.body.capacity, 10) || 15);   // ล้างได้/วัน
-    const workdays = req.body.workdays === 'mon_fri' ? 'mon_fri' : 'mon_sat';
     const byZone = req.body.byZone !== false;                              // capacity แยกต่อโซน (default)
-    const isWork = (d) => {
-      const g = d.getDay();
-      if (g === 0) return false;                       // อาทิตย์หยุดเสมอ
-      if (workdays === 'mon_fri' && g === 6) return false; // เสาร์หยุด (จ-ศ)
-      return true;
-    };
+    // วันทำงาน: array ของ getDay() (0=อา..6=ส). รองรับ string เก่า (mon_sat/mon_fri).
+    let allowed;
+    if (Array.isArray(req.body.workdays)) allowed = req.body.workdays.map(Number).filter((n) => n >= 0 && n <= 6);
+    else if (req.body.workdays === 'mon_fri') allowed = [1, 2, 3, 4, 5];
+    else allowed = [1, 2, 3, 4, 5, 6];                 // default จ-ส
+    if (!allowed.length) allowed = [1, 2, 3, 4, 5, 6];
+    const workSet = new Set(allowed);
+    const isWork = (d) => workSet.has(d.getDay());
 
     const { rows: units } = await client.query(
       `SELECT asset_code, pts_zone, building, floor, room, freq_major, freq_minor, freq_fan,
@@ -134,7 +135,7 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
       created += rowCount;
     }
     await client.query('COMMIT');
-    res.json({ ok: true, from: fromStr, created, capacity, workdays, byZone });
+    res.json({ ok: true, from: fromStr, created, capacity, workdays: allowed, byZone });
   } catch (err) {
     await client.query('ROLLBACK');
     serverError(res, err);
