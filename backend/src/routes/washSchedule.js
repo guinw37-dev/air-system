@@ -65,8 +65,16 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
       `DELETE FROM wash_schedule WHERE status = 'planned' AND planned_date >= $1`, [fromStr]);
 
     // ── config (กรอกตอนสร้างแผน) ──────────────────────────────────────────────
-    const capacity = Math.max(1, parseInt(req.body.capacity, 10) || 15);   // ล้างได้/วัน
     const byZone = req.body.byZone !== false;                              // capacity แยกต่อโซน (default)
+    // capacity ต่อวัน แยกต่อประเภท (ล้างใหญ่/ย่อย/พัดลม). รองรับ capacity เดี่ยวแบบเก่า.
+    const single = parseInt(req.body.capacity, 10);
+    const capOf = (k, dflt) => {
+      const v = parseInt(req.body[`cap_${k}`], 10);
+      if (Number.isFinite(v)) return Math.max(0, v);
+      if (Number.isFinite(single)) return Math.max(0, single);  // back-compat
+      return dflt;
+    };
+    const cap = { major: capOf('major', 10), minor: capOf('minor', 10), fan: capOf('fan', 5) };
     // วันทำงาน: array ของ getDay() (0=อา..6=ส). รองรับ string เก่า (mon_sat/mon_fri).
     let allowed;
     if (Array.isArray(req.body.workdays)) allowed = req.body.workdays.map(Number).filter((n) => n >= 0 && n <= 6);
@@ -102,20 +110,22 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
     // 2) เรียง: ครบกำหนดก่อน (due asc) → จัดกลุ่มโซน/อาคาร/ชั้น (ลดเดินทาง)
     const cmp = (a, b) => (a > b ? 1 : a < b ? -1 : 0);
     items.sort((a, b) => a.dueIdx - b.dueIdx || cmp(a.zone, b.zone) || cmp(a.building, b.building) || cmp(a.floor, b.floor) || cmp(a.room, b.room));
-    // 3) เติมลงวันทำงานไม่เกิน capacity (แยกต่อโซนถ้าเลือก) เกินดันวันถัดไป
+    // 3) เติมลงวันทำงานไม่เกิน capacity ต่อประเภท (แยกต่อโซนถ้าเลือก) เกินดันวันถัดไป
     const used = {};
-    const keyOf = (idx, zone) => (byZone ? `${idx}|${zone}` : `${idx}`);
+    const keyOf = (idx, zone, wt) => (byZone ? `${idx}|${zone}|${wt}` : `${idx}|${wt}`);
     const MAX_HORIZON = 1095;   // กันลูปค้าง (~3 ปี)
     const out = [];
     for (const it of items) {
+      const c = cap[it.wt] || 0;
+      if (c <= 0) continue;                 // ประเภทนี้ตั้ง 0 = ไม่จัดลงปฏิทิน
       let idx = it.dueIdx;
       let guard = 0;
       while (guard++ < MAX_HORIZON) {
         const d = addDays(from, idx);
-        if (isWork(d) && (used[keyOf(idx, it.zone)] || 0) < capacity) break;
+        if (isWork(d) && (used[keyOf(idx, it.zone, it.wt)] || 0) < c) break;
         idx++;
       }
-      used[keyOf(idx, it.zone)] = (used[keyOf(idx, it.zone)] || 0) + 1;
+      used[keyOf(idx, it.zone, it.wt)] = (used[keyOf(idx, it.zone, it.wt)] || 0) + 1;
       out.push([it.asset, it.wt, ymd(addDays(from, idx))]);
     }
 
@@ -135,7 +145,7 @@ router.post('/generate', authMiddleware, canEdit, async (req, res) => {
       created += rowCount;
     }
     await client.query('COMMIT');
-    res.json({ ok: true, from: fromStr, created, capacity, workdays: allowed, byZone });
+    res.json({ ok: true, from: fromStr, created, cap, workdays: allowed, byZone });
   } catch (err) {
     await client.query('ROLLBACK');
     serverError(res, err);

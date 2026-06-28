@@ -26,7 +26,7 @@ export default function WashCalendar() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [showGen, setShowGen] = useState(false)
-  const [cfg, setCfg] = useState({ capacity: 15, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
+  const [cfg, setCfg] = useState({ cap: { major: 10, minor: 10, fan: 5 }, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
 
   const gridStart = month.startOf('month').startOf('week')   // อาทิตย์
   const gridDays = Array.from({ length: 42 }, (_, i) => gridStart.add(i, 'day'))
@@ -62,6 +62,10 @@ export default function WashCalendar() {
       const v = { ...r.data.value }
       if (typeof v.workdays === 'string') v.workdays = v.workdays === 'mon_fri' ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6]
       if (!Array.isArray(v.workdays)) v.workdays = [1, 2, 3, 4, 5, 6]
+      // เก่า: capacity เดี่ยว → แตกเป็น cap ต่อประเภท
+      if (typeof v.capacity === 'number' && !v.cap) v.cap = { major: v.capacity, minor: v.capacity, fan: v.capacity }
+      delete v.capacity
+      if (!v.cap) v.cap = { major: 10, minor: 10, fan: 5 }
       setCfg((c) => ({ ...c, ...v }))
     }).catch(() => {})
   }, [])
@@ -69,10 +73,14 @@ export default function WashCalendar() {
   const generate = async () => {
     setBusy(true); setErr('')
     try {
-      const r = await api.post('/wash-schedule/generate', { from: today, ...cfg })
+      const r = await api.post('/wash-schedule/generate', {
+        from: today, workdays: cfg.workdays, byZone: cfg.byZone,
+        cap_major: cfg.cap.major, cap_minor: cfg.cap.minor, cap_fan: cfg.cap.fan,
+      })
       api.put('/auth/prefs/wash_plan_cfg', { value: cfg }).catch(() => {})   // จำ default
       setShowGen(false)
-      alert(`สร้างแผนสำเร็จ ${r.data.created} นัด (ล้างได้ ${r.data.capacity}/วัน)`)
+      const c = r.data.cap || cfg.cap
+      alert(`สร้างแผนสำเร็จ ${r.data.created} นัด (ใหญ่ ${c.major} · ย่อย ${c.minor} · พัดลม ${c.fan} ต่อวัน)`)
       await loadSummary(); await loadDay()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -222,12 +230,20 @@ export default function WashCalendar() {
           <div className="relative bg-white rounded-2xl w-full max-w-sm shadow-xl p-5">
             <h3 className="font-bold text-slate-800 text-lg mb-1">สร้างแผนอัตโนมัติ</h3>
             <p className="text-xs text-slate-400 mb-4">กระจายเครื่องลงปฏิทินตามกำลังต่อวัน · ลบเฉพาะแผนที่ยังไม่เสร็จตั้งแต่วันนี้ไป</p>
-            <label className="block mb-3">
-              <span className="text-sm text-slate-600">ล้างได้ / วัน (เครื่อง)</span>
-              <input type="number" min="1" value={cfg.capacity}
-                onChange={(e) => setCfg({ ...cfg, capacity: e.target.value })}
-                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-slate-800" />
-            </label>
+            <div className="mb-3">
+              <span className="text-sm text-slate-600">ล้างได้ / วัน (เครื่อง) แยกประเภท</span>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                {[['major', 'ล้างใหญ่'], ['minor', 'ล้างย่อย'], ['fan', 'พัดลม']].map(([k, lb]) => (
+                  <label key={k} className="text-center">
+                    <span className="block text-xs text-slate-500 mb-0.5">{lb}</span>
+                    <input type="number" min="0" value={cfg.cap[k]}
+                      onChange={(e) => setCfg({ ...cfg, cap: { ...cfg.cap, [k]: e.target.value } })}
+                      className="w-full border border-slate-200 rounded-lg px-2 py-2 text-slate-800 text-center" />
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">ใส่ 0 = ไม่จัดประเภทนั้นลงปฏิทิน</p>
+            </div>
             <div className="mb-3">
               <span className="text-sm text-slate-600">วันทำงาน (เลือกได้หลายวัน)</span>
               <div className="flex gap-1 mt-1">
