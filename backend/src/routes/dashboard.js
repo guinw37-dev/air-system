@@ -243,12 +243,20 @@ async function buildWashReport(req) {
       grandMonthlyTarget += t.target || 0;
       if (t.work_type) targetByType[t.work_type] = (targetByType[t.work_type] || 0) + (t.target || 0);
     }
-    // เป้า/วัน = เป้าเดือน ÷ จำนวนวันในเดือน (เทียบยอดวันนี้ในการ์ดสรุปรายวัน)
     const perDay = (v) => (dim > 0 ? Math.round((v || 0) / dim) : 0);
-    daily.target_major = perDay(targetByType.major);
-    daily.target_minor = perDay(targetByType.minor);
-    daily.target_fan = perDay(targetByType.fan);
-    daily.target = perDay(grandMonthlyTarget);
+    // เป้า/วัน = จำนวนนัดในปฏิทินล้างแอร์ (wash_schedule) ของวันนั้น ต่อประเภท
+    // (นับ planned + done = ที่วางแผนไว้). fallback เป็น เป้าเดือน÷วัน ถ้ายังไม่มีตาราง/แผน.
+    const schedRows = await safeRows(db,
+      `SELECT work_type, COUNT(*)::int AS n
+         FROM wash_schedule
+        WHERE planned_date = $1::date AND status IN ('planned','done')
+        GROUP BY work_type`, [date]);
+    const schedBy = Object.fromEntries((schedRows || []).map((r) => [r.work_type, r.n || 0]));
+    const hasPlan = (schedRows || []).length > 0;
+    daily.target_major = hasPlan ? (schedBy.major || 0) : perDay(targetByType.major);
+    daily.target_minor = hasPlan ? (schedBy.minor || 0) : perDay(targetByType.minor);
+    daily.target_fan = hasPlan ? (schedBy.fan || 0) : perDay(targetByType.fan);
+    daily.target = daily.target_major + daily.target_minor + daily.target_fan;
 
     // monthly done per work_type (current month)
     const monRows = await safeRows(db,
