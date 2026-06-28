@@ -146,14 +146,17 @@ export default function WashCalendar() {
   const pickList = useMemo(() => {
     if (!units) return []
     const q = uQuery.trim().toLowerCase()
+    const isFan = (u) => u.equipment === 'fan' || /exhaust\s*fan|พัดลม/i.test(u.ac_type || '')
     let list = units.filter((u) => u.active !== false)
+    // ล้างใหญ่/ย่อย = แอร์ (ไม่ใช่พัดลม); พัดลม = เฉพาะ fan
+    list = list.filter((u) => (addWt === 'fan' ? isFan(u) : !isFan(u)))
     if (q) list = list.filter((u) => [u.asset_code, u.room, u.building, u.pts_zone, u.ac_type].some((x) => String(x || '').toLowerCase().includes(q)))
     const cmp = (a, b) => String(a || '').localeCompare(String(b || ''))
     return [...list].sort((a, b) => {
       if (uSort === 'last_major_at') return String(b.last_major_at || '').localeCompare(String(a.last_major_at || ''))
       return cmp(a[uSort], b[uSort]) || cmp(a.asset_code, b.asset_code)
     })
-  }, [units, uQuery, uSort])
+  }, [units, uQuery, uSort, addWt])
 
   const selM = dayjs(sel)
   // จัดกลุ่มนัดของวันที่เลือก ตามประเภทงาน (ใหญ่/ย่อย/พัดลม)
