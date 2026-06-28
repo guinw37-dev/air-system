@@ -11,12 +11,15 @@ export default function LineSettings() {
   const [savingToken, setSavingToken] = useState(false)
   const [gids, setGids] = useState({})        // id → group id (editable)
   const [busyId, setBusyId] = useState(null)
+  const [digestTime, setDigestTime] = useState('08:45')
+  const [savingTime, setSavingTime] = useState(false)
 
   const load = useCallback(async () => {
     setErr('')
     try {
       const r = await api.get('/line-admin/config')
       setCfg(r.data)
+      setDigestTime(r.data.digestTime || '08:45')
       setGids(Object.fromEntries((r.data.branches || []).map((b) => [b.id, b.line_group_id || ''])))
     } catch (e) { setErr(e.response?.data?.error || e.message) }
   }, [])
@@ -33,6 +36,11 @@ export default function LineSettings() {
     setBusyId(id); setErr('')
     try { await api.put(`/line-admin/branch/${id}`, { line_group_id: gids[id] }); flash('บันทึก group id แล้ว') }
     catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusyId(null) }
+  }
+  const saveTime = async () => {
+    setSavingTime(true); setErr('')
+    try { await api.put('/line-admin/time', { time: digestTime }); flash('บันทึกเวลาแล้ว') }
+    catch (e) { setErr(e.response?.data?.error || e.message) } finally { setSavingTime(false) }
   }
   const test = async (id) => {
     setBusyId(id); setErr('')
@@ -91,7 +99,19 @@ export default function LineSettings() {
               </div>
             </div>
 
-            <p className="text-xs text-slate-400">แจ้งเตือนอัตโนมัติทุกวัน 08:45 (เฉพาะสาขาที่ตั้ง group id)</p>
+            {/* เวลาแจ้งเตือน */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h2 className="font-bold text-slate-800 mb-1">เวลาแจ้งเตือนประจำวัน</h2>
+              <p className="text-xs text-slate-500 mb-3">ส่งทุกวันตามเวลานี้ (เฉพาะสาขาที่ตั้ง group id)</p>
+              <div className="flex gap-2 items-center">
+                <input type="time" value={digestTime} onChange={(e) => setDigestTime(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <button onClick={saveTime} disabled={savingTime}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  <Save size={15} /> บันทึกเวลา
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
