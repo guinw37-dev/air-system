@@ -215,14 +215,17 @@ CREATE TABLE IF NOT EXISTS repair_logs (
 CREATE TABLE IF NOT EXISTS service_targets (
   id             SERIAL PRIMARY KEY,
   zone           VARCHAR(50) NOT NULL,
+  month          VARCHAR(7),            -- 'YYYY-MM' (NULL = ทุกเดือน/ตามสัญญา)
+  location       VARCHAR(200),          -- สถานที่ (NULL = ทุกสถานที่ในโซน)
+  ac_type        VARCHAR(30),           -- ตระกูลแอร์/พัดลม (NULL = ทุกตระกูล)
   work_type      VARCHAR(20),           -- major | minor | fan | NULL(=รวม)
   monthly_target INT NOT NULL DEFAULT 0,
   note           TEXT,
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
--- COALESCE so a NULL work_type (คลินิก = รวม) is still unique per zone.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_zone_wt
-  ON service_targets (zone, COALESCE(work_type, ''));
+-- unique ต่อ (zone × เดือน × สถานที่ × ตระกูล × ประเภทล้าง)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_full
+  ON service_targets (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type, ''));
 
 -- ทะเบียนแอร์รายตัว (master units สำหรับงานล้าง simple-wo). Flat — ตรงกับ
 -- simple_work_orders (zone/location/asset_code เป็น string ไม่ผูก rooms hierarchy).

@@ -107,6 +107,13 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);
     // per-user UI prefs (dashboard layout) on branch users table
     await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
+    // service_targets: เป้าแยกรายเดือน/สถานที่/ตระกูล (เพิ่มภายหลัง)
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS month VARCHAR(7)`);
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS ac_type VARCHAR(30)`);
+    await c.query(`DROP INDEX IF EXISTS uq_service_targets_zone_wt`);
+    await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_full
+      ON service_targets (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type,''))`);
     // device_id added to tech_attendance after the table first shipped (#165 → device tracking)
     await c.query(`ALTER TABLE IF EXISTS tech_attendance ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)`);
     // GPS geofence (monitor only) added to tech_attendance later — ADD on existing branches.
