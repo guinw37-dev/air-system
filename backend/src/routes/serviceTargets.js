@@ -105,14 +105,24 @@ router.get('/progress', authMiddleware, async (req, res) => {
        WHERE deleted_at IS NULL
          AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
        GROUP BY 1, 2, 3, 4`, [month]);
-    // ยอดล้างของเป้าหนึ่ง = sum ของ done ที่ตรง dimension ที่เป้าระบุ (ไม่ระบุ = ทุกค่า)
-    const doneFor = (t) => actual.reduce((s, a) => {
-      if (a.zone !== t.zone) return s;
-      if (t.work_type && a.work_type !== t.work_type) return s;
-      if (t.location && a.location !== t.location) return s;
-      if (t.ac_type && a.ac_type !== t.ac_type) return s;
-      return s + a.done;
-    }, 0);
+    // ปรับยอดเอง (wash_count_adjust) เดือนนี้ — เพิ่มเข้า done ระดับ zone×work_type
+    const { rows: adj } = await req.db(
+      `SELECT zone, work_type, SUM(delta)::int AS d FROM wash_count_adjust
+        WHERE month = $1 GROUP BY zone, work_type`, [month]);
+    // ยอดล้างของเป้าหนึ่ง = done จริง (ตรง dimension) + adjust (zone×work_type, เฉพาะเป้าที่ไม่ระบุสถานที่/ตระกูล)
+    const doneFor = (t) => {
+      let n = actual.reduce((s, a) => {
+        if (a.zone !== t.zone) return s;
+        if (t.work_type && a.work_type !== t.work_type) return s;
+        if (t.location && a.location !== t.location) return s;
+        if (t.ac_type && a.ac_type !== t.ac_type) return s;
+        return s + a.done;
+      }, 0);
+      if (!t.location && !t.ac_type) {
+        n += adj.reduce((s, a) => (a.zone === t.zone && (!t.work_type || a.work_type === t.work_type) ? s + (a.d || 0) : s), 0);
+      }
+      return Math.max(0, n);
+    };
     const result = targets.map((t) => {
       const base = t.monthly_target || 0;
       const done = doneFor(t);

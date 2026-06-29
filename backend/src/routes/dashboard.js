@@ -216,6 +216,7 @@ async function buildWashReport(req) {
     const swoZ = zone ? ` AND pts_zone = '${zone}'` : '';        // simple_work_orders
     const wuZ  = zone ? ` AND pts_zone = '${zone}'` : '';        // wash_units
     const stZ  = zone ? ` AND zone = '${zone}'` : '';            // service_targets
+    const adjZ = zone ? ` AND zone = '${zone}'` : '';            // wash_count_adjust
     // wash_schedule ไม่มี pts_zone → join ทะเบียนเมื่อเลือก zone
     const schedFrom = zone
       ? `wash_schedule s JOIN wash_units wu ON wu.asset_code = s.asset_code AND wu.pts_zone = '${zone}'`
@@ -286,7 +287,13 @@ async function buildWashReport(req) {
         WHERE deleted_at IS NULL
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1${swoZ}
         GROUP BY work_type`, [month]) || [];
-    const monDoneBy = Object.fromEntries(monRows.map((r) => [r.work_type, r.done || 0]));
+    const monDoneByRaw = Object.fromEntries(monRows.map((r) => [r.work_type, r.done || 0]));
+    // ปรับยอดเอง (wash_count_adjust) เดือนนี้ ต่อประเภท
+    const monAdj = await safeRows(db,
+      `SELECT work_type, SUM(delta)::int AS d FROM wash_count_adjust
+        WHERE month = $1${adjZ} AND work_type IS NOT NULL GROUP BY work_type`, [month]) || [];
+    const monAdjBy = Object.fromEntries(monAdj.map((r) => [r.work_type, r.d || 0]));
+    const monDoneBy = Object.fromEntries(WASH_TYPES.map((wt) => [wt, Math.max(0, (monDoneByRaw[wt] || 0) + (monAdjBy[wt] || 0))]));
     // เป้าเดือน = จำนวนนัดในปฏิทินของเดือนนั้น (planned+done) ต่อประเภท; fallback service_targets
     const schedMonRows = await safeRows(db,
       `SELECT s.work_type, COUNT(*)::int AS n FROM ${schedFrom}
@@ -315,7 +322,19 @@ async function buildWashReport(req) {
         WHERE deleted_at IS NULL
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY work_type`, [year]) || [];
-    const yrDoneBy = Object.fromEntries(yrRows.map((r) => [r.work_type, r.done || 0]));
+    const yrDoneRaw = Object.fromEntries(yrRows.map((r) => [r.work_type, r.done || 0]));
+    // ปรับยอดเอง รายเดือน×ประเภท ทั้งปี
+    const yrAdj = await safeRows(db,
+      `SELECT (split_part(month,'-',2))::int AS m, work_type, SUM(delta)::int AS d
+         FROM wash_count_adjust
+        WHERE split_part(month,'-',1) = $1${adjZ} AND work_type IS NOT NULL
+        GROUP BY m, work_type`, [String(year)]) || [];
+    const yrAdjByWt = {}; const yrAdjByMonthWt = {};
+    for (const a of yrAdj) {
+      yrAdjByWt[a.work_type] = (yrAdjByWt[a.work_type] || 0) + (a.d || 0);
+      (yrAdjByMonthWt[a.m] ||= {})[a.work_type] = a.d || 0;
+    }
+    const yrDoneBy = Object.fromEntries(WASH_TYPES.map((wt) => [wt, Math.max(0, (yrDoneRaw[wt] || 0) + (yrAdjByWt[wt] || 0))]));
     const yearly = {
       year,
       types: WASH_TYPES.map((wt) => ({
@@ -339,11 +358,10 @@ async function buildWashReport(req) {
     }
     yearly.series = Array.from({ length: 12 }, (_, i) => {
       const s = seriesBy[i + 1] || {};
-      const total = (s.major || 0) + (s.minor || 0) + (s.fan || 0);
-      return {
-        month: TH_MONTHS[i], major: s.major || 0, minor: s.minor || 0, fan: s.fan || 0,
-        total, target: monthlyTargetLine,
-      };
+      const adj = yrAdjByMonthWt[i + 1] || {};
+      const v = (wt) => Math.max(0, (s[wt] || 0) + (adj[wt] || 0));
+      const major = v('major'), minor = v('minor'), fan = v('fan');
+      return { month: TH_MONTHS[i], major, minor, fan, total: major + minor + fan, target: monthlyTargetLine };
     });
 
     // ── แยกประเภทแอร์ (ac_type) — done เดือน/ปี + เป้าจาก wash_units freq ────────

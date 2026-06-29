@@ -227,6 +227,19 @@ CREATE TABLE IF NOT EXISTS service_targets (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_full
   ON service_targets (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type, ''));
 
+-- ── ปรับยอดล้างเอง (ใส่ย้อนหลัง / โยกข้ามเดือน) — บวก/ลบยอดต่อเดือน×โซน×ประเภท ──
+CREATE TABLE IF NOT EXISTS wash_count_adjust (
+  id          SERIAL PRIMARY KEY,
+  month       VARCHAR(7) NOT NULL,        -- 'YYYY-MM'
+  zone        VARCHAR(50),                -- NULL = ไม่ระบุโซน
+  work_type   VARCHAR(20),               -- major | minor | fan | NULL(=รวม)
+  delta       INT NOT NULL DEFAULT 0,     -- +เพิ่ม / -ลด
+  note        TEXT,
+  created_by  INT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wash_adjust_month ON wash_count_adjust (month);
+
 -- ทะเบียนแอร์รายตัว (master units สำหรับงานล้าง simple-wo). Flat — ตรงกับ
 -- simple_work_orders (zone/location/asset_code เป็น string ไม่ผูก rooms hierarchy).
 -- ฐานสำหรับ: นับล้างได้/เหลือ ต่อ type/site, contract ต่อเครื่อง, QR, dropdown.
