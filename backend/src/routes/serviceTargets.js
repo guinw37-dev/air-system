@@ -8,17 +8,24 @@ const { serverError } = require('../utils/respond');
 const canEdit = requireRole('admin', 'super_admin');
 const WORK_TYPES = ['major', 'minor', 'fan'];
 
-// ── GET / — list targets ───────────────────────────────────────────────────
+// ── GET /?zone= — list targets ──────────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await req.db('SELECT * FROM service_targets ORDER BY zone, work_type NULLS FIRST');
+    const params = []; let where = '';
+    if (req.query.zone) { params.push(req.query.zone); where = 'WHERE zone = $1'; }
+    const { rows } = await req.db(
+      `SELECT * FROM service_targets ${where}
+        ORDER BY zone, month NULLS FIRST, location NULLS FIRST, ac_type NULLS FIRST, work_type NULLS FIRST`, params);
     res.json(rows);
   } catch (err) { serverError(res, err); }
 });
 
-// ── POST / — upsert one target (zone + work_type unique) ────────────────────
+// ── POST / — upsert one target (zone × month × location × ac_type × work_type) ─
 router.post('/', authMiddleware, canEdit, async (req, res) => {
   const zone = String(req.body.zone || '').trim();
+  const month = /^\d{4}-\d{2}$/.test(req.body.month || '') ? req.body.month : null;
+  const location = req.body.location ? String(req.body.location).trim() : null;
+  const ac_type = req.body.ac_type ? String(req.body.ac_type).trim() : null;
   let work_type = req.body.work_type || null;
   if (work_type && !WORK_TYPES.includes(work_type)) work_type = null;
   const monthly_target = Math.max(0, parseInt(req.body.monthly_target, 10) || 0);
@@ -26,12 +33,12 @@ router.post('/', authMiddleware, canEdit, async (req, res) => {
   if (!zone) return res.status(400).json({ error: 'ต้องระบุโซน (zone)' });
   try {
     const { rows } = await req.db(
-      `INSERT INTO service_targets (zone, work_type, monthly_target, note, updated_at)
-       VALUES ($1,$2,$3,$4,NOW())
-       ON CONFLICT (zone, COALESCE(work_type,'')) DO UPDATE
+      `INSERT INTO service_targets (zone, month, location, ac_type, work_type, monthly_target, note, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+       ON CONFLICT (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type,'')) DO UPDATE
          SET monthly_target = EXCLUDED.monthly_target, note = EXCLUDED.note, updated_at = NOW()
        RETURNING *`,
-      [zone, work_type, monthly_target, note]
+      [zone, month, location, ac_type, work_type, monthly_target, note]
     );
     res.status(201).json(rows[0]);
   } catch (err) { serverError(res, err); }
@@ -79,37 +86,39 @@ function carryForward(base, doneAt, months) {
 router.get('/progress', authMiddleware, async (req, res) => {
   const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month
     : new Date().toISOString().slice(0, 7);
+  const zone = req.query.zone ? String(req.query.zone) : null;
   try {
-    const { rows: targets } = await req.db('SELECT * FROM service_targets');
-    // done per (zone, type, month) up to the selected month
+    // เป้าที่ใช้กับเดือนนี้: ตั้งเดือนตรง หรือ month NULL (=ทุกเดือน/ตามสัญญา)
+    const params = [month]; let zw = '';
+    if (zone) { params.push(zone); zw = ` AND zone = $${params.length}`; }
+    const { rows: targets } = await req.db(
+      `SELECT * FROM service_targets WHERE (month = $1 OR month IS NULL)${zw}`, params);
+    // ล้างได้เดือนนี้ ต่อ (zone, work_type, location, ac_type)
     const { rows: actual } = await req.db(
-      `SELECT to_char(COALESCE(work_date, created_at::date),'YYYY-MM') AS ym,
-              pts_zone AS zone, work_type,
+      `SELECT pts_zone AS zone, work_type,
+              COALESCE(NULLIF(location,''),'') AS location,
+              COALESCE(NULLIF(ac_type,''),'')  AS ac_type,
               SUM(CASE WHEN work_type IN ('minor','fan')
                        THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
                        ELSE 1 END)::int AS done
        FROM simple_work_orders
        WHERE deleted_at IS NULL
-         AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') <= $1
-       GROUP BY ym, pts_zone, work_type`,
-      [month]
-    );
-    // doneMap[zone|type|ym] and doneZone[zone|ym] (for NULL-type = รวมทุกประเภท)
-    const doneMap = {}, doneZone = {};
-    let minM = month;
-    for (const a of actual) {
-      const z = a.zone || '';
-      doneMap[`${z}|${a.work_type || ''}|${a.ym}`] = a.done;
-      doneZone[`${z}|${a.ym}`] = (doneZone[`${z}|${a.ym}`] || 0) + a.done;
-      if (a.ym < minM) minM = a.ym;
-    }
-    const months = monthSeq(minM, month);
+         AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
+       GROUP BY 1, 2, 3, 4`, [month]);
+    // ยอดล้างของเป้าหนึ่ง = sum ของ done ที่ตรง dimension ที่เป้าระบุ (ไม่ระบุ = ทุกค่า)
+    const doneFor = (t) => actual.reduce((s, a) => {
+      if (a.zone !== t.zone) return s;
+      if (t.work_type && a.work_type !== t.work_type) return s;
+      if (t.location && a.location !== t.location) return s;
+      if (t.ac_type && a.ac_type !== t.ac_type) return s;
+      return s + a.done;
+    }, 0);
     const result = targets.map((t) => {
-      const z = t.zone || '';
-      const doneAt = (ym) => t.work_type ? (doneMap[`${z}|${t.work_type}|${ym}`] || 0) : (doneZone[`${z}|${ym}`] || 0);
-      const p = carryForward(t.monthly_target || 0, doneAt, months);
-      const pct = p.effective_target > 0 ? Math.round((p.done / p.effective_target) * 100) : 0;
-      return { ...t, base: t.monthly_target || 0, ...p, pct };
+      const base = t.monthly_target || 0;
+      const done = doneFor(t);
+      const remaining = Math.max(0, base - done);
+      const pct = base > 0 ? Math.round((done / base) * 100) : 0;
+      return { ...t, base, effective_target: base, carry_in: 0, done, remaining, pct };
     });
     res.json({ month, targets: result });
   } catch (err) { serverError(res, err); }

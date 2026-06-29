@@ -257,7 +257,7 @@ async function buildWashReport(req) {
     // service_targets sums: per work_type (monthly) and grand total (weekly split)
     const tgtRows = await safeRows(db,
       `SELECT work_type, SUM(monthly_target)::int AS target
-         FROM service_targets WHERE true${stZ} GROUP BY work_type`) || [];
+         FROM service_targets WHERE (month = '${month}' OR month IS NULL)${stZ} GROUP BY work_type`) || [];
     const targetByType = {};
     let grandMonthlyTarget = 0;
     for (const t of tgtRows) {
