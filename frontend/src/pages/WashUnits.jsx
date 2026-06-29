@@ -424,6 +424,8 @@ export default function WashUnits() {
   // Filters
   const [filterZone, setFilterZone] = useState('')
   const [filterEquip, setFilterEquip] = useState('')
+  const [filterLoc, setFilterLoc] = useState('')
+  const [filterAc, setFilterAc] = useState('')
   const [searchQ, setSearchQ] = useState('')
   const searchDebounce = useRef(null)
 
@@ -474,6 +476,9 @@ export default function WashUnits() {
     clearTimeout(searchDebounce.current)
     searchDebounce.current = setTimeout(() => load(val), 400)
   }
+
+  // filter ฝั่ง client: สถานที่ + ตระกูลแอร์ (โซน/ประเภท/ค้นหา = ฝั่ง server)
+  const view = rows.filter((u) => (!filterLoc || u.location === filterLoc) && (!filterAc || u.ac_type === filterAc))
 
   const openNew = () => { setModalUnit({}); setModalOpen(true) }
   const openEdit = (u) => { setModalUnit(u); setModalOpen(true) }
@@ -538,7 +543,7 @@ export default function WashUnits() {
           <div className="flex gap-2 flex-wrap">
             {/* Print-all QR — available to everyone */}
             <button
-              onClick={() => printAllQr(rows)}
+              onClick={() => printAllQr(view)}
               disabled={loading || rows.length === 0}
               className="btn-secondary flex items-center gap-2 text-sm"
               title="พิมพ์ QR ทั้งหมดของรายการที่กรองอยู่"
@@ -621,6 +626,14 @@ export default function WashUnits() {
             <option value="ac">แอร์</option>
             <option value="fan">พัดลม</option>
           </select>
+          <select className="input !w-auto min-w-[150px]" value={filterLoc} onChange={(e) => setFilterLoc(e.target.value)}>
+            <option value="">ทุกสถานที่</option>
+            {[...new Set(rows.map((u) => u.location).filter(Boolean))].sort().map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <select className="input !w-auto min-w-[130px]" value={filterAc} onChange={(e) => setFilterAc(e.target.value)}>
+            <option value="">ทุกตระกูล</option>
+            {[...new Set(rows.map((u) => u.ac_type).filter(Boolean))].sort().map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
           <input
             className="input !w-auto flex-1 min-w-[180px]"
             placeholder="ค้นหา รหัส / สถานที่ / ยี่ห้อ…"
@@ -662,7 +675,7 @@ export default function WashUnits() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((u) => (
+                  {view.map((u) => (
                     <tr key={u.id} className="border-b border-line last:border-0 hover:bg-gray-50 transition-colors">
                       <td className="py-2.5 px-4">
                         <span className="font-mono font-medium text-ink">{u.asset_code}</span>
@@ -722,7 +735,7 @@ export default function WashUnits() {
               </table>
             </div>
             <div className="px-4 py-2 border-t border-line bg-gray-50">
-              <p className="text-xs text-ink-muted">{rows.length} รายการ</p>
+              <p className="text-xs text-ink-muted">{view.length} รายการ</p>
             </div>
           </div>
         )}
