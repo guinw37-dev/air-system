@@ -80,6 +80,7 @@ app.use('/api/deductions',  requireBranch, require('./routes/deductions'));
 app.use('/api/targets',     requireBranch, require('./routes/serviceTargets'));
 app.use('/api/wash-units',  requireBranch, require('./routes/washUnits'));
 app.use('/api/wash-schedule', requireBranch, require('./routes/washSchedule'));
+app.use('/api/wash-adjust',   requireBranch, require('./routes/washAdjust'));
 app.use('/api/attendance',  requireBranch, require('./routes/attendance'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 app.use('/api/line',        require('./routes/line'));   // PUBLIC — LINE webhook
