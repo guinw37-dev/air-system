@@ -39,6 +39,16 @@ const WO_SQL = `
                      AND status <> 'rejected'
                      AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
                      AND NOT ${ALL_SIGNED})                               AS wo_wait_buildeng,
+    -- แยกแสดงผล 4 stage: รอช่างอาคาร (building ยังไม่เซ็น) / รอวิศวกรรม (building เซ็นแล้ว engineer ยังไม่เซ็น)
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved' AND status <> 'rejected'
+                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
+                     AND sig_building IS NULL)                            AS wo_wait_building,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved' AND status <> 'rejected'
+                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
+                     AND sig_building IS NOT NULL AND sig_engineer IS NULL) AS wo_wait_engineer,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
+                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
+                     AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL) AS wo_done_full,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND ${ALL_SIGNED})                                   AS wo_ready,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'approved')    AS wo_billed,
@@ -54,6 +64,7 @@ async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
   const z = { ac_register:0, ac_assign:0, ac_work:0, ac_clear:0, ac_close:0, ac_cancel:0,
               wo_pending:0, wo_wait_supervisor:0, wo_wait_buildeng:0,
+              wo_wait_building:0, wo_wait_engineer:0, wo_done_full:0,
               wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
   const out = { id: branch.id, slug: branch.slug, name: branch.name, ...z };
   try {

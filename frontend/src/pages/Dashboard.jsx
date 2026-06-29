@@ -341,14 +341,17 @@ function BranchDashboard({ b, navigate }) {
       {/* ภาพรวมงานล้างแอร์ — แยกตาม stage การเซ็น (กดเข้าดูเฉพาะใบที่ต้องเซ็น) */}
       <div>
         <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานล้างแอร์</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_supervisor || 0}
             label="รอหัวหน้าช่างตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=supervisor')} />
-          <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_buildeng || 0}
-            label="รออาคาร / วิศวกรรมตรวจเช็ค"
-            onClick={() => navigate('/simple-wo?pending=building_engineer')} />
-          <StatCard icon={Sparkles} tone="teal" value={washDone}
+          <StatCard icon={Sparkles} tone="indigo" value={b.wo_wait_building || 0}
+            label="รอช่างอาคารตรวจเช็ค"
+            onClick={() => navigate('/simple-wo?pending=building')} />
+          <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_engineer || 0}
+            label="รอวิศวกรรมตรวจเช็ค"
+            onClick={() => navigate('/simple-wo?pending=engineer')} />
+          <StatCard icon={Sparkles} tone="teal" value={b.wo_done_full || washDone}
             label="ดำเนินการเสร็จสิ้น"
             onClick={() => navigate('/simple-wo?view=ready')} />
         </div>

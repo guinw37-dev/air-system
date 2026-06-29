@@ -450,7 +450,8 @@ router.get('/', authMiddleware, async (req, res) => {
              CASE
                WHEN s.sig_team       IS NULL THEN 'team'
                WHEN s.sig_supervisor IS NULL THEN 'supervisor'
-               WHEN s.sig_building IS NULL AND s.sig_engineer IS NULL THEN 'building_engineer'
+               WHEN s.sig_building   IS NULL THEN 'building'   -- รอช่างอาคาร
+               WHEN s.sig_engineer   IS NULL THEN 'engineer'   -- รอวิศวกรรม (อาคารเซ็นแล้ว)
                ELSE 'done'
              END AS pending_stage,
              jsonb_array_length(COALESCE(s.photo_urls,'[]'::jsonb)) AS photo_count
