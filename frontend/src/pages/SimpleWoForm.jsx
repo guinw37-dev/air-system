@@ -130,6 +130,9 @@ export default function SimpleWoForm() {
   const forceCamera = useTenantStore((s) => s.forceCamera)
   const tenantName = useTenantStore((s) => s.name)
 
+  // ทะเบียนแอร์ (wash_units): asset_code → ข้อมูลเครื่อง สำหรับ dropdown + auto-fill
+  const [washMap, setWashMap] = useState({})
+
   // ลูกค้า/สถานที่ — derive จากทะเบียนแอร์ (dropdown ล็อก, ไม่ให้พิมพ์เอง)
   // pts_zone derive จากลูกค้า: ศรีราชา1=PTS1, ศรีราชา2=PTS2 (โรงอื่น=ชื่อสาขา)
   const CLIENT_LABEL = { PTS1: 'โรงพยาบาลพญาไท ศรีราชา 1', PTS2: 'โรงพยาบาลพญาไท ศรีราชา 2' }
@@ -146,8 +149,6 @@ export default function SimpleWoForm() {
   // รหัสเครื่อง + สถานที่ ที่เคยใช้ → datalist กันกรอกผิด (พี่ยิม)
   const [unitCodes, setUnitCodes] = useState([])
   const [locations, setLocations] = useState([])
-  // ทะเบียนแอร์ (wash_units): asset_code → ข้อมูลเครื่อง สำหรับ dropdown + auto-fill
-  const [washMap, setWashMap] = useState({})
   useEffect(() => {
     let alive = true
     api.get('/simple-wo/locations').then((r) => { if (alive) setLocations(r.data || []) }).catch(() => {})
