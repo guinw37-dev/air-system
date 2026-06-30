@@ -128,6 +128,20 @@ export default function SimpleWoForm() {
 
   // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
   const forceCamera = useTenantStore((s) => s.forceCamera)
+  const tenantName = useTenantStore((s) => s.name)
+
+  // ลูกค้า/สถานที่ — derive จากทะเบียนแอร์ (dropdown ล็อก, ไม่ให้พิมพ์เอง)
+  // pts_zone derive จากลูกค้า: ศรีราชา1=PTS1, ศรีราชา2=PTS2 (โรงอื่น=ชื่อสาขา)
+  const CLIENT_LABEL = { PTS1: 'โรงพยาบาลพญาไท ศรีราชา 1', PTS2: 'โรงพยาบาลพญาไท ศรีราชา 2' }
+  const clientLabel = (z) => CLIENT_LABEL[z] || tenantName || z
+  const wuUnits = Object.values(washMap)
+  const wuZones = [...new Set(wuUnits.map((u) => u.pts_zone).filter(Boolean))].sort()
+  const customers = wuZones.map((z) => ({ zone: z, label: clientLabel(z) }))
+  const locsForZone = (z) => [...new Set(wuUnits.filter((u) => u.pts_zone === z).map((u) => u.location).filter(Boolean))].sort()
+  const pickCustomer = (label) => {
+    const c = customers.find((x) => x.label === label)
+    setHeader((h) => ({ ...h, client_name: label, pts_zone: c ? c.zone : h.pts_zone, location: '' }))
+  }
 
   // รหัสเครื่อง + สถานที่ ที่เคยใช้ → datalist กันกรอกผิด (พี่ยิม)
   const [unitCodes, setUnitCodes] = useState([])
@@ -162,6 +176,7 @@ export default function SimpleWoForm() {
       asset_code: code,
       location: u.location || h.location,
       pts_zone: u.pts_zone || h.pts_zone,
+      client_name: u.pts_zone ? clientLabel(u.pts_zone) : h.client_name,
       ac_type: u.ac_type || h.ac_type,
       building: u.building || h.building,
       floor: u.floor || h.floor,
@@ -513,23 +528,22 @@ export default function SimpleWoForm() {
             </div>
             <div>
               <label className="label">ลูกค้า (โรงพยาบาล)</label>
-              <ClientCombobox value={header.client_name} onChange={(v) => setHeader({ ...header, client_name: v })} />
-            </div>
-            <div>
-              <label className="label">สัญญา/โซน (PTS)</label>
-              <input className="input" list="pts-zone-options" placeholder="เช่น PTS1, PTS2"
-                value={header.pts_zone} onChange={(e) => setHeader({ ...header, pts_zone: e.target.value })} />
-              <datalist id="pts-zone-options">
-                <option value="PTS1" />
-                <option value="PTS2" />
-              </datalist>
+              <select className="input" value={header.client_name} onChange={(e) => pickCustomer(e.target.value)}>
+                <option value="">-- เลือกลูกค้า --</option>
+                {customers.map((c) => <option key={c.zone} value={c.label}>{c.label}</option>)}
+                {header.client_name && !customers.some((c) => c.label === header.client_name) &&
+                  <option value={header.client_name}>{header.client_name}</option>}
+              </select>
             </div>
             <div>
               <label className="label">สถานที่ (เว้นว่าง = ใช้ชื่อลูกค้า)</label>
-              <input list="swo-locations" className="input" value={header.location}
-                onChange={(e) => setHeader({ ...header, location: e.target.value })}
-                placeholder="เลือกหรือพิมพ์ เช่น คลินิกบางพระ" />
-              <datalist id="swo-locations">{locations.map((l) => <option key={l} value={l} />)}</datalist>
+              <select className="input" value={header.location}
+                onChange={(e) => setHeader({ ...header, location: e.target.value })}>
+                <option value="">— ใช้ชื่อลูกค้า —</option>
+                {locsForZone(header.pts_zone).map((l) => <option key={l} value={l}>{l}</option>)}
+                {header.location && !locsForZone(header.pts_zone).includes(header.location) &&
+                  <option value={header.location}>{header.location}</option>}
+              </select>
             </div>
             <Text label="อาคาร" value={header.building} onChange={(v) => setHeader({ ...header, building: v })} />
             <Text label="ชั้น" value={header.floor} onChange={(v) => setHeader({ ...header, floor: v })} />
