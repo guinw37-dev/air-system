@@ -97,6 +97,13 @@ async function provisionBranchSchema(schemaName) {
     // ac_type widened 10→30 for fan types (Exhaust Fan Duct Type). Widening a
     // varchar length is metadata-only (no table rewrite). Runs after the drops.
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ALTER COLUMN ac_type TYPE VARCHAR(30)`);
+    // service_targets: เพิ่มคอลัมน์ BEFORE BRANCH_SQL — เพราะ BRANCH_SQL สร้าง index
+    // uq_service_targets_full ที่อ้าง month/location/ac_type (CREATE TABLE IF NOT
+    // EXISTS ข้ามตารางเดิม → คอลัมน์ยังไม่มี → index พังถ้าไม่ ALTER ก่อน).
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS month VARCHAR(7)`);
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
+    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS ac_type VARCHAR(30)`);
+    await c.query(`DROP INDEX IF EXISTS uq_service_targets_zone_wt`);
     await c.query(BRANCH_SQL);
     // ac_repair_jobs.parts added after the table first shipped — ADD on branches
     // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
@@ -107,13 +114,7 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);
     // per-user UI prefs (dashboard layout) on branch users table
     await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
-    // service_targets: เป้าแยกรายเดือน/สถานที่/ตระกูล (เพิ่มภายหลัง)
-    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS month VARCHAR(7)`);
-    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS location VARCHAR(200)`);
-    await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS ac_type VARCHAR(30)`);
-    await c.query(`DROP INDEX IF EXISTS uq_service_targets_zone_wt`);
-    await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_full
-      ON service_targets (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type,''))`);
+    // service_targets index/columns จัดการก่อน BRANCH_SQL แล้ว (ดูด้านบน)
     await c.query(`CREATE TABLE IF NOT EXISTS wash_count_adjust (
       id SERIAL PRIMARY KEY, month VARCHAR(7) NOT NULL, zone VARCHAR(50), work_type VARCHAR(20),
       delta INT NOT NULL DEFAULT 0, note TEXT, created_by INT, created_at TIMESTAMPTZ DEFAULT NOW())`);
