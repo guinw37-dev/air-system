@@ -386,19 +386,20 @@ function BranchDashboard({ b, navigate }) {
 
 // ── super-admin: all-branch grid ─────────────────────────────────────────────
 function AllBranchDashboard({ data, enterBranch }) {
-  const t = data.total;
+  const t = data.total || {};
+  const branches = data.branches || [];
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Highlight icon={Wrench}      value={t.ac_active}  label="งานซ่อมค้าง (รวม)" tone="blue" />
         <Highlight icon={Sparkles}    value={t.ac_close}   label="ซ่อมปิดแล้ว"      tone="sky" />
         <Highlight icon={ReceiptText} value={t.wo_ready}   label="รอวางบิล (รวม)"   tone="teal" />
-        <Highlight icon={Building2}   value={data.branches.length} label="สาขาทั้งหมด" tone="indigo" />
+        <Highlight icon={Building2}   value={branches.length} label="สาขาทั้งหมด" tone="indigo" />
       </div>
 
-      <Card title={`แยกตามสาขา (${data.branches.length})`}>
+      <Card title={`แยกตามสาขา (${branches.length})`}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {data.branches.map((b) => {
+          {branches.map((b) => {
             const woOpen = (b.wo_pending || 0) + (b.wo_ready || 0);
             return (
               <button key={b.id} onClick={() => enterBranch(b)}
