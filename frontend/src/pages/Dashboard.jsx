@@ -329,7 +329,7 @@ function ConditionSection({ navigate }) {
 // ── branch-mode landing — "รายการดำเนินงาน : นับใบงาน" ────────────────────────
 // เน้นให้วิศวกรรม/ช่างอาคาร เข้ามาเห็นว่ามีใบงานรอเซ็นกี่ใบ แล้วกดเข้าไปเซ็นได้เลย.
 // ล้างได้/เหลือ · แอร์เสื่อมสภาพ · เป้าหมาย · กราฟ → ย้ายไปหน้า Dashboard (WashReport).
-function BranchDashboard({ b, navigate }) {
+function BranchDashboard({ b = {}, navigate }) {
   const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const woSegments = WO_TYPE.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const washDone = (b.wo_ready || 0) + (b.wo_billed || 0);          // เซ็นครบ (รอวางบิล + วางบิลแล้ว)

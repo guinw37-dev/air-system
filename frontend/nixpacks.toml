@@ -1,4 +1,10 @@
+# บังคับติดตั้ง dependency ใหม่ทุก deploy (กัน cache node_modules เก่า ไม่มี dep ที่เพิ่งเพิ่ม
+# เช่น react-grid-layout → build fail เงียบ → bundle ค้างตัวเก่า)
+[phases.install]
+cmds = ['npm ci']
+
 [phases.build]
+dependsOn = ['install']
 cmds = ['npm run build']
 
 [start]
