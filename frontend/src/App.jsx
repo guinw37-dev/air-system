@@ -32,6 +32,7 @@ import WashUnits from './pages/WashUnits'
 import WashCalendar from './pages/WashCalendar'
 import LineSettings from './pages/LineSettings'
 import WashAdjust from './pages/WashAdjust'
+import WeekConfig from './pages/WeekConfig'
 import Attendance from './pages/Attendance'
 import AttendanceSummary from './pages/AttendanceSummary'
 
@@ -113,6 +114,9 @@ export default function App() {
         } />
         <Route path="/wash-adjust" element={
           <RequireAuth><RequireRole roles={['admin', 'super_admin']}><WashAdjust /></RequireRole></RequireAuth>
+        } />
+        <Route path="/week-config" element={
+          <RequireAuth><RequireRole roles={['admin', 'super_admin']}><WeekConfig /></RequireRole></RequireAuth>
         } />
         <Route path="/attendance" element={<RequireAuth><Attendance /></RequireAuth>} />
         <Route path="/attendance-summary" element={<RequireAuth><AttendanceSummary /></RequireAuth>} />

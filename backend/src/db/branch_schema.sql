@@ -227,6 +227,24 @@ CREATE TABLE IF NOT EXISTS service_targets (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_service_targets_full
   ON service_targets (zone, COALESCE(month,''), COALESCE(location,''), COALESCE(ac_type,''), COALESCE(work_type, ''));
 
+-- ── ช่วงสัปดาห์กำหนดเอง + เป้าต่อสัปดาห์ต่อประเภท (admin ตั้งเอง) ต่อ zone×เดือน ──
+-- ใช้แทน bucket ตายตัว 1-7/8-14/15-21/22-สิ้นเดือน ในการ์ด Weekly ของ dashboard
+CREATE TABLE IF NOT EXISTS wash_week_config (
+  id           SERIAL PRIMARY KEY,
+  zone         VARCHAR(50),               -- PTS1 | PTS2 | NULL(=ทุกโซน)
+  month        VARCHAR(7) NOT NULL,       -- 'YYYY-MM'
+  week_no      INT NOT NULL,              -- 1..N ลำดับสัปดาห์
+  day_from     INT NOT NULL,              -- วันที่เริ่ม (1..31)
+  day_to       INT NOT NULL,              -- วันที่จบ (1..31)
+  target_major INT NOT NULL DEFAULT 0,
+  target_minor INT NOT NULL DEFAULT 0,
+  target_fan   INT NOT NULL DEFAULT 0,
+  note         TEXT,
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wash_week_config
+  ON wash_week_config (COALESCE(zone,''), month, week_no);
+
 -- ── ปรับยอดล้างเอง (ใส่ย้อนหลัง / โยกข้ามเดือน) — บวก/ลบยอดต่อเดือน×โซน×ประเภท ──
 CREATE TABLE IF NOT EXISTS wash_count_adjust (
   id          SERIAL PRIMARY KEY,
