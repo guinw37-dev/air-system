@@ -379,6 +379,10 @@ export default function WashReport() {
               <tr><td className="py-2 text-slate-600">% สำเร็จ</td>{weeks.map((w) => <td key={w.no} className="py-2 text-center tabular-nums font-semibold" style={{ color: pctTone(w.pct) }}>{w.pct}%</td>)}<td className="py-2 text-center tabular-nums font-semibold">{sumPct}%</td></tr>
             </tbody>
           </table></div>
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-xs text-slate-400">{data.weekly?.custom ? 'ช่วงสัปดาห์กำหนดเอง' : 'สัปดาห์ตายตัว (ยังไม่ตั้งค่า)'}</span>
+            <button onClick={() => navigate('/week-config')} className="text-xs text-blue-600 hover:underline">ตั้งค่าสัปดาห์ →</button>
+          </div>
         </Card>
       )
       case 'bytype_month': return <ByTypeCard title={`แยกประเภทแอร์ — ประจำเดือน ${monthLabel(data.monthly?.month || selMonth)}`} byType={data.byType} period="month" chrome={c} />

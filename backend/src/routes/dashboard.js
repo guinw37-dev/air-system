@@ -406,11 +406,29 @@ async function buildWashReport(req) {
       return { work_type: wt, rows };
     });
 
-    // weekly — 4 buckets of the current month (1-7, 8-14, 15-21, 22-end)
-    const fallbackBucket = grandMonthlyTarget > 0 ? Math.round(grandMonthlyTarget / 4) : 0;
-    const ranges = [[1, 7], [8, 14], [15, 21], [22, dim]];
+    // weekly — ช่วงสัปดาห์กำหนดเองจาก wash_week_config (admin ตั้ง) ต่อ zone+เดือน
+    // ถ้าไม่มี config → fallback 4 bucket ตายตัว (1-7, 8-14, 15-21, 22-สิ้นเดือน) เป้า=เป้าเดือน÷4
     const pad = (n) => String(n).padStart(2, '0');
     const ymPrefix = `${year}-${pad(mon)}`;
+    const cfgCols = 'week_no, day_from, day_to, target_major, target_minor, target_fan';
+    // เลือก config ตรง zone ก่อน (NULL=NULL ก็ตรง); ถ้าเลือก zone แต่ไม่มี → ใช้ config zone ว่าง (ทุกโซน)
+    let cfgRows = await safeRows(db,
+      `SELECT ${cfgCols} FROM wash_week_config
+        WHERE month = $1 AND zone IS NOT DISTINCT FROM $2 ORDER BY week_no`, [month, zone]) || [];
+    if (!cfgRows.length && zone) {
+      cfgRows = await safeRows(db,
+        `SELECT ${cfgCols} FROM wash_week_config
+          WHERE month = $1 AND zone IS NULL ORDER BY week_no`, [month]) || [];
+    }
+    const hasCfg = cfgRows.length > 0;
+    const ranges = hasCfg
+      ? cfgRows.map((c) => [c.day_from, c.day_to])
+      : [[1, 7], [8, 14], [15, 21], [22, dim]];
+    const fallbackBucket = grandMonthlyTarget > 0 ? Math.round(grandMonthlyTarget / 4) : 0;
+    const cfgTargetOf = (i) => {
+      const c = cfgRows[i] || {};
+      return (c.target_major || 0) + (c.target_minor || 0) + (c.target_fan || 0);
+    };
     // done per day-of-month (all work_types combined) → bucket in JS
     const dayRows = await safeRows(db,
       `SELECT EXTRACT(DAY FROM COALESCE(work_date, created_at::date))::int AS d,
@@ -420,32 +438,25 @@ async function buildWashReport(req) {
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1${swoZ}
         GROUP BY d`, [month]) || [];
     const doneByDay = Object.fromEntries(dayRows.map((r) => [r.d, r.done || 0]));
-    // เป้ารายวันจากปฏิทิน (planned+done) → bucket ต่อสัปดาห์; fallback เป้าเดือน÷4
-    const schedDayRows = await safeRows(db,
-      `SELECT EXTRACT(DAY FROM s.planned_date)::int AS d, COUNT(*)::int AS n
-         FROM ${schedFrom}
-        WHERE to_char(s.planned_date,'YYYY-MM') = $1 AND s.status IN ('planned','done')
-        GROUP BY d`, [month]);
-    const schedByDay = Object.fromEntries((schedDayRows || []).map((r) => [r.d, r.n || 0]));
-    const hasWeekPlan = (schedDayRows || []).length > 0;
     const weeks = ranges.map(([from, to], i) => {
-      let done = 0, plan = 0;
-      for (let d = from; d <= to; d++) { done += doneByDay[d] || 0; plan += schedByDay[d] || 0; }
-      const target = hasWeekPlan ? plan : fallbackBucket;
+      let done = 0;
+      for (let d = from; d <= to; d++) done += doneByDay[d] || 0;
+      const target = hasCfg ? cfgTargetOf(i) : fallbackBucket;
       const remaining = Math.max(0, target - done);
       const pct = target > 0 ? Math.round((done / target) * 100) : 0;
       return {
-        no: i + 1,
+        no: hasCfg ? cfgRows[i].week_no : i + 1,
         from: `${ymPrefix}-${pad(from)}`,
         to: `${ymPrefix}-${pad(to)}`,
         label: `${from}-${to} ${TH_MONTHS[mon - 1]}`,
         target, done, remaining, pct,
       };
     });
-    // สัปดาห์ปัจจุบัน (bucket ที่วันนี้อยู่) → การ์ด "สัปดาห์นี้"
+    // สัปดาห์ปัจจุบัน (ช่วงที่วันนี้อยู่) → การ์ด "สัปดาห์นี้"
     const today = parseInt(date.slice(8), 10);
-    const currentNo = ranges.findIndex(([f, t]) => today >= f && today <= t) + 1 || weeks.length;
-    const weekly = { month, weeks, current_no: currentNo };
+    const curIdx = ranges.findIndex(([f, t]) => today >= f && today <= t);
+    const currentNo = curIdx >= 0 ? weeks[curIdx].no : (weeks.length ? weeks[weeks.length - 1].no : 1);
+    const weekly = { month, weeks, current_no: currentNo, custom: hasCfg };
 
     return { date, daily, repair, monthly, yearly, weekly, byType };
 }
