@@ -296,9 +296,9 @@ export default function WashReport() {
           <input type="date" value={selDate || data.date} onChange={(e) => setSelDate(e.target.value)}
             className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 w-full mb-3" />
           <div className="flex items-baseline justify-between mb-3">
-            <div className="flex items-baseline gap-2"><span className="text-slate-500">รวม</span>
-              <span className="text-4xl font-bold text-blue-900">{data.daily.total}</span><span className="text-slate-500">ตัว</span></div>
-            <span className="text-xs text-slate-400">เป้า/วัน {data.daily.target}</span>
+            <div className="flex items-baseline gap-2"><span className="text-slate-500">ยอดล้าง/เป้าหมาย</span>
+              <span className="text-4xl font-bold text-blue-900">{data.daily.total}</span>
+              <span className="text-xl text-slate-400">/ {data.daily.target}</span><span className="text-slate-500">ตัว</span></div>
           </div>
           <div className="space-y-2.5 text-sm">
             {[['major', data.daily.major, data.daily.target_major], ['minor', data.daily.minor, data.daily.target_minor], ['fan', data.daily.fan, data.daily.target_fan]].map(([k, v, tg]) => {
@@ -350,7 +350,7 @@ export default function WashReport() {
           <ResponsiveContainer width="100%" height={150}>
             <BarChart data={data.yearly.series || []} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 10 }} interval={0} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="target" name="เป้า/เดือน" fill="#60a5fa" radius={[3, 3, 0, 0]} /><Bar dataKey="total" name="ยอดล้าง" fill="#1e3a8a" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="major" stackId="w" name="ล้างใหญ่" fill="#1e3a8a" /><Bar dataKey="minor" stackId="w" name="ล้างย่อย" fill="#2563eb" /><Bar dataKey="fan" stackId="w" name="พัดลม" fill="#60a5fa" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           <table className="w-full text-sm mt-2">

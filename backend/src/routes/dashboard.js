@@ -265,21 +265,6 @@ async function buildWashReport(req) {
       grandMonthlyTarget += t.target || 0;
       if (t.work_type) targetByType[t.work_type] = (targetByType[t.work_type] || 0) + (t.target || 0);
     }
-    const perDay = (v) => (dim > 0 ? Math.round((v || 0) / dim) : 0);
-    // เป้า/วัน = จำนวนนัดในปฏิทินล้างแอร์ (wash_schedule) ของวันนั้น ต่อประเภท
-    // (นับ planned + done = ที่วางแผนไว้). fallback เป็น เป้าเดือน÷วัน ถ้ายังไม่มีตาราง/แผน.
-    const schedRows = await safeRows(db,
-      `SELECT s.work_type, COUNT(*)::int AS n
-         FROM ${schedFrom}
-        WHERE s.planned_date = $1::date AND s.status IN ('planned','done')
-        GROUP BY s.work_type`, [date]);
-    const schedBy = Object.fromEntries((schedRows || []).map((r) => [r.work_type, r.n || 0]));
-    const hasPlan = (schedRows || []).length > 0;
-    daily.target_major = hasPlan ? (schedBy.major || 0) : perDay(targetByType.major);
-    daily.target_minor = hasPlan ? (schedBy.minor || 0) : perDay(targetByType.minor);
-    daily.target_fan = hasPlan ? (schedBy.fan || 0) : perDay(targetByType.fan);
-    daily.target = daily.target_major + daily.target_minor + daily.target_fan;
-
     // monthly done per work_type (current month)
     const monRows = await safeRows(db,
       `SELECT work_type, ${DONE_EXPR} AS done
@@ -296,6 +281,22 @@ async function buildWashReport(req) {
     const monDoneBy = Object.fromEntries(WASH_TYPES.map((wt) => [wt, Math.max(0, (monDoneByRaw[wt] || 0) + (monAdjBy[wt] || 0))]));
     // เป้าเดือน = จากหน้าเป้าหมายล้าง (service_targets) ของเดือนที่เลือก ต่อประเภท
     const monTargetOf = (wt) => (targetByType[wt] || 0);
+
+    // เป้า/วัน = (เป้าเดือน − ล้างแล้วในเดือน) ÷ วันที่เหลือในเดือน  ต่อประเภท
+    // วันที่เหลือ = นับจากวันที่เลือกถึงสิ้นเดือน (รวมวันนี้). ถ้าวันที่เลือกอยู่คนละเดือน
+    // กับเดือนที่เลือก ให้ถือว่าเริ่มต้นเดือน (ยังไม่ล้าง).
+    const dSameMonth = date.slice(0, 7) === month;
+    const dDay = dSameMonth ? parseInt(date.slice(8, 10), 10) : 1;
+    const dLeft = Math.max(1, dim - dDay + 1);
+    const perDayRemain = (wt) => {
+      const remain = Math.max(0, monTargetOf(wt) - (dSameMonth ? (monDoneBy[wt] || 0) : 0));
+      return Math.ceil(remain / dLeft);
+    };
+    daily.target_major = perDayRemain('major');
+    daily.target_minor = perDayRemain('minor');
+    daily.target_fan   = perDayRemain('fan');
+    daily.target = daily.target_major + daily.target_minor + daily.target_fan;
+
     const monthly = {
       month,
       types: WASH_TYPES.map((wt) => ({
@@ -303,13 +304,23 @@ async function buildWashReport(req) {
       })),
     };
 
-    // yearly target from wash_units freq (active); done per work_type (current year)
-    const freqRows = await safeRows(db,
-      `SELECT COALESCE(SUM(freq_major),0)::int AS major,
-              COALESCE(SUM(freq_minor),0)::int AS minor,
-              COALESCE(SUM(freq_fan),0)::int   AS fan
-         FROM wash_units WHERE active = true${wuZ}`);
-    const freq = (freqRows && freqRows[0]) || { major: 0, minor: 0, fan: 0 };
+    // เป้าปี = SUM service_targets ตลอด 12 เดือนของปีนั้น ต่อ (work_type × ac_type)
+    // month = 'YYYY-MM' นับครั้งเดียว; month IS NULL (ทุกเดือน) นับ 12 ครั้ง
+    const styRows = await safeRows(db,
+      `SELECT work_type, COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type,
+              COALESCE(SUM(monthly_target) FILTER (WHERE month LIKE $1),0)::int
+              + 12 * COALESCE(SUM(monthly_target) FILTER (WHERE month IS NULL),0)::int AS target
+         FROM service_targets
+        WHERE (month LIKE $1 OR month IS NULL)${stZ}
+        GROUP BY 1, 2`, [`${year}-%`]) || [];
+    const yrTargetByType = {};              // wt → เป้าปีรวม
+    const styByAcWt = {};                    // 'wt|ac' → เป้าปี
+    for (const r of styRows) {
+      if (r.work_type) yrTargetByType[r.work_type] = (yrTargetByType[r.work_type] || 0) + (r.target || 0);
+      const k = `${r.work_type}|${r.ac_type}`;
+      styByAcWt[k] = (styByAcWt[k] || 0) + (r.target || 0);
+    }
+    // done per work_type (current year) — นับงานล้างจริงทั้งหมด
     const yrRows = await safeRows(db,
       `SELECT work_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
@@ -332,7 +343,7 @@ async function buildWashReport(req) {
     const yearly = {
       year,
       types: WASH_TYPES.map((wt) => ({
-        work_type: wt, target: freq[wt] || 0, done: yrDoneBy[wt] || 0,
+        work_type: wt, target: yrTargetByType[wt] || 0, done: yrDoneBy[wt] || 0,
       })),
     };
 
@@ -344,7 +355,7 @@ async function buildWashReport(req) {
         WHERE deleted_at IS NULL
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY m, work_type`, [year]) || [];
-    const yrGrandTarget = (freq.major || 0) + (freq.minor || 0) + (freq.fan || 0);
+    const yrGrandTarget = WASH_TYPES.reduce((s, wt) => s + (yrTargetByType[wt] || 0), 0);
     const monthlyTargetLine = Math.round(yrGrandTarget / 12);
     const seriesBy = {};   // m → { major, minor, fan }
     for (const r of yrMonRows) {
@@ -358,15 +369,8 @@ async function buildWashReport(req) {
       return { month: TH_MONTHS[i], major, minor, fan, total: major + minor + fan, target: monthlyTargetLine };
     });
 
-    // ── แยกประเภทแอร์ (ac_type) — done เดือน/ปี + เป้าจาก wash_units freq ────────
-    // เป้าปี ต่อ (work_type × ac_type) = SUM(freq_X) group by ac_type. เป้าเดือน = ÷12.
-    const acTgtRows = await safeRows(db,
-      `SELECT COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type,
-              COALESCE(SUM(freq_major),0)::int AS major,
-              COALESCE(SUM(freq_minor),0)::int AS minor,
-              COALESCE(SUM(freq_fan),0)::int   AS fan
-         FROM wash_units WHERE active = true${wuZ}
-        GROUP BY 1`) || [];
+    // ── แยกประเภทแอร์ (ac_type) — done เดือน/ปี + เป้าจาก service_targets (SUM 12 เดือน) ──
+    // เป้าปี ต่อ (work_type × ac_type) = styByAcWt (คำนวณไว้ด้านบน). เป้าเดือน = ÷12.
     const acDoneMon = await safeRows(db,
       `SELECT work_type, COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
@@ -380,18 +384,17 @@ async function buildWashReport(req) {
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY 1, 2`, [year]) || [];
     // index helpers
-    const tgtByAc = Object.fromEntries(acTgtRows.map((r) => [r.ac_type, r]));
     const key = (wt, ac) => `${wt}|${ac}`;
     const doneMonBy = Object.fromEntries(acDoneMon.map((r) => [key(r.work_type, r.ac_type), r.done || 0]));
     const doneYrBy = Object.fromEntries(acDoneYr.map((r) => [key(r.work_type, r.ac_type), r.done || 0]));
     // union of ac_types seen anywhere, per work_type
     const byType = WASH_TYPES.map((wt) => {
       const acs = new Set();
-      for (const r of acTgtRows) if ((r[wt] || 0) > 0) acs.add(r.ac_type);
+      for (const r of styRows) if (r.work_type === wt && (r.target || 0) > 0) acs.add(r.ac_type);
       for (const r of acDoneMon) if (r.work_type === wt) acs.add(r.ac_type);
       for (const r of acDoneYr) if (r.work_type === wt) acs.add(r.ac_type);
       const rows = Array.from(acs).map((ac) => {
-        const targetYear = (tgtByAc[ac] && tgtByAc[ac][wt]) || 0;
+        const targetYear = styByAcWt[key(wt, ac)] || 0;
         return {
           ac_type: ac,
           done_month: doneMonBy[key(wt, ac)] || 0,
