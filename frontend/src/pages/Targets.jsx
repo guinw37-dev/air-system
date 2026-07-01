@@ -68,7 +68,12 @@ export default function Targets() {
       work_type: r.work_type || '', monthly_target: String(r.monthly_target), note: r.note || '' });
   }
 
-  const view = rows.filter((r) => !filterZone || r.zone === filterZone);
+  const WT_ORDER = { major: 0, minor: 1, fan: 2, '': 3 };
+  const view = rows.filter((r) => !filterZone || r.zone === filterZone)
+    .sort((a, b) => (a.month || '').localeCompare(b.month || '')
+      || String(a.zone).localeCompare(String(b.zone))
+      || (WT_ORDER[a.work_type || ''] ?? 9) - (WT_ORDER[b.work_type || ''] ?? 9)
+      || String(a.location || '').localeCompare(String(b.location || '')));
 
   return (
     <Layout>

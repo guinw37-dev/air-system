@@ -109,21 +109,29 @@ function TargetSection({ month, navigate, chrome }) {
   useEffect(() => {
     api.get('/targets/progress', { params: month ? { month } : {} }).then((r) => setData(r.data)).catch(() => {})
   }, [month])
+  // เรียง ล้างใหญ่ → ล้างย่อย → พัดลม → รวม แล้วตามสถานที่
+  const WT_ORDER = { major: 0, minor: 1, fan: 2, '': 3 }
+  const rows = [...(data?.targets || [])].sort((a, b) =>
+    (WT_ORDER[a.work_type || ''] ?? 9) - (WT_ORDER[b.work_type || ''] ?? 9)
+    || String(a.location || '').localeCompare(String(b.location || '')))
   return (
-    <Card title="เป้าหมายล้าง" icon={Target} chrome={chrome}>
-      {!data || !data.targets?.length ? <p className="text-sm text-slate-400 py-2">ยังไม่ตั้งเป้าหมาย</p> : (
+    <Card title="เป้าหมายล้างประจำเดือน" icon={Target} chrome={chrome}>
+      {!rows.length ? <p className="text-sm text-slate-400 py-2">ยังไม่ตั้งเป้าหมายเดือนนี้</p> : (
         <>
-          <div className="space-y-3">
-            {data.targets.map((t) => {
+          <div className="space-y-2.5">
+            {rows.map((t) => {
               const tone = pctTone(t.pct)
               return (
                 <div key={t.id}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-slate-700">{t.zone} <span className="text-slate-400">· {WT[t.work_type || ''] || t.work_type || 'รวม'}</span></span>
-                    <span className="text-slate-500"><b className="text-slate-800">{t.done}</b>/{t.effective_target}
+                  <div className="flex items-center justify-between text-sm mb-1 gap-2">
+                    <span className="text-slate-700 truncate">
+                      <b>{WT[t.work_type || ''] || 'รวม'}</b>
+                      <span className="text-slate-400"> · {t.location || 'ทุกที่'}{t.ac_type ? ` · ${t.ac_type}` : ''}</span>
+                    </span>
+                    <span className="text-slate-500 shrink-0"><b className="text-slate-800">{t.done}</b>/{t.effective_target}
                       <b className="ml-2" style={{ color: tone }}>{t.pct}%</b></span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${Math.min(100, t.pct)}%`, background: tone }} />
                   </div>
                 </div>

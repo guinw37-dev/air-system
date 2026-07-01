@@ -294,14 +294,8 @@ async function buildWashReport(req) {
         WHERE month = $1${adjZ} AND work_type IS NOT NULL GROUP BY work_type`, [month]) || [];
     const monAdjBy = Object.fromEntries(monAdj.map((r) => [r.work_type, r.d || 0]));
     const monDoneBy = Object.fromEntries(WASH_TYPES.map((wt) => [wt, Math.max(0, (monDoneByRaw[wt] || 0) + (monAdjBy[wt] || 0))]));
-    // เป้าเดือน = จำนวนนัดในปฏิทินของเดือนนั้น (planned+done) ต่อประเภท; fallback service_targets
-    const schedMonRows = await safeRows(db,
-      `SELECT s.work_type, COUNT(*)::int AS n FROM ${schedFrom}
-        WHERE to_char(s.planned_date,'YYYY-MM') = $1 AND s.status IN ('planned','done')
-        GROUP BY s.work_type`, [month]);
-    const schedMonBy = Object.fromEntries((schedMonRows || []).map((r) => [r.work_type, r.n || 0]));
-    const schedMonTotal = (schedMonRows || []).reduce((s, r) => s + (r.n || 0), 0);
-    const monTargetOf = (wt) => (schedMonTotal > 0 ? (schedMonBy[wt] || 0) : (targetByType[wt] || 0));
+    // เป้าเดือน = จากหน้าเป้าหมายล้าง (service_targets) ของเดือนที่เลือก ต่อประเภท
+    const monTargetOf = (wt) => (targetByType[wt] || 0);
     const monthly = {
       month,
       types: WASH_TYPES.map((wt) => ({
