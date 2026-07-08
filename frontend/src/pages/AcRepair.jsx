@@ -22,7 +22,8 @@ const STATUS_COLOR = {
   Cancel:    'bg-red-100 text-red-700 border-red-300',
 };
 const ALL_STATUSES = ['Register', 'Assign', 'Work On', 'Clear', 'Close', 'Cancel'];
-const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On', 'Clear'];
+// งานค้าง = ยังไม่ซ่อมเสร็จ (Register/Assign/Work On). Clear(ซ่อมเสร็จ)/Close/Cancel ไม่นับค้าง
+const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On'];
 
 function StatusBadge({ status }) {
   return (

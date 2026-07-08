@@ -50,7 +50,8 @@ router.get('/', async (req, res) => {
   let where = '';
   const params = [];
   if (status === 'active') {
-    where = `WHERE j.status NOT IN ('Close','Cancel')`;
+    // งานค้าง = ยังไม่ซ่อมเสร็จ; Clear(ซ่อมเสร็จ)/Close/Cancel ไม่นับเป็นงานค้าง
+    where = `WHERE j.status NOT IN ('Clear','Close','Cancel')`;
   } else if (status && status !== 'all') {
     params.push(status);
     where = `WHERE j.status = $1`;
