@@ -745,6 +745,28 @@ function measureCell(it, phase) {
   return '—';
 }
 
+// ✓ ต้องขึ้นหน้าแถวที่มีการบันทึกค่า (ลูกค้า 08-07) — แถว measurement/number ที่มี
+// ค่าก่อน/หลังถือว่าตรวจแล้ว แม้ checked จะไม่ถูกติ๊กไว้.
+function rowHasReading(it) {
+  const hasVal = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+  const any = (keys) => keys.some((k) => hasVal(it[k]));
+  const vt = it.value_type;
+  if (vt === 'number' || vt === 'before_after') return hasVal(it.value_before) || hasVal(it.value_after);
+  if (vt === 'rst_amp') {
+    return any(['val_r_before', 'val_s_before', 'val_t_before', 'val_ln_before', 'val_l_before',
+                'val_r_after', 'val_s_after', 'val_t_after', 'val_ln_after', 'val_l_after']);
+  }
+  if (vt === 'pressure_pair') {
+    return any(['val_suction_before', 'val_discharge_before',
+                'val_suction_after', 'val_discharge_after', 'val_suction', 'val_discharge']);
+  }
+  if (vt === 'ln_vi') {
+    return any(['val_r_after', 'val_s_after', 'val_t_after', 'val_ln_after', 'val_l_after',
+                'val_r_v_after', 'val_s_v_after', 'val_t_v_after']);
+  }
+  return false;
+}
+
 // Build the ONE full-width TW checklist table for a unit. Renders all 5
 // categories in fixed order with a vertical teal label column (rowspan).
 function checklistTable(unit) {
@@ -764,14 +786,12 @@ function checklistTable(unit) {
       const isMeasure = MEASUREMENT_TYPES.has(vt);
       const isCheckLike = vt === 'check' || vt === 'text';
 
-      // ตรวจเช็ค column — measurement rows leave tick blank; check + number rows
-      // tick from it.checked (number rows are now tickable when they have data).
+      // ตรวจเช็ค column — ✓ from it.checked, OR from a recorded reading
+      // (measurement/number rows with ก่อน/หลัง data must show ✓ — ลูกค้า 08-07).
       let tickCellHtml;
       if (!applies) {
         tickCellHtml = '<td class="tk">—</td>';
-      } else if (isMeasure) {
-        tickCellHtml = '<td class="tk"></td>';
-      } else if (it.checked) {
+      } else if (it.checked || rowHasReading(it)) {
         tickCellHtml = `<td class="tk on">${TICK}</td>`;
       } else {
         tickCellHtml = '<td class="tk"></td>';
