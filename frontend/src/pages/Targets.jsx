@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
+import { useHasZones } from '../lib/zones';
 
 const WT = [
   { key: '',      label: 'รวมทุกประเภท' },
@@ -15,6 +16,9 @@ const monthLabel = (m) => (m ? `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}` : 
 const EMPTY = { zone: 'PTS1', month: '', location: '', ac_type: '', work_type: '', monthly_target: '', note: '' };
 
 export default function Targets() {
+  // สาขาที่ไม่มีโซน (ทุกที่ยกเว้นศรีราชา): ซ่อน UI โซน + เก็บ zone เป็น 'ALL' sentinel
+  // (service_targets.zone NOT NULL + เป็น key ของ upsert — ค่าคงที่ตัวเดียวพอ)
+  const hasZones = useHasZones();
   const [rows, setRows] = useState([]);
   const [units, setUnits] = useState([]);     // ทะเบียน → distinct location/ac_type
   const [loading, setLoading] = useState(true);
@@ -32,8 +36,8 @@ export default function Targets() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get('/wash-units').then((r) => setUnits(r.data || [])).catch(() => {}); }, []);
 
-  // dropdown options จากทะเบียน (กรองตามโซนที่ฟอร์มเลือก)
-  const inZone = units.filter((u) => !form.zone || u.pts_zone === form.zone);
+  // dropdown options จากทะเบียน (กรองตามโซนที่ฟอร์มเลือก — สาขาไม่มีโซนใช้ทั้งหมด)
+  const inZone = hasZones ? units.filter((u) => !form.zone || u.pts_zone === form.zone) : units;
   const locOpts = [...new Set(inZone.map((u) => u.location).filter(Boolean))].sort();
   const acOpts = [...new Set(units.map((u) => u.ac_type).filter(Boolean))].sort();
 
@@ -41,11 +45,11 @@ export default function Targets() {
 
   async function save(e) {
     e.preventDefault();
-    if (!form.zone.trim()) { setErr('ระบุโซน'); return; }
+    if (hasZones && !form.zone.trim()) { setErr('ระบุโซน'); return; }
     setSaving(true); setErr('');
     try {
       await api.post('/targets', {
-        zone: form.zone.trim(),
+        zone: hasZones ? form.zone.trim() : 'ALL',
         month: form.month || null,
         location: form.location || null,
         ac_type: form.ac_type || null,
@@ -86,12 +90,14 @@ export default function Targets() {
         {/* form */}
         <form onSubmit={save} className="bg-white border rounded-2xl p-4 space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">ลูกค้า/โซน</label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
-                {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-              </select>
-            </div>
+            {hasZones && (
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">ลูกค้า/โซน</label>
+                <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
+                  {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-gray-600 mb-1">เดือน <span className="text-gray-400">(ว่าง=ทุกเดือน)</span></label>
               <input type="month" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.month} onChange={set('month')} />
@@ -133,13 +139,15 @@ export default function Targets() {
         </form>
 
         {/* filter + list */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">ดูเฉพาะ:</span>
-          <select className="border rounded-lg px-2 py-1 text-sm" value={filterZone} onChange={(e) => setFilterZone(e.target.value)}>
-            <option value="">ทุกลูกค้า</option>
-            {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
-        </div>
+        {hasZones && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">ดูเฉพาะ:</span>
+            <select className="border rounded-lg px-2 py-1 text-sm" value={filterZone} onChange={(e) => setFilterZone(e.target.value)}>
+              <option value="">ทุกลูกค้า</option>
+              {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+        )}
 
         {loading ? <p className="text-center text-gray-400 py-8">กำลังโหลด…</p>
           : view.length === 0 ? <p className="text-center text-gray-400 py-8">ยังไม่มีเป้าหมาย</p>
@@ -147,14 +155,14 @@ export default function Targets() {
             <div className="bg-white border rounded-2xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-gray-500 border-b bg-gray-50">
-                  <th className="py-2.5 px-3">ลูกค้า</th><th className="py-2.5 px-2">เดือน</th><th className="py-2.5 px-2">สถานที่</th>
+                  {hasZones && <th className="py-2.5 px-3">ลูกค้า</th>}<th className="py-2.5 px-2">เดือน</th><th className="py-2.5 px-2">สถานที่</th>
                   <th className="py-2.5 px-2">ตระกูล</th><th className="py-2.5 px-2">ประเภท</th>
                   <th className="py-2.5 px-2 text-right">เป้า/เดือน</th><th className="py-2.5 px-2">หมายเหตุ</th><th></th>
                 </tr></thead>
                 <tbody>
                   {view.map((r) => (
                     <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-2.5 px-3 font-medium">{r.zone}</td>
+                      {hasZones && <td className="py-2.5 px-3 font-medium">{r.zone}</td>}
                       <td className="py-2.5 px-2 text-gray-600">{monthLabel(r.month)}</td>
                       <td className="py-2.5 px-2 text-gray-600">{r.location || 'ทุกที่'}</td>
                       <td className="py-2.5 px-2 text-gray-600">{r.ac_type || 'ทุกตระกูล'}</td>

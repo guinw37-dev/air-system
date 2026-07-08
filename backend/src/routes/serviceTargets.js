@@ -110,16 +110,18 @@ router.get('/progress', authMiddleware, async (req, res) => {
       `SELECT zone, work_type, SUM(delta)::int AS d FROM wash_count_adjust
         WHERE month = $1 GROUP BY zone, work_type`, [month]);
     // ยอดล้างของเป้าหนึ่ง = done จริง (ตรง dimension) + adjust (zone×work_type, เฉพาะเป้าที่ไม่ระบุสถานที่/ตระกูล)
+    // zone 'ALL' = เป้าของสาขาที่ไม่มีโซน (ทุกที่ยกเว้นศรีราชา) → นับทุกใบไม่สนโซน
+    const zoneMatch = (tZone, aZone) => tZone === 'ALL' || aZone === tZone;
     const doneFor = (t) => {
       let n = actual.reduce((s, a) => {
-        if (a.zone !== t.zone) return s;
+        if (!zoneMatch(t.zone, a.zone)) return s;
         if (t.work_type && a.work_type !== t.work_type) return s;
         if (t.location && a.location !== t.location) return s;
         if (t.ac_type && a.ac_type !== t.ac_type) return s;
         return s + a.done;
       }, 0);
       if (!t.location && !t.ac_type) {
-        n += adj.reduce((s, a) => (a.zone === t.zone && (!t.work_type || a.work_type === t.work_type) ? s + (a.d || 0) : s), 0);
+        n += adj.reduce((s, a) => (zoneMatch(t.zone, a.zone) && (!t.work_type || a.work_type === t.work_type) ? s + (a.d || 0) : s), 0);
       }
       return Math.max(0, n);
     };

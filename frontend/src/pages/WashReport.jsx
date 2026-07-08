@@ -11,6 +11,7 @@ import dayjs from 'dayjs'
 import api from '../api/client'
 import Layout from '../components/Layout'
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
+import { useHasZones } from '../lib/zones'
 
 const GridLayout = WidthProvider(Responsive)
 const PREF_KEY = 'dashboard_washreport'
@@ -202,6 +203,7 @@ export default function WashReport() {
   const [selDate, setSelDate] = useState('')
   const [selMonth, setSelMonth] = useState(dayjs().format('YYYY-MM'))
   const [selZone, setSelZone] = useState('')   // '' = ทุกโซน
+  const hasZones = useHasZones()               // โซนมีเฉพาะศรีราชา
 
   // layout state (per-account, saved to users.ui_prefs)
   const [layout, setLayout] = useState(DEFAULT_LAYOUT)
@@ -434,12 +436,14 @@ export default function WashReport() {
               <CalendarDays size={18} /><span>รายงานประจำวันที่ : {thaiDate(data.date)}</span>
               <span className="text-xs text-slate-400 font-normal">· ลากหัวการ์ดเพื่อย้าย · ลากมุมเพื่อขยาย</span>
               <div className="ml-auto flex items-center gap-2">
-                <select value={selZone} onChange={(e) => setSelZone(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600">
-                  <option value="">ทุกโซน</option>
-                  <option value="PTS1">PTS1</option>
-                  <option value="PTS2">PTS2</option>
-                </select>
+                {hasZones && (
+                  <select value={selZone} onChange={(e) => setSelZone(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600">
+                    <option value="">ทุกโซน</option>
+                    <option value="PTS1">PTS1</option>
+                    <option value="PTS2">PTS2</option>
+                  </select>
+                )}
                 <button onClick={reset} className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50"><RotateCcw size={15} /> รีเซ็ต</button>
                 <button onClick={save} disabled={saving || !dirty} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white ${dirty ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300'} disabled:opacity-60`}><Save size={15} /> {saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
                 <button onClick={exportExcel} disabled={exporting} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"><FileSpreadsheet size={16} /> {exporting ? 'กำลังออก…' : 'Export Excel'}</button>

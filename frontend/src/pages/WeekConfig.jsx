@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
+import { useHasZones } from '../lib/zones';
 
 const ZONES = ['PTS1', 'PTS2'];
 const monthLabel = (m) => (m ? `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}` : '—');
@@ -13,6 +14,7 @@ const EMPTY = {
 };
 
 export default function WeekConfig() {
+  const hasZones = useHasZones();   // โซนมีเฉพาะศรีราชา — สาขาอื่นซ่อน UI (zone ว่าง = ทุกโซน)
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -102,13 +104,15 @@ export default function WeekConfig() {
         {/* form */}
         <form onSubmit={save} className="bg-white border rounded-2xl p-4 space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">ลูกค้า/โซน <span className="text-gray-400">(ว่าง=ทุกโซน)</span></label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
-                <option value="">ทุกโซน</option>
-                {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-              </select>
-            </div>
+            {hasZones && (
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">ลูกค้า/โซน <span className="text-gray-400">(ว่าง=ทุกโซน)</span></label>
+                <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
+                  <option value="">ทุกโซน</option>
+                  {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-gray-600 mb-1">เดือน</label>
               <input type="month" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.month} onChange={set('month')} />
@@ -153,16 +157,18 @@ export default function WeekConfig() {
               {saving ? 'กำลังบันทึก…' : 'บันทึกสัปดาห์'}
             </button>
           </div>
-          <p className="text-xs text-gray-400">บันทึกซ้ำ โซน+เดือน+สัปดาห์เดิม = แก้ค่าเดิม</p>
+          <p className="text-xs text-gray-400">{hasZones ? 'บันทึกซ้ำ โซน+เดือน+สัปดาห์เดิม = แก้ค่าเดิม' : 'บันทึกซ้ำ เดือน+สัปดาห์เดิม = แก้ค่าเดิม'}</p>
         </form>
 
         {/* filter + list */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-500">ดูเฉพาะ:</span>
-          <select className="border rounded-lg px-2 py-1 text-sm" value={filterZone} onChange={(e) => setFilterZone(e.target.value)}>
-            <option value="">ทุกโซน</option>
-            {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
+          {hasZones && (
+            <select className="border rounded-lg px-2 py-1 text-sm" value={filterZone} onChange={(e) => setFilterZone(e.target.value)}>
+              <option value="">ทุกโซน</option>
+              {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+          )}
           <select className="border rounded-lg px-2 py-1 text-sm" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
             <option value="">ทุกเดือน</option>
             {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
@@ -175,7 +181,7 @@ export default function WeekConfig() {
             <div className="bg-white border rounded-2xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-gray-500 border-b bg-gray-50">
-                  <th className="py-2.5 px-3">โซน</th><th className="py-2.5 px-2">เดือน</th><th className="py-2.5 px-2">สัปดาห์</th>
+                  {hasZones && <th className="py-2.5 px-3">โซน</th>}<th className="py-2.5 px-2">เดือน</th><th className="py-2.5 px-2">สัปดาห์</th>
                   <th className="py-2.5 px-2">ช่วงวัน</th>
                   <th className="py-2.5 px-2 text-right">ใหญ่</th><th className="py-2.5 px-2 text-right">ย่อย</th>
                   <th className="py-2.5 px-2 text-right">พัดลม</th><th className="py-2.5 px-2 text-right">รวม</th><th></th>
@@ -183,7 +189,7 @@ export default function WeekConfig() {
                 <tbody>
                   {view.map((r) => (
                     <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-2.5 px-3 font-medium">{r.zone || 'ทุกโซน'}</td>
+                      {hasZones && <td className="py-2.5 px-3 font-medium">{r.zone || 'ทุกโซน'}</td>}
                       <td className="py-2.5 px-2 text-gray-600">{monthLabel(r.month)}</td>
                       <td className="py-2.5 px-2 text-gray-600">W{r.week_no}</td>
                       <td className="py-2.5 px-2 text-gray-600">{r.day_from}–{r.day_to}</td>
