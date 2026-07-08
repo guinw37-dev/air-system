@@ -241,14 +241,14 @@ async function buildWashReport(req) {
               COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int AS done,
               COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On'))::int AS pending
          FROM ac_repair_jobs
-        WHERE to_char(created_at,'YYYY-MM') = $1`, [month]);
+        WHERE to_char(register_time,'YYYY-MM') = $1`, [month]);
     const r0 = (repRows && repRows[0]) || {};
     // อะไหล่ที่ใช้เดือนนี้ — นับจาก parts JSONB ของใบงานซ่อม (รายการ + จำนวนงานที่มีอะไหล่)
     const partsRows = await safeRows(db,
       `SELECT COALESCE(SUM(jsonb_array_length(COALESCE(parts,'[]'::jsonb))),0)::int AS lines,
               COUNT(*) FILTER (WHERE jsonb_array_length(COALESCE(parts,'[]'::jsonb)) > 0)::int AS jobs
          FROM ac_repair_jobs
-        WHERE status <> 'Cancel' AND to_char(created_at,'YYYY-MM') = $1`, [month]);
+        WHERE status <> 'Cancel' AND to_char(register_time,'YYYY-MM') = $1`, [month]);
     const p0 = (partsRows && partsRows[0]) || {};
     const repair = {
       done: r0.done || 0, total: r0.total || 0, pending: r0.pending || 0, month,
