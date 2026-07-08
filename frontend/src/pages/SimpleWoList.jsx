@@ -52,7 +52,7 @@ export default function SimpleWoList() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pending = searchParams.get('pending') || ''   // '' | team | supervisor | building | engineer
-  const view = searchParams.get('view') || ''          // '' (default=งานค้าง) | ready (รอวางบิล) | all
+  const view = searchParams.get('view') || ''          // '' (default=งานค้าง) | ready (รอวางบิล) | done (เซ็นครบ รวมวางบิลแล้ว) | all
   const { user } = useAuthStore()
 
   const role = user?.role
@@ -89,7 +89,7 @@ export default function SimpleWoList() {
   const [error, setError] = useState('')
   const load = () => {
     setLoading(true); setError('')
-    api.get('/simple-wo')
+    api.get('/simple-wo', { params: { limit: 1000 } })
       .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
       .catch((e) => {
         setRows([])
@@ -114,6 +114,7 @@ export default function SimpleWoList() {
   const inView = (r) => {
     if (pending) return r.pending_stage === pending && !isApproved(r)
     if (view === 'ready') return r.all_signed && !isApproved(r)
+    if (view === 'done') return r.all_signed || isApproved(r)   // เสร็จสิ้น = เซ็นครบ รวมที่วางบิลแล้ว
     if (view === 'all') return true
     // default: งานที่ยังไม่เสร็จ (ยังไม่วางบิล); ช่าง = เฉพาะใบที่ตัวเองสร้าง
     if (isApproved(r)) return false
@@ -314,6 +315,7 @@ export default function SimpleWoList() {
         {(() => {
           const label = pending ? PENDING_LABEL[pending]
             : view === 'ready' ? 'รอวางบิล (เซ็นครบ)'
+            : view === 'done' ? 'ดำเนินการเสร็จสิ้น (เซ็นครบ รวมวางบิลแล้ว)'
             : view === 'all' ? 'ทั้งหมด'
             : null
           if (!label) return null

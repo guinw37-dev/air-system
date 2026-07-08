@@ -351,9 +351,9 @@ function BranchDashboard({ b = {}, navigate }) {
           <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_engineer || 0}
             label="รอวิศวกรรมตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=engineer')} />
-          <StatCard icon={Sparkles} tone="teal" value={b.wo_done_full || washDone}
+          <StatCard icon={Sparkles} tone="teal" value={washDone}
             label="ดำเนินการเสร็จสิ้น"
-            onClick={() => navigate('/simple-wo?view=ready')} />
+            onClick={() => navigate('/simple-wo?view=done')} />
         </div>
       </div>
 
