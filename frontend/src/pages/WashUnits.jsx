@@ -3,6 +3,7 @@ import { ClipboardList, Plus, Pencil, Trash2, Upload, X, AlertCircle, QrCode, Pr
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useHasZones } from '../lib/zones'
 import QRCode from 'qrcode'
 
 const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
@@ -181,6 +182,7 @@ async function printAllQr(rows) {
 
 /* ── UnitModal (add / edit) ───────────────────────────────────────────── */
 function UnitModal({ unit, onClose, onSaved }) {
+  const hasZones = useHasZones()   // โซนมีเฉพาะศรีราชา
   const [form, setForm] = useState(unit ? {
     asset_code: unit.asset_code || '',
     pts_zone: unit.pts_zone || '',
@@ -259,15 +261,17 @@ function UnitModal({ unit, onClose, onSaved }) {
                 onChange={(e) => set('asset_code', e.target.value)}
                 placeholder="เช่น AC-001" />
             </div>
-            <div>
-              <label className="label">โซน (PTS)</label>
-              <input className="input" list="pts-zone-list" value={form.pts_zone}
-                onChange={(e) => set('pts_zone', e.target.value)}
-                placeholder="PTS1 / PTS2" />
-              <datalist id="pts-zone-list">
-                {PTS_ZONES.map((z) => <option key={z} value={z} />)}
-              </datalist>
-            </div>
+            {hasZones && (
+              <div>
+                <label className="label">โซน (PTS)</label>
+                <input className="input" list="pts-zone-list" value={form.pts_zone}
+                  onChange={(e) => set('pts_zone', e.target.value)}
+                  placeholder="PTS1 / PTS2" />
+                <datalist id="pts-zone-list">
+                  {PTS_ZONES.map((z) => <option key={z} value={z} />)}
+                </datalist>
+              </div>
+            )}
           </div>
 
           {/* Row 2: สถานที่ + is_clinic */}
@@ -414,6 +418,7 @@ function UnitModal({ unit, onClose, onSaved }) {
 
 /* ── Main page ────────────────────────────────────────────────────────── */
 export default function WashUnits() {
+  const hasZones = useHasZones()   // โซนมีเฉพาะศรีราชา
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
 
@@ -609,14 +614,16 @@ export default function WashUnits() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 items-center">
-          <select
-            className="input !w-auto min-w-[120px]"
-            value={filterZone}
-            onChange={(e) => setFilterZone(e.target.value)}
-          >
-            <option value="">ทุกโซน</option>
-            {PTS_ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
+          {hasZones && (
+            <select
+              className="input !w-auto min-w-[120px]"
+              value={filterZone}
+              onChange={(e) => setFilterZone(e.target.value)}
+            >
+              <option value="">ทุกโซน</option>
+              {PTS_ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+          )}
           <select
             className="input !w-auto min-w-[140px]"
             value={filterEquip}
@@ -665,7 +672,7 @@ export default function WashUnits() {
                 <thead>
                   <tr className="text-left text-ink-muted text-xs uppercase tracking-wide bg-gray-50 border-b border-line">
                     <th className="py-2.5 px-4">รหัสแอร์</th>
-                    <th className="py-2.5 px-3">โซน</th>
+                    {hasZones && <th className="py-2.5 px-3">โซน</th>}
                     <th className="py-2.5 px-3">สถานที่</th>
                     <th className="py-2.5 px-3">อาคาร/ชั้น/ห้อง</th>
                     <th className="py-2.5 px-3">ประเภท</th>
@@ -683,7 +690,7 @@ export default function WashUnits() {
                           <span className="ml-2 badge badge-gray text-[10px]">ปิด</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-ink-muted">{u.pts_zone || '—'}</td>
+                      {hasZones && <td className="py-2.5 px-3 text-ink-muted">{u.pts_zone || '—'}</td>}
                       <td className="py-2.5 px-3">
                         <span className="text-ink">{u.location || '—'}</span>
                         {u.is_clinic && (

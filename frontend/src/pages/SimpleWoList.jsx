@@ -6,6 +6,7 @@ import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useHasZones } from '../lib/zones'
 
 const WORK_TYPE_LABEL = {
   major: { label: 'ล้างใหญ่',  color: 'badge-primary' },
@@ -56,6 +57,7 @@ export default function SimpleWoList() {
   const { user } = useAuthStore()
 
   const role = user?.role
+  const hasZones = useHasZones()   // โซนมีเฉพาะศรีราชา — สาขาอื่นซ่อน filter สัญญา/โซน
   const canSign = !!SLOT_LABEL[role]
   const canBill = role === 'admin' || role === 'super_admin'
 
@@ -363,13 +365,15 @@ export default function SimpleWoList() {
                 {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">สัญญา/โซน</label>
-              <select className="input" value={fPts} onChange={(e) => setFPts(e.target.value)}>
-                <option value="">ทั้งหมด</option>
-                {ptsOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
+            {hasZones && (
+              <div>
+                <label className="label">สัญญา/โซน</label>
+                <select className="input" value={fPts} onChange={(e) => setFPts(e.target.value)}>
+                  <option value="">ทั้งหมด</option>
+                  {ptsOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">ผลงาน</label>
               <select className="input" value={fResult} onChange={(e) => setFResult(e.target.value)}>

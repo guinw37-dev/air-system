@@ -5,6 +5,7 @@ import { CalendarRange, ChevronLeft, ChevronRight, Wand2, Check, SkipForward, Tr
 import Layout from '../components/Layout'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useHasZones } from '../lib/zones'
 
 const WT = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' }
 const WT_COLOR = { major: 'bg-blue-100 text-blue-700', minor: 'bg-teal-100 text-teal-700', fan: 'bg-violet-100 text-violet-700' }
@@ -36,6 +37,7 @@ export default function WashCalendar() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [showGen, setShowGen] = useState(false)
+  const hasZones = useHasZones()   // โซนมีเฉพาะศรีราชา — สาขาอื่นซ่อน toggle แยกโควต้าต่อโซน
   const [cfg, setCfg] = useState({ cap: { major: 10, minor: 10, fan: 5 }, workdays: [1, 2, 3, 4, 5, 6], byZone: true })
   const [onlyOutstanding, setOnlyOutstanding] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -91,7 +93,7 @@ export default function WashCalendar() {
     setBusy(true); setErr('')
     try {
       const r = await api.post('/wash-schedule/generate', {
-        from: today, workdays: cfg.workdays, byZone: cfg.byZone, onlyOutstanding,
+        from: today, workdays: cfg.workdays, byZone: hasZones && cfg.byZone, onlyOutstanding,
         cap_major: cfg.cap.major, cap_minor: cfg.cap.minor, cap_fan: cfg.cap.fan,
       })
       api.put('/auth/prefs/wash_plan_cfg', { value: cfg }).catch(() => {})   // จำ default
@@ -360,10 +362,12 @@ export default function WashCalendar() {
                 })}
               </div>
             </div>
-            <label className="flex items-center gap-2 mb-2 cursor-pointer">
-              <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={cfg.byZone} onChange={(e) => setCfg({ ...cfg, byZone: e.target.checked })} />
-              <span className="text-sm text-slate-600">แยกโควต้าต่อโซน (PTS1/PTS2)</span>
-            </label>
+            {hasZones && (
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={cfg.byZone} onChange={(e) => setCfg({ ...cfg, byZone: e.target.checked })} />
+                <span className="text-sm text-slate-600">แยกโควต้าต่อโซน (PTS1/PTS2)</span>
+              </label>
+            )}
             <label className="flex items-center gap-2 mb-4 cursor-pointer">
               <input type="checkbox" className="accent-amber-600 h-4 w-4" checked={onlyOutstanding} onChange={(e) => setOnlyOutstanding(e.target.checked)} />
               <span className="text-sm text-slate-600">เฉพาะที่คงค้าง (เกินกำหนด/ยังไม่ล้าง)</span>

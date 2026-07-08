@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
+import { useHasZones } from '../lib/zones';
 
 const WT = [{ key: 'major', label: 'ล้างใหญ่' }, { key: 'minor', label: 'ล้างย่อย' }, { key: 'fan', label: 'พัดลม' }];
 const WTL = Object.fromEntries(WT.map((w) => [w.key, w.label]));
@@ -8,6 +9,7 @@ const ZONES = ['PTS1', 'PTS2'];
 const monthLabel = (m) => `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}`;
 
 export default function WashAdjust() {
+  const hasZones = useHasZones();   // โซนมีเฉพาะศรีราชา — สาขาอื่นซ่อน UI + เก็บ zone ว่าง
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -30,7 +32,7 @@ export default function WashAdjust() {
     setSaving(true); setErr('');
     try {
       await api.post('/wash-adjust', {
-        month: form.month, zone: form.zone || null, work_type: form.work_type,
+        month: form.month, zone: (hasZones && form.zone) || null, work_type: form.work_type,
         delta: parseInt(form.delta, 10), note: form.note,
       });
       setForm((f) => ({ ...f, delta: '', note: '' }));
@@ -58,12 +60,14 @@ export default function WashAdjust() {
               <label className="block text-sm text-gray-600 mb-1">เดือน</label>
               <input type="month" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.month} onChange={set('month')} />
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">โซน</label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
-                <option value="">ทุกโซน</option>{ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-              </select>
-            </div>
+            {hasZones && (
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">โซน</label>
+                <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.zone} onChange={set('zone')}>
+                  <option value="">ทุกโซน</option>{ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-gray-600 mb-1">ประเภท</label>
               <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.work_type} onChange={set('work_type')}>
@@ -91,14 +95,14 @@ export default function WashAdjust() {
             <div className="bg-white border rounded-2xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-gray-500 border-b bg-gray-50">
-                  <th className="py-2.5 px-3">เดือน</th><th className="py-2.5 px-2">โซน</th><th className="py-2.5 px-2">ประเภท</th>
+                  <th className="py-2.5 px-3">เดือน</th>{hasZones && <th className="py-2.5 px-2">โซน</th>}<th className="py-2.5 px-2">ประเภท</th>
                   <th className="py-2.5 px-2 text-right">จำนวน</th><th className="py-2.5 px-2">หมายเหตุ</th><th></th>
                 </tr></thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="py-2.5 px-3 font-medium">{monthLabel(r.month)}</td>
-                      <td className="py-2.5 px-2 text-gray-600">{r.zone || 'ทุกโซน'}</td>
+                      {hasZones && <td className="py-2.5 px-2 text-gray-600">{r.zone || 'ทุกโซน'}</td>}
                       <td className="py-2.5 px-2 text-gray-600">{WTL[r.work_type] || r.work_type || 'รวม'}</td>
                       <td className={`py-2.5 px-2 text-right font-semibold ${r.delta < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{r.delta > 0 ? '+' : ''}{r.delta}</td>
                       <td className="py-2.5 px-2 text-gray-400">{r.note || ''}</td>
