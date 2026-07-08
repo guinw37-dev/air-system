@@ -29,14 +29,17 @@ async function insertJob(client, data, createdBy) {
     if (ex.length) return { duplicate: ex[0] };
   }
   const jobNumber = await genJobNumber(client);
+  // photo_urls: already-saved upload paths (the route saves base64 → disk first).
+  const photoUrls = Array.isArray(data.photo_urls) ? data.photo_urls.slice(0, 3) : [];
   const { rows } = await client.query(
     `INSERT INTO ac_repair_jobs
        (job_number, repair_job_id, repair_job_number, asset_code,
-        building, floor, department, requester, telephone, description, file_url, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        building, floor, department, requester, telephone, description, file_url, photo_urls, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [jobNumber, data.repair_job_id || null, data.repair_job_number || null, data.asset_code || null,
      data.building || '', data.floor || '', data.department || '', data.requester || '',
-     data.telephone || '', (data.description || '').trim(), data.file_url || '-', createdBy || null]
+     data.telephone || '', (data.description || '').trim(), data.file_url || '-',
+     JSON.stringify(photoUrls), createdBy || null]
   );
   return { row: rows[0] };
 }

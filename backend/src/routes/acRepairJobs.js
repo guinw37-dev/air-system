@@ -182,10 +182,18 @@ router.get('/:id', async (req, res) => {
 // ── POST / — create job manually ─────────────────────────────────────────
 router.post('/', async (req, res) => {
   if (!req.body.description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
+  // รูปแจ้งซ่อม (สูงสุด 3) — save base64 → disk ก่อน insert
+  let photoUrls = [];
+  try {
+    photoUrls = (Array.isArray(req.body.photosBase64) ? req.body.photosBase64 : [])
+      .slice(0, 3)
+      .filter((p) => p && p.base64 && p.name)
+      .map((p) => savePhoto(req.branch.slug, p.base64, p.name));
+  } catch (e) { return res.status(400).json({ error: e.message }); }
   const c = await req.tx();
   try {
     await c.query('BEGIN');
-    const { row } = await insertJob(c, req.body, req.user.id);
+    const { row } = await insertJob(c, { ...req.body, photo_urls: photoUrls }, req.user.id);
     await c.query('COMMIT');
     res.status(201).json(row);
   } catch (e) { await c.query('ROLLBACK'); serverError(res, e); }

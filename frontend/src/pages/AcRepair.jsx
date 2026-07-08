@@ -252,6 +252,25 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  // รูปแจ้งซ่อม (สร้างใบงานเท่านั้น) — สูงสุด 3 รูป, ย่อ + ประทับเวลาเหมือนรูปหลังซ่อม
+  const [photos, setPhotos] = useState([]);   // [{base64, name}]
+  const photoRef = useRef();
+  async function pickPhotos(e) {
+    const files = Array.from(e.target.files || []).slice(0, 3 - photos.length);
+    e.target.value = '';
+    const added = [];
+    for (const file of files) {
+      const stamped = await compressImage(file, { stamp: true });
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(stamped);
+      });
+      added.push({ base64, name: stamped.name || file.name });
+    }
+    setPhotos((p) => [...p, ...added].slice(0, 3));
+  }
+
   // Master-data cascade for the อาคาร/ชั้น/แผนก comboboxes (same source as the
   // repair form). Uses the first site of the branch. Fields stay free-text:
   // these only supply <datalist> suggestions, so an empty master never blocks.
@@ -326,7 +345,7 @@ function JobFormModal({ initial, onSave, onClose }) {
     e.preventDefault();
     if (!form.description.trim()) { setErr('กรุณาระบุรายละเอียด'); return; }
     setSaving(true); setErr('');
-    try { await onSave(form); }
+    try { await onSave(initial?.id ? form : { ...form, photosBase64: photos }); }
     catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
   }
 
@@ -375,6 +394,25 @@ function JobFormModal({ initial, onSave, onClose }) {
             <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดอาการ <span className="text-red-500">*</span></label>
             <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={form.description} onChange={set('description')} placeholder="ระบุอาการหรือปัญหา" required />
           </div>
+          {!isEdit && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">รูปแจ้งซ่อม <span className="text-gray-400 font-normal">(ไม่บังคับ สูงสุด 3 รูป)</span></label>
+              <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={pickPhotos} />
+              <div className="flex flex-wrap gap-2">
+                {photos.map((p, i) => (
+                  <div key={i} className="relative">
+                    <img src={p.base64} alt={`photo-${i + 1}`} className="h-20 w-20 rounded-lg object-cover border" />
+                    <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))}
+                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none">&times;</button>
+                  </div>
+                ))}
+                {photos.length < 3 && (
+                  <button type="button" onClick={() => photoRef.current?.click()}
+                    className="h-20 w-20 border-2 border-dashed rounded-lg text-gray-400 hover:text-gray-600 hover:border-gray-400 text-2xl">+</button>
+                )}
+              </div>
+            </div>
+          )}
           {isEdit && (
             <>
               <div>
@@ -671,6 +709,19 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รายละเอียดอาการ</h3>
             <p className="text-sm whitespace-pre-wrap">{job.description}</p>
           </section>
+
+          {Array.isArray(job.photo_urls) && job.photo_urls.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปแจ้งซ่อม</h3>
+              <div className="flex flex-wrap gap-2">
+                {job.photo_urls.map((u, i) => (
+                  <a key={i} href={u} target="_blank" rel="noreferrer">
+                    <img src={u} alt={`แจ้งซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
 
           {(job.assign_name || job.issue_type || job.job_detail || job.work_desc) && (
             <section>
