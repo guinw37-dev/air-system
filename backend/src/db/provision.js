@@ -105,6 +105,24 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS service_targets ADD COLUMN IF NOT EXISTS ac_type VARCHAR(30)`);
     await c.query(`DROP INDEX IF EXISTS uq_service_targets_zone_wt`);
     await c.query(BRANCH_SQL);
+    // Fan checklist trimmed 5→2 (เก็บ ล้างหน้ากาก[0] + ใช้งานได้ปกติ[4]) — checks are
+    // read BY INDEX everywhere (views/PDF/Excel), so old fan rows must be reindexed
+    // to [checks[0], checks[4]] or ใช้งานได้ปกติ would be misread from the dropped
+    // น้ำมัน slot. Guarded by EXISTS(len>=5) → no-op after the first run.
+    await c.query(`
+      UPDATE simple_work_orders
+         SET grid_rows = (
+           SELECT jsonb_agg(
+                    CASE WHEN jsonb_array_length(COALESCE(t.elem->'checks','[]'::jsonb)) >= 5
+                         THEN jsonb_set(t.elem, '{checks}',
+                                jsonb_build_array(t.elem->'checks'->0, t.elem->'checks'->4))
+                         ELSE t.elem END
+                    ORDER BY t.ord)
+             FROM jsonb_array_elements(grid_rows) WITH ORDINALITY AS t(elem, ord))
+       WHERE work_type = 'fan'
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(grid_rows) AS e(elem)
+           WHERE jsonb_array_length(COALESCE(e.elem->'checks','[]'::jsonb)) >= 5)`);
     // ac_repair_jobs.parts added after the table first shipped — ADD on branches
     // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);

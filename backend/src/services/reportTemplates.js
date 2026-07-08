@@ -1163,7 +1163,7 @@ function acDetailBlock(ac, wo, unit) {
 // Grid columns per grid work_type (must match the form/detail GRID_COLS).
 const GRID_COLS_PDF = {
   minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
-  fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใส่น้ำมันหล่อลื่นมอเตอร์', 'เช็คกระแสไฟฟ้า', 'เช็คความดังเสียง', 'ใช้งานได้ปกติ'],
+  fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใช้งานได้ปกติ'],
 };
 
 // Full company letterhead for the grid forms (matches the paper documents).
