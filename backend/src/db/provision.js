@@ -59,6 +59,12 @@ async function migratePublic(client) {
                        'approved_at TIMESTAMPTZ', 'reject_reason TEXT', 'rejected_at TIMESTAMPTZ']) {
       await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS ${col}`);
     }
+    // TW checklist (ลูกค้า 08-07): แถว "ตรวจเช็คคอยล์ร้อน..." เดิมเป็น number/°C
+    // (relabel มาจากแถวตรวจวัดอุณหภูมิ) → ต้องไม่แบ่งช่องก่อน-หลัง = check ธรรมดา.
+    await c.query(`UPDATE inspection_template_items
+      SET value_type = 'check', unit_label = NULL
+      WHERE equipment_type = 'ac' AND value_type <> 'check'
+        AND item_label = 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น'`);
   } finally {
     if (!client) c.release();
   }
