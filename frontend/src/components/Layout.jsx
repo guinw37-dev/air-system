@@ -22,7 +22,7 @@ const NAV = [
       { to: '/simple-wo?pending=supervisor',           label: 'รอหัวหน้าช่างเซ็น' },
       { to: '/simple-wo?pending=building',             label: 'รอช่างอาคารเซ็น' },
       { to: '/simple-wo?pending=engineer',             label: 'รอวิศวกรรมเซ็น' },
-      { to: '/simple-wo?view=ready',                   label: 'ดำเนินการเสร็จสิ้น', roles: ['admin', 'super_admin'] },
+      { to: '/simple-wo?view=done',                    label: 'ดำเนินการเสร็จสิ้น', roles: ['admin', 'super_admin'] },
       { to: '/simple-wo?view=all',                     label: 'ทั้งหมด' },
     ] },
   { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
