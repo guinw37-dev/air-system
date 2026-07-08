@@ -252,6 +252,7 @@ function styleBlock(brand) {
     .sign-box .pad img { max-height: 52px; max-width: 100%; }
     .sign-box .role { font-weight: 600; color: var(--teal); margin-top: 4px; font-size: 11px; }
     .sign-box .nm { color: var(--navy); font-size: 11px; }
+    .sign-box .pos { color: #5a6e73; font-size: 10px; }
     .sign-box .dt { color: #6b7d82; font-size: 10px; }
 
     /* Photo gallery */
@@ -365,6 +366,7 @@ function styleBlock(brand) {
     .major-c .sign-box .pad { height: 40px; }
     .major-c .sign-box .role { font-size: 7.5pt; margin-top: 3px; }
     .major-c .sign-box .nm { font-size: 7.5pt; }
+    .major-c .sign-box .pos { font-size: 6.5pt; }
     .major-c .sign-box .dt { font-size: 6.5pt; }
 
     /* page-2 by-point photo pairing */
@@ -426,18 +428,20 @@ function firstUnit(data) {
   return (data.units && data.units[0]) || {};
 }
 
-// Render one signature box (img + role + name + date). Graceful when missing.
+// Render one signature box (img + role + name + position + date). Graceful when missing.
 function signatureBox(roleLabel, sig) {
   const inner = sig && sig.signature_data
     ? `<img src="${escapeHtml(sig.signature_data)}" alt="sign">`
     : '';
   const nm = sig && sig.signer_name ? dash(sig.signer_name) : '<span class="muted">ลงชื่อ ____________</span>';
+  const pos = sig && sig.position ? `<div class="pos">${escapeHtml(sig.position)}</div>` : '';
   const dt = sig && sig.signed_at ? fmtDate(sig.signed_at) : '—';
   return `
   <div class="sign-box">
     <div class="pad">${inner}</div>
     <div class="role">${escapeHtml(roleLabel)}</div>
     <div class="nm">${nm}</div>
+    ${pos}
     <div class="dt">${dt}</div>
   </div>`;
 }
