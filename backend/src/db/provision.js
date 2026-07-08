@@ -109,6 +109,7 @@ async function provisionBranchSchema(schemaName) {
     // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS asset_code TEXT`);
+    await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS photo_urls JSONB DEFAULT '[]'::jsonb`);
     // wash_units last-wash dates (backfill ประวัติ → ปฏิทิน generate คำนวณ overdue)
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_major_at DATE`);
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);

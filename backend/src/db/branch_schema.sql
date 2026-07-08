@@ -409,6 +409,8 @@ CREATE TABLE IF NOT EXISTS ac_repair_jobs (
   -- อะไหล่ที่ต้องใช้/สั่ง — [{name, qty, note}]. Just a shopping list for the
   -- hospital to order; NOT a stock-withdrawal system (งานซ่อมเฉยๆ).
   parts             JSONB DEFAULT '[]'::jsonb,
+  -- รูปแจ้งซ่อม (ตอนสร้างใบงาน สูงสุด 3 รูป) — ["/uploads/photos/ac-repair/…"]
+  photo_urls        JSONB DEFAULT '[]'::jsonb,
   -- Status flow
   status            TEXT NOT NULL DEFAULT 'Register',
   cancel_reason     TEXT          DEFAULT '',
