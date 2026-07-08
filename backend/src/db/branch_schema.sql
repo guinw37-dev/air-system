@@ -545,10 +545,7 @@ CREATE OR REPLACE VIEW vw_simple_wo_fan AS
          COALESCE(g.row->>'room', s.room)        AS "ห้อง_แผนก",
          COALESCE(g.row->>'machine_no', g.row->>'name') AS "เลขเครื่อง",
          (g.row->'checks'->>0)::boolean AS "ล้างหน้ากาก_มอเตอร์_ใบพัด",
-         (g.row->'checks'->>1)::boolean AS "ใส่น้ำมันหล่อลื่นมอเตอร์",
-         (g.row->'checks'->>2)::boolean AS "เช็คกระแสไฟฟ้า",
-         (g.row->'checks'->>3)::boolean AS "เช็คความดังเสียง",
-         (g.row->'checks'->>4)::boolean AS "ใช้งานได้ปกติ",
+         (g.row->'checks'->>1)::boolean AS "ใช้งานได้ปกติ",
          g.row->>'broken' AS "ชำรุดเนื่องจาก",
          s.recommendation AS "ข้อแนะนำ"
   FROM simple_work_orders s
