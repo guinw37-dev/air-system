@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
                   'admin','approve_engineer','approve_building','checker','technician','approver'
                 )),
   phone         VARCHAR(20),
+  position      VARCHAR(100),                 -- ตำแหน่งงาน — แสดงใต้ชื่อในช่องเซ็นใบงาน
   active        BOOLEAN DEFAULT true,
   ui_prefs      JSONB DEFAULT '{}'::jsonb,    -- per-user UI prefs (dashboard layout ฯลฯ)
   created_at    TIMESTAMPTZ DEFAULT NOW()

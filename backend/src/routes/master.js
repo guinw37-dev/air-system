@@ -355,12 +355,12 @@ function hierarchyError(req, { assignRole, targetRole } = {}) {
 
 router.get('/users', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
   const { rows } = await userDb(req)(
-    'SELECT id, name, username, role, phone, active FROM users ORDER BY name');
+    'SELECT id, name, username, role, phone, position, active FROM users ORDER BY name');
   res.json(rows);
 });
 
 router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
-  const { name, username, password, role, phone, confirm_password } = req.body;
+  const { name, username, password, role, phone, position, confirm_password } = req.body;
   if (!name || !username || !password || !role) {
     return res.status(400).json({ error: 'name, username, password, role required' });
   }
@@ -380,14 +380,14 @@ router.post('/users', authMiddleware, requireRole('admin', 'super_admin'), async
   try {
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await userDb(req)(
-      'INSERT INTO users (name, username, password_hash, role, phone) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, username, role, phone',
-      [name, username, hash, role, phone || null]);
+      'INSERT INTO users (name, username, password_hash, role, phone, position) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, username, role, phone, position',
+      [name, username, hash, role, phone || null, position || null]);
     res.status(201).json(rows[0]);
   } catch (err) { serverError(res, err); }
 });
 
 router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), async (req, res) => {
-  const { name, role, phone, active, password, confirm_password } = req.body;
+  const { name, role, phone, position, active, password, confirm_password } = req.body;
   const db = userDb(req);
   try {
     const { rows: cur } = await db('SELECT role FROM users WHERE id=$1', [req.params.id]);
@@ -412,13 +412,13 @@ router.put('/users/:id', authMiddleware, requireRole('admin', 'super_admin'), as
     }
     if (password) {
       const hash = await bcrypt.hash(password, 10);
-      await db('UPDATE users SET name=$1, role=$2, phone=$3, active=$4, password_hash=$5 WHERE id=$6',
-        [name, role, phone || null, active !== false, hash, req.params.id]);
+      await db('UPDATE users SET name=$1, role=$2, phone=$3, position=$4, active=$5, password_hash=$6 WHERE id=$7',
+        [name, role, phone || null, position || null, active !== false, hash, req.params.id]);
     } else {
-      await db('UPDATE users SET name=$1, role=$2, phone=$3, active=$4 WHERE id=$5',
-        [name, role, phone || null, active !== false, req.params.id]);
+      await db('UPDATE users SET name=$1, role=$2, phone=$3, position=$4, active=$5 WHERE id=$6',
+        [name, role, phone || null, position || null, active !== false, req.params.id]);
     }
-    const { rows } = await db('SELECT id, name, username, role, phone, active FROM users WHERE id=$1', [req.params.id]);
+    const { rows } = await db('SELECT id, name, username, role, phone, position, active FROM users WHERE id=$1', [req.params.id]);
     res.json(rows[0]);
   } catch (err) { serverError(res, err); }
 });

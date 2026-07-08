@@ -38,6 +38,7 @@ async function migratePublic(client) {
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_slug VARCHAR(63)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_users_branch_slug ON users(branch_slug)`);
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS position VARCHAR(100)`);
     // Role model: DROP the old CHECK FIRST, then remap retired legacy roles (incl.
     // single 'approver' → approve_engineer), then ADD the new CHECK. Order matters —
     // the remap produces values (approve_engineer/approve_building) the OLD CHECK
@@ -115,6 +116,7 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS wash_units ADD COLUMN IF NOT EXISTS last_minor_at DATE`);
     // per-user UI prefs (dashboard layout) on branch users table
     await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
+    await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS position VARCHAR(100)`);
     // service_targets index/columns จัดการก่อน BRANCH_SQL แล้ว (ดูด้านบน)
     await c.query(`CREATE TABLE IF NOT EXISTS wash_count_adjust (
       id SERIAL PRIMARY KEY, month VARCHAR(7) NOT NULL, zone VARCHAR(50), work_type VARCHAR(20),

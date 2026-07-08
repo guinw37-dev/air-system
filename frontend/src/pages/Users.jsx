@@ -64,7 +64,7 @@ export default function Users() {
   const defaultRole = ROLES[ROLES.length - 1] || (tenant.isBranch ? 'technician' : 'super_admin')
   const [users, setUsers] = useState([])
   const [modal, setModal] = useState(null)
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true, confirm_password: '' })
+  const [form, setForm] = useState({ name: '', username: '', password: '', role: defaultRole, phone: '', position: '', active: true, confirm_password: '' })
   const [saving, setSaving] = useState(false)
   // Step-up: any action touching a Super Dev needs my own password re-entered.
   const needsStepUp = form.role === 'super_admin' || (modal && modal !== 'new' && modal.role === 'super_admin')
@@ -88,12 +88,12 @@ export default function Users() {
   }
 
   const openNew = () => {
-    setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', active: true, confirm_password: '' })
+    setForm({ name: '', username: '', password: '', role: defaultRole, phone: '', position: '', active: true, confirm_password: '' })
     setModal('new')
   }
 
   const openEdit = (u) => {
-    setForm({ name: u.name, username: u.username, password: '', role: u.role, phone: u.phone || '', active: u.active, confirm_password: '' })
+    setForm({ name: u.name, username: u.username, password: '', role: u.role, phone: u.phone || '', position: u.position || '', active: u.active, confirm_password: '' })
     setModal(u)
   }
 
@@ -149,6 +149,7 @@ export default function Users() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ชื่อ</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">Username</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">Role</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">ตำแหน่ง</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">โทรศัพท์</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-ink-muted uppercase">สถานะ</th>
                 <th className="py-3 px-4" />
@@ -169,6 +170,7 @@ export default function Users() {
                       {ROLE_TH[u.role] || u.role}
                     </span>
                   </td>
+                  <td className="py-3 px-4 text-ink-muted">{u.position || '-'}</td>
                   <td className="py-3 px-4 text-ink-muted">{u.phone || '-'}</td>
                   <td className="py-3 px-4">
                     <span className={`badge ${u.active ? 'badge-success' : 'badge-gray'}`}>
@@ -224,6 +226,7 @@ export default function Users() {
               </select>
             </div>
             <div><label className="label">โทรศัพท์</label><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            <div><label className="label">ตำแหน่ง</label><input className="input" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="เช่น หัวหน้าช่างแอร์ / วิศวกรอาคาร" /></div>
             {needsStepUp && (
               <div className="rounded-input bg-danger-soft p-3">
                 <label className="label text-danger flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> ยืนยันรหัสผ่าน Super Dev ของคุณ *</label>
