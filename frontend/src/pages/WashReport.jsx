@@ -104,11 +104,15 @@ function ByTypeCard({ title, byType, period, chrome }) {
   )
 }
 
-function TargetSection({ month, navigate, chrome }) {
+function TargetSection({ month, zone, navigate, chrome }) {
   const [data, setData] = useState(null)
   useEffect(() => {
-    api.get('/targets/progress', { params: month ? { month } : {} }).then((r) => setData(r.data)).catch(() => {})
-  }, [month])
+    // link กับหน้าเป้าหมายล้าง ตามเดือน + โซนที่เลือก (ศรีราชา 1/2 แยกตาม selector)
+    const params = {}
+    if (month) params.month = month
+    if (zone) params.zone = zone
+    api.get('/targets/progress', { params }).then((r) => setData(r.data)).catch(() => {})
+  }, [month, zone])
   // เรียง ล้างใหญ่ → ล้างย่อย → พัดลม → รวม แล้วตามสถานที่
   const WT_ORDER = { major: 0, minor: 1, fan: 2, '': 3 }
   const rows = [...(data?.targets || [])].sort((a, b) =>
@@ -145,13 +149,16 @@ function TargetSection({ month, navigate, chrome }) {
   )
 }
 
-function CoverageSection({ month, chrome }) {
+function CoverageSection({ month, zone, chrome }) {
   const [data, setData] = useState(null)
   useEffect(() => {
     api.get('/wash-units/coverage', { params: month ? { month } : {} }).then((r) => setData(r.data)).catch(() => {})
   }, [month])
   const byZone = {}
-  for (const g of (data?.groups || [])) (byZone[g.zone] ||= []).push(g)
+  for (const g of (data?.groups || [])) {
+    if (zone && g.zone !== zone) continue   // เคารพโซนที่เลือกบนหัวรายงาน
+    ;(byZone[g.zone] ||= []).push(g)
+  }
   return (
     <Card title="ล้างได้ / เหลือ (เทียบทะเบียนแอร์)" icon={ClipboardCheck} chrome={chrome}>
       {!data || !data.groups?.length ? <p className="text-sm text-slate-400 py-2">ยังไม่มีทะเบียนแอร์</p> : (
@@ -387,8 +394,8 @@ export default function WashReport() {
       )
       case 'bytype_month': return <ByTypeCard title={`แยกประเภทแอร์ — ประจำเดือน ${monthLabel(data.monthly?.month || selMonth)}`} byType={data.byType} period="month" chrome={c} />
       case 'bytype_year': return <ByTypeCard title={`แยกประเภทแอร์ — สะสมประจำปี ${(data.yearly.year || 0) + 543}`} byType={data.byType} period="year" chrome={c} />
-      case 'coverage': return <CoverageSection month={selMonth} chrome={c} />
-      case 'target': return <TargetSection month={selMonth} navigate={navigate} chrome={c} />
+      case 'coverage': return <CoverageSection month={selMonth} zone={selZone} chrome={c} />
+      case 'target': return <TargetSection month={selMonth} zone={selZone} navigate={navigate} chrome={c} />
       case 'condition': return (
         <Card title={`แอร์เสื่อมสภาพ / ต้องแก้ (${cond?.total || 0})`} icon={AlertTriangle} chrome={c}>
           <div className="flex gap-2 mb-3">
