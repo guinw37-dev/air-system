@@ -66,6 +66,13 @@ async function migratePublic(client) {
       SET value_type = 'check', unit_label = NULL
       WHERE equipment_type = 'ac' AND value_type <> 'check'
         AND item_label = 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น'`);
+    // การเปลี่ยนแถวคอยล์ร้อนเป็น check ทำ "ช่องบันทึกอุณหภูมิ" หาย (ช่างเคยกรอก °C
+    // ก่อน/หลังในแถวนั้น) → เพิ่มแถว "ตรวจวัดอุณหภูมิ (°C)" ของตัวเองกลับมา. Idempotent.
+    await c.query(`INSERT INTO inspection_template_items
+        (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
+      SELECT 'ac', 'all3', 'ตรวจวัดอุณหภูมิ (°C)', 'number', '°C', true, true, 24
+      WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
+                        WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)')`);
   } finally {
     if (!client) c.release();
   }
@@ -130,6 +137,35 @@ async function provisionBranchSchema(schemaName) {
          AND EXISTS (
            SELECT 1 FROM jsonb_array_elements(grid_rows) AS e(elem)
            WHERE jsonb_array_length(COALESCE(e.elem->'checks','[]'::jsonb)) >= 5)`);
+    // ค่าอุณหภูมิเก่าที่เคยกรอกในแถวคอยล์ร้อน (ตอนยังเป็น number/°C) → คัดลอกไป
+    // แถวใหม่ "ตรวจวัดอุณหภูมิ (°C)" (template สร้างใน migratePublic ซึ่งรันก่อน).
+    // Idempotent: ON CONFLICT / NOT ? key. แถวคอยล์ร้อนเก็บค่าเดิมไว้แต่ไม่แสดง (check row).
+    await c.query(`
+      INSERT INTO inspection_values (work_order_unit_id, template_item_id, value_before, value_after)
+      SELECT iv.work_order_unit_id, n.id, iv.value_before, iv.value_after
+        FROM inspection_values iv
+        JOIN inspection_template_items o ON o.id = iv.template_item_id
+             AND o.equipment_type = 'ac'
+             AND o.item_label = 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น'
+        CROSS JOIN (SELECT id FROM inspection_template_items
+                    WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)') n
+       WHERE COALESCE(iv.value_before,'') <> '' OR COALESCE(iv.value_after,'') <> ''
+       ON CONFLICT (work_order_unit_id, template_item_id) DO NOTHING`);
+    await c.query(`
+      UPDATE simple_work_orders s
+         SET checklist_values = s.checklist_values || jsonb_build_object(n.id::text,
+               jsonb_strip_nulls(jsonb_build_object(
+                 'value_before', s.checklist_values -> o.id::text -> 'value_before',
+                 'value_after',  s.checklist_values -> o.id::text -> 'value_after')))
+        FROM (SELECT id FROM inspection_template_items
+              WHERE equipment_type = 'ac'
+                AND item_label = 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น') o,
+             (SELECT id FROM inspection_template_items
+              WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)') n
+       WHERE s.checklist_values ? o.id::text
+         AND NOT (s.checklist_values ? n.id::text)
+         AND (COALESCE(s.checklist_values -> o.id::text ->> 'value_before','') <> ''
+           OR COALESCE(s.checklist_values -> o.id::text ->> 'value_after','') <> '')`);
     // ac_repair_jobs.parts added after the table first shipped — ADD on branches
     // already provisioned (no-op on a fresh schema, BRANCH_SQL ships it there).
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]'::jsonb`);

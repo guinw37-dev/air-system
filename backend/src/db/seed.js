@@ -66,6 +66,8 @@ async function seed() {
       { cat: 'all3', sort: 21, label: 'ตรวจวัดฝุ่น PM2.5 (µg/m³)', type: 'number', unit: 'µg/m³', minor: true },
       { cat: 'all3', sort: 22, label: 'ตรวจวัดก๊าซ CO₂ (ppm)', type: 'number', unit: 'ppm', minor: true },
       { cat: 'all3', sort: 23, label: 'ตรวจวัดระดับเสียง (dB)', type: 'number', unit: 'dB', minor: true },
+      // แถวอุณหภูมิแยกของตัวเอง — คืนช่องกรอกที่หายไปตอนแถวคอยล์ร้อนเปลี่ยนเป็น check
+      { cat: 'all3', sort: 24, label: 'ตรวจวัดอุณหภูมิ (°C)', type: 'number', unit: '°C', minor: true },
       // ลูกค้า 08-07: แถวนี้ไม่แบ่งก่อน-หลัง → check (เดิม number °C จากแถวตรวจวัดอุณหภูมิ)
       { cat: 'all3', sort: 30, label: 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น', type: 'check', minor: true },
       { cat: 'all3', sort: 40, label: 'ฉีดล้างทำความสะอาด Fan coil โดยใช้สารเคมีทิ้งไว้ 15 นาที และใช้ Water High Pressure Jet ฉีดล้างทำความสะอาด', type: 'check', minor: true },
