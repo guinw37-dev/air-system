@@ -459,6 +459,18 @@ export default function WashUnits() {
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setExporting(false) }
   }
 
+  // Excel ทะเบียนแอร์ หัวคอลัมน์ตรง template นำเข้า — แก้แล้วนำเข้าซ้ำ = ทับตามรหัสแอร์
+  const exportEdit = async () => {
+    setExporting(true); setErr('')
+    try {
+      const res = await api.get('/wash-units/export-edit', { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `ทะเบียนแอร์-แก้ไข-${new Date().toISOString().slice(0, 10)}.xlsx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setExporting(false) }
+  }
+
   const load = useCallback(async (q) => {
     setLoading(true); setErr('')
     try {
@@ -569,6 +581,15 @@ export default function WashUnits() {
 
             {isAdmin && (
               <>
+                <button
+                  onClick={exportEdit}
+                  disabled={exporting}
+                  className="btn-secondary flex items-center gap-2 text-sm"
+                  title="ดาวน์โหลดทะเบียนทั้งสาขาในฟอร์แมตนำเข้า — แก้ในไฟล์แล้วกดนำเข้า Excel เพื่ออัพทับตัวเดิม (ตามรหัสแอร์)"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Excel สำหรับแก้ไข
+                </button>
                 <button
                   onClick={() => importRef.current?.click()}
                   disabled={importing}
