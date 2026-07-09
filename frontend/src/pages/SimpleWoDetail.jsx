@@ -161,22 +161,24 @@ export default function SimpleWoDetail() {
   // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
   const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
   const signed = (s) => !!wo[`sig_${s}`]
-  // เซ็นครบ = ช่างแอร์ + หัวหน้า + (อาคาร หรือ วิศวกรรม อย่างน้อย 1)
-  const allSigned = signed('team') && signed('supervisor') && (signed('building') || signed('engineer'))
+  // เซ็นครบ = ครบทั้ง 4 ช่อง (อาคาร+วิศวกรรม ต้องเซ็นทั้งคู่ — เซ็นก่อนหลังสลับกันได้)
+  const allSigned = signed('team') && signed('supervisor') && signed('building') && signed('engineer')
   const readyBill = allSigned && wo.status !== 'approved'
   // A slot is signable once its prerequisites are signed.
   const priorsSigned = (slot) => (SIG_PREREQ[slot] || []).every(signed)
-  // Which signature the ใบงาน is waiting on (อาคาร/วิศวกรรม = เซ็น 1 ใน 2 พอ).
+  // Which signature the ใบงาน is waiting on.
   const pendingStage =
     !signed('team') ? 'team'
       : !signed('supervisor') ? 'supervisor'
-      : (!signed('building') && !signed('engineer')) ? 'building_engineer'
+      : !signed('building') ? 'building'
+      : !signed('engineer') ? 'engineer'
       : 'done'
   const STAGE_BADGE = {
-    team:              { label: 'ยังไม่เสร็จ',          color: 'badge-warn' },
-    supervisor:        { label: 'รอหัวหน้าตรวจงาน',      color: 'badge-warn' },
-    building_engineer: { label: 'รออาคาร/วิศวกรรม (เซ็น 1)', color: 'bg-indigo-50 text-indigo-600' },
-    done:              { label: 'รอวางบิล',              color: 'badge-success' },
+    team:       { label: 'ยังไม่เสร็จ',            color: 'badge-warn' },
+    supervisor: { label: 'รอหัวหน้าตรวจงาน',        color: 'badge-warn' },
+    building:   { label: 'รอช่างอาคารตรวจเช็ค',     color: 'bg-indigo-50 text-indigo-600' },
+    engineer:   { label: 'รอวิศวกรรมตรวจเช็ค',      color: 'bg-blue-50 text-blue-600' },
+    done:       { label: 'รอวางบิล',                color: 'badge-success' },
   }
 
   // PDF มีให้ดาวน์โหลดเฉพาะใบที่วางบิลแล้ว (approved)

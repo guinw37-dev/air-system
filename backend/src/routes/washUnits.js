@@ -297,7 +297,8 @@ router.get('/export-all', authMiddleware, async (req, res) => {
       } catch { /* ตารางอาจยังไม่ migrate → ข้าม sheet */ }
     };
 
-    const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND (sig_building IS NOT NULL OR sig_engineer IS NOT NULL))`;
+    // เซ็นครบ = ครบทั้ง 4 ช่อง (ตรงกับ roles.allSigned / dashboard.ALL_SIGNED)
+    const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
     await sheet('ทะเบียนแอร์', 'SELECT * FROM wash_units ORDER BY pts_zone NULLS LAST, asset_code');
     // ใบงานล้าง — เลือกคอลัมน์ (เลี่ยง base64 ลายเซ็น/รูป/checklist)
     await sheet('ใบงานล้าง',

@@ -6,7 +6,8 @@ const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.�
 const TH_DOW = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const pad = (n) => String(n).padStart(2, '0');
 
-const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND (sig_building IS NOT NULL OR sig_engineer IS NOT NULL))`;
+// เซ็นครบ = ครบทั้ง 4 ช่อง (ตรงกับ roles.allSigned / dashboard.ALL_SIGNED)
+const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
 
 // token: system_settings (แก้จากเว็บได้) ก่อน, fallback env
 async function getLineToken() {

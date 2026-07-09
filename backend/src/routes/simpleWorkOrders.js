@@ -446,7 +446,7 @@ router.get('/', authMiddleware, async (req, res) => {
              s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status, s.created_by,
              u.name AS created_by_name,
              (s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL
-              AND (s.sig_building IS NOT NULL OR s.sig_engineer IS NOT NULL)) AS all_signed,
+              AND s.sig_building IS NOT NULL AND s.sig_engineer IS NOT NULL) AS all_signed,
              CASE
                WHEN s.sig_team       IS NULL THEN 'team'
                WHEN s.sig_supervisor IS NULL THEN 'supervisor'
