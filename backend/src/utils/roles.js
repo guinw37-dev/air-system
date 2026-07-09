@@ -48,12 +48,14 @@ const ROLE_SLOT = {
 // A role may sign ONLY the slot mapped to it. admin / super_admin do NOT sign at
 // all (they manage + bill) — signing is reserved for the field/approval roles.
 const canSignSlot = (role, slot) => ROLE_SLOT[role] === slot;
-// A ใบงาน is "เซ็นครบ" (billable) when ช่างแอร์ + หัวหน้าช่าง have signed AND at
-// least ONE of ช่างอาคาร / วิศวกรรม has signed — the approve pair sign in place of
-// each other, so only 3 signatures are required (the 2nd of the pair is optional).
+// A ใบงาน is "เซ็นครบ" (billable / ดำเนินการเสร็จสิ้น) only when ALL FOUR slots
+// are signed: ช่างแอร์ + หัวหน้าช่าง + ช่างอาคาร + วิศวกรรม. (Worawit 8 Jul 2026 —
+// previously the building/engineer pair could sign in place of each other, which
+// let a WO show "เสร็จสิ้น" while the badge still said "รอช่างอาคารตรวจเช็ค".)
+// building/engineer still sign in ANY ORDER — only the completeness rule changed.
 const REQUIRED_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
 const allSigned = (wo) =>
-  !!(wo && wo.sig_team && wo.sig_supervisor && (wo.sig_building || wo.sig_engineer));
+  !!(wo && wo.sig_team && wo.sig_supervisor && wo.sig_building && wo.sig_engineer);
 
 // Signing order (display) + per-slot prerequisites. The chain is:
 //   ช่างแอร์ → หัวหน้าช่าง → { ช่างอาคาร , วิศวกรรม }

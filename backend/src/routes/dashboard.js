@@ -22,10 +22,10 @@ const AC_SQL = `
   FROM ac_repair_jobs`;
 
 // งานล้าง buckets — same sig logic as the simple-wo list (team + supervisor +
-// one of building/engineer = all_signed). pending = not yet all-signed;
-// ready = all-signed but not billed; billed = status approved.
+// เซ็นครบ = ครบทั้ง 4 ช่อง (team+supervisor+building+engineer — Worawit 8 Jul 2026).
+// pending = not yet all-signed; ready = all-signed but not billed; billed = approved.
 const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
-                     AND (sig_building IS NOT NULL OR sig_engineer IS NOT NULL))`;
+                     AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
 const WO_SQL = `
   SELECT
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
