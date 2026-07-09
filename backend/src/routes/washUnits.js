@@ -203,7 +203,7 @@ const HEADER_MAP = {
   floor:        ['ชั้น', 'floor'],
   room:         ['ห้อง', 'room'],
   equipment:    ['ประเภทอุปกรณ์', 'equipment'],
-  ac_type:      ['ประเภทแอร์', 'ac_type', 'actype'],
+  ac_type:      ['ประเภทแอร์', 'ตระกูลแอร์', 'ตระกูล', 'ac_type', 'actype'],
   brand:        ['ยี่ห้อ', 'brand'],
   model:        ['รุ่น', 'model'],
   cooling_size: ['ขนาด', 'cooling_size', 'coolingsize'],
