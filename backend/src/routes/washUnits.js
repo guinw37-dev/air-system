@@ -282,6 +282,45 @@ router.post('/import', authMiddleware, canEdit, upload.single('file'), async (re
   }
 });
 
+// ── GET /export-edit — Excel ทะเบียนแอร์ หัวคอลัมน์ตรง template นำเข้า ─────────
+// เอาไปแก้ (เช่น เติมตระกูล/สถานที่) แล้ว "นำเข้า Excel" ซ้ำ = ทับตัวเดิมตามรหัสแอร์.
+router.get('/export-edit', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await req.db(`
+      SELECT *, to_char(last_major_at,'YYYY-MM-DD') AS lm, to_char(last_minor_at,'YYYY-MM-DD') AS ln
+        FROM wash_units
+       ORDER BY active DESC, pts_zone NULLS LAST, location NULLS LAST, asset_code`);
+    const data = rows.map((u) => ({
+      'รหัสแอร์': u.asset_code,
+      'โซน': u.pts_zone || '',
+      'สถานที่': u.location || '',
+      'คลินิก': u.is_clinic ? 'ใช่' : '',
+      'อาคาร': u.building || '',
+      'ชั้น': u.floor || '',
+      'ห้อง': u.room || '',
+      'ประเภทอุปกรณ์': u.equipment || 'ac',
+      'ประเภทแอร์': u.ac_type || '',
+      'ยี่ห้อ': u.brand || '',
+      'รุ่น': u.model || '',
+      'ขนาด': u.cooling_size || '',
+      'ล้างใหญ่/ปี': u.freq_major || 0,
+      'ล้างย่อย/ปี': u.freq_minor || 0,
+      'พัดลม/ปี': u.freq_fan || 0,
+      'ล้างใหญ่ล่าสุด': u.lm || '',
+      'ล้างย่อยล่าสุด': u.ln || '',
+      'ใช้งาน': u.active === false ? 'false' : 'true',
+      'หมายเหตุ': u.note || '',
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(data.length ? data : [{ 'รหัสแอร์': '' }]), 'ทะเบียนแอร์');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="wash-units-edit.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /export-all — ดาวน์โหลด Excel สรุปทั้งระบบ (backup/ตรวจสอบ/ประวัติ) ─────
 // หลาย sheet: ทะเบียนแอร์ · ใบงานล้าง · งานซ่อม · ปฏิทินแผน · สรุป.
 router.get('/export-all', authMiddleware, async (req, res) => {
