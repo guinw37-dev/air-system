@@ -94,9 +94,11 @@ router.get('/progress', authMiddleware, async (req, res) => {
     const { rows: targets } = await req.db(
       `SELECT * FROM service_targets WHERE (month = $1 OR month IS NULL)${zw}`, params);
     // ล้างได้เดือนนี้ ต่อ (zone, work_type, location, ac_type)
+    // ใบงานที่ไม่ได้กรอกสถานที่ → ใช้ชื่อลูกค้าแทน (สาขาที่ตั้งเป้าตามชื่อ รพ.
+    // เช่น "โรงพยาบาลพญาไท 3" จะ match ใบงานเก่าที่มีแต่ client_name ได้)
     const { rows: actual } = await req.db(
       `SELECT pts_zone AS zone, work_type,
-              COALESCE(NULLIF(location,''),'') AS location,
+              COALESCE(NULLIF(location,''), NULLIF(client_name,''), '') AS location,
               COALESCE(NULLIF(ac_type,''),'')  AS ac_type,
               SUM(CASE WHEN work_type IN ('minor','fan')
                        THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)

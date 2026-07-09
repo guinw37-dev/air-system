@@ -7,6 +7,9 @@ const { REMAP_CASE_SQL } = require('../utils/roles');
 const BRANCH_SQL = fs.readFileSync(path.join(__dirname, 'branch_schema.sql'), 'utf8');
 const PUBLIC_SQL = fs.readFileSync(path.join(__dirname, 'public_schema.sql'), 'utf8');
 
+// สาขาที่ใช้ระบบโซน PTS1/PTS2 จริง (ตรงกับ frontend lib/zones.js) — schema names.
+const ZONE_SCHEMAS = ['phayathai_sriracha'];
+
 // Apply the GLOBAL (public) schema + idempotent ALTERs for columns added after
 // an older `clients`/`users`/`notifications` already existed on a live DB.
 async function migratePublic(client) {
@@ -178,6 +181,30 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS ui_prefs JSONB DEFAULT '{}'::jsonb`);
     await c.query(`ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS position VARCHAR(100)`);
     // service_targets index/columns จัดการก่อน BRANCH_SQL แล้ว (ดูด้านบน)
+    // สาขาที่ไม่มีโซน: เป้าเก่าที่ติด zone PTS1/PTS2 (default ของ UI เดิม) ทำยอดล้าง
+    // ไม่วิ่งเข้าเป้า (ใบงานสาขาพวกนี้ pts_zone ว่าง) → normalize เป็น sentinel 'ALL'.
+    // ลบตัวที่จะชนกันหลัง normalize ก่อน (unique key รวม zone) — เก็บแถวใหม่สุด.
+    if (!ZONE_SCHEMAS.includes(schema)) {
+      await c.query(`
+        DELETE FROM service_targets a
+         WHERE a.zone IN ('PTS1','PTS2')
+           AND EXISTS (SELECT 1 FROM service_targets b
+                        WHERE b.zone = 'ALL'
+                          AND COALESCE(b.month,'')     = COALESCE(a.month,'')
+                          AND COALESCE(b.location,'')  = COALESCE(a.location,'')
+                          AND COALESCE(b.ac_type,'')   = COALESCE(a.ac_type,'')
+                          AND COALESCE(b.work_type,'') = COALESCE(a.work_type,''))`);
+      await c.query(`
+        DELETE FROM service_targets a
+         WHERE a.zone IN ('PTS1','PTS2')
+           AND EXISTS (SELECT 1 FROM service_targets b
+                        WHERE b.zone IN ('PTS1','PTS2') AND b.id > a.id
+                          AND COALESCE(b.month,'')     = COALESCE(a.month,'')
+                          AND COALESCE(b.location,'')  = COALESCE(a.location,'')
+                          AND COALESCE(b.ac_type,'')   = COALESCE(a.ac_type,'')
+                          AND COALESCE(b.work_type,'') = COALESCE(a.work_type,''))`);
+      await c.query(`UPDATE service_targets SET zone = 'ALL' WHERE zone IN ('PTS1','PTS2')`);
+    }
     await c.query(`CREATE TABLE IF NOT EXISTS wash_count_adjust (
       id SERIAL PRIMARY KEY, month VARCHAR(7) NOT NULL, zone VARCHAR(50), work_type VARCHAR(20),
       delta INT NOT NULL DEFAULT 0, note TEXT, created_by INT, created_at TIMESTAMPTZ DEFAULT NOW())`);
