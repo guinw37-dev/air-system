@@ -526,8 +526,12 @@ function formatFieldValue(field, val) {
       if (String(v.power_system) === '380')
         return `3 เฟส · R ${g(v.val_r_v_after)}V/${g(v.val_r_after)}A · S ${g(v.val_s_v_after)}V/${g(v.val_s_after)}A · T ${g(v.val_t_v_after)}V/${g(v.val_t_after)}A`
       return `1 เฟส · LN ${g(v.val_ln_after)}V · L ${g(v.val_l_after)}A`
-    case 'pressure_pair':
-      return `น้ำยา ${g(v.refrigerant_type)} · Suction ${g(v.val_suction)} · Discharge ${g(v.val_discharge)} PSI`
+    case 'pressure_pair': {
+      // old records stored a single value as the "after" reading → fall back to it
+      const sucA = v.val_suction_after ?? v.val_suction
+      const disA = v.val_discharge_after ?? v.val_discharge
+      return `น้ำยา ${g(v.refrigerant_type)} · ก่อน Suc ${g(v.val_suction_before)}/Dis ${g(v.val_discharge_before)} · หลัง Suc ${g(sucA)}/Dis ${g(disA)} PSI`
+    }
     default:
       return summarizeValue(v)
   }
