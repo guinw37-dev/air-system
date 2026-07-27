@@ -531,7 +531,11 @@ CREATE OR REPLACE VIEW vw_simple_wo_minor AS
          (g.row->'checks'->>1)::boolean AS "ล้างหัวจ่าย",
          (g.row->'checks'->>2)::boolean AS "ล้างช่องรีเทิร์น",
          (g.row->'checks'->>3)::boolean AS "ล้างฟิลเตอร์",
-         s.recommendation AS "ข้อแนะนำ"
+         s.recommendation AS "ข้อแนะนำ",
+         -- ค่าวัดหลังล้าง (ศรีราชา, Request 22-07) — appended LAST: CREATE OR
+         -- REPLACE VIEW may only add columns at the end, never reorder.
+         g.row->>'air_speed'  AS "ความเร็วลม_ft_m",
+         g.row->>'temp_after' AS "อุณหภูมิหลังล้าง_C"
   FROM simple_work_orders s
   CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.grid_rows, '[]'::jsonb))
     WITH ORDINALITY AS g(row, ord)
