@@ -144,7 +144,8 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
     photos,
   };
 
-  // ตำแหน่งผู้เซ็น — match signer_name กับ users.name (แสดงใต้ชื่อในช่องเซ็น).
+  // ตำแหน่งผู้เซ็น — ใช้ sig_<slot>_position (snapshot ณ วันเซ็น) ก่อน; ใบเก่า
+  // ที่ยังไม่มี snapshot → fallback match signer_name กับ users.name.
   // ชื่อไม่ตรง user ไหน → ไม่แสดง; ชื่อซ้ำหลาย user → กำกวม ไม่แสดง.
   const posByName = {};
   try {
@@ -154,14 +155,14 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
       posByName[u.name] = (u.name in posByName) ? null : u.position;
     }
   } catch { /* users.position ยังไม่ migrate → ข้าม */ }
-  const withPos = (name, sig) => ({ ...sig, position: (name && posByName[name]) || null });
+  const withPos = (name, stored, sig) => ({ ...sig, position: stored || (name && posByName[name]) || null });
 
   const sigs = {
-    engineer:   withPos(r.sig_engineer_name,   { signer_name: r.sig_engineer_name,   signature_data: r.sig_engineer,   signed_at: r.created_at }),
-    department: withPos(r.sig_department_name, { signer_name: r.sig_department_name, signature_data: r.sig_department, signed_at: r.created_at }),
-    team:       withPos(r.sig_team_name,       { signer_name: r.sig_team_name,       signature_data: r.sig_team,       signed_at: r.created_at }),
-    supervisor: withPos(r.sig_supervisor_name, { signer_name: r.sig_supervisor_name, signature_data: r.sig_supervisor, signed_at: r.created_at }),
-    building:   withPos(r.sig_building_name,   { signer_name: r.sig_building_name,    signature_data: r.sig_building,   signed_at: r.created_at }),
+    engineer:   withPos(r.sig_engineer_name,   r.sig_engineer_position,   { signer_name: r.sig_engineer_name,   signature_data: r.sig_engineer,   signed_at: r.created_at }),
+    department: withPos(r.sig_department_name, null,                      { signer_name: r.sig_department_name, signature_data: r.sig_department, signed_at: r.created_at }),
+    team:       withPos(r.sig_team_name,       r.sig_team_position,       { signer_name: r.sig_team_name,       signature_data: r.sig_team,       signed_at: r.created_at }),
+    supervisor: withPos(r.sig_supervisor_name, r.sig_supervisor_position, { signer_name: r.sig_supervisor_name, signature_data: r.sig_supervisor, signed_at: r.created_at }),
+    building:   withPos(r.sig_building_name,   r.sig_building_position,   { signer_name: r.sig_building_name,    signature_data: r.sig_building,   signed_at: r.created_at }),
   };
 
   const woUrl = `${publicBaseUrl}/simple-wo/${id}`;

@@ -491,6 +491,12 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   sig_team            TEXT, sig_team_name        VARCHAR(150),
   sig_supervisor      TEXT, sig_supervisor_name VARCHAR(150),
   sig_building        TEXT, sig_building_name    VARCHAR(150),
+  -- ตำแหน่งผู้เซ็น snapshot ณ วันเซ็น (Request 22-07 ข้อ 2) — ใบเก่าที่เป็น NULL
+  -- จะ fallback join ชื่อ↔users.name ตอน render แทน
+  sig_team_position       VARCHAR(150),
+  sig_supervisor_position VARCHAR(150),
+  sig_building_position   VARCHAR(150),
+  sig_engineer_position   VARCHAR(150),
   grid_rows           JSONB DEFAULT '[]'::jsonb,
   recommendation      TEXT,
   updated_at          TIMESTAMPTZ,
