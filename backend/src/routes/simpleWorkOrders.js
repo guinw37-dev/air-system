@@ -48,12 +48,17 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads
 // Slots the user can't sign keep their existing value (edit) or stay empty
 // (create) — this stops one role forging another's signature on the form.
 // `cur` = current DB row (edit) or {} (create).
-function resolveSigs(role, b, cur = {}) {
+// Slots that carry a sig_<slot>_position snapshot column (department = legacy, none).
+const POSITION_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
+
+function resolveSigs(role, b, cur = {}, myPosition = null) {
   const out = {};
   for (const slot of SIG_SLOTS) {
+    const hasPos = POSITION_SLOTS.includes(slot);
     const keep = () => {
       out[`sig_${slot}`] = cur[`sig_${slot}`] || null;
       out[`sig_${slot}_name`] = cur[`sig_${slot}_name`] || null;
+      if (hasPos) out[`sig_${slot}_position`] = cur[`sig_${slot}_position`] || null;
     };
     if (!canSignSlot(role, slot)) { keep(); continue; }       // not this role's slot
     const adding = !!b[`sig_${slot}`] && !cur[`sig_${slot}`]; // a NEW signature in this slot
@@ -62,8 +67,37 @@ function resolveSigs(role, b, cur = {}) {
     if (adding && blockingSlot(slot, cur)) { keep(); continue; }
     out[`sig_${slot}`] = b[`sig_${slot}`] || null;
     out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
+    if (hasPos) {
+      // Snapshot the signer's position only when they sign THEIR OWN slot
+      // (admin/super writing another slot leaves it null → name-join fallback).
+      out[`sig_${slot}_position`] = (b[`sig_${slot}`] && slotForRole(role) === slot)
+        ? (myPosition || null)
+        : (cur[`sig_${slot}_position`] || null);
+    }
   }
   return out;
+}
+
+// ตำแหน่งของผู้เรียก (users.position ใน schema สาขา) — best-effort.
+async function myPosition(req) {
+  try {
+    const { rows } = await req.db('SELECT position FROM users WHERE id = $1', [req.user.id]);
+    return (rows[0] && rows[0].position) || null;
+  } catch { return null; }
+}
+
+// เติมตำแหน่งให้ใบเก่าที่เซ็นก่อนมี snapshot — join signer_name ↔ users.name
+// (ชื่อซ้ำหลายคน → กำกวม ไม่เติม). Mutates and returns the row.
+async function fillLegacyPositions(req, wo) {
+  const missing = POSITION_SLOTS.filter((s) => wo[`sig_${s}_name`] && !wo[`sig_${s}_position`]);
+  if (!missing.length) return wo;
+  try {
+    const { rows } = await req.db(`SELECT name, position FROM users WHERE COALESCE(position,'') <> ''`);
+    const byName = {};
+    for (const u of rows) byName[u.name] = (u.name in byName) ? null : u.position;
+    for (const s of missing) wo[`sig_${s}_position`] = byName[wo[`sig_${s}_name`]] || null;
+  } catch { /* users.position ยังไม่ migrate → ข้าม */ }
+  return wo;
 }
 
 // ── photo upload (multer → /uploads/photos/simple/...) ──────────────────────
@@ -362,7 +396,7 @@ router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
-  const sig = resolveSigs(req.user.role, b);
+  const sig = resolveSigs(req.user.role, b, {}, await myPosition(req));
   const client = await req.tx();
   try {
     // Two concurrent creates can derive the same wo_number; on a unique-constraint
@@ -379,8 +413,9 @@ router.post('/', authMiddleware, async (req, res) => {
             team_comment, photo_urls, gallery_urls, ac_info,
             sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
             sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
-            grid_rows, recommendation, location, ac_type, condition, updated_at
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,NOW())
+            grid_rows, recommendation, location, ac_type, condition,
+            sig_team_position, sig_supervisor_position, sig_building_position, sig_engineer_position, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,NOW())
           RETURNING id, wo_number
         `, [
           wo_number, req.user.id, b.tech_name || null, b.work_date || null,
@@ -398,6 +433,8 @@ router.post('/', authMiddleware, async (req, res) => {
           sig.sig_building, sig.sig_building_name,
           JSON.stringify(b.grid_rows || []), b.recommendation || null,
           b.location || null, b.ac_type || null, JSON.stringify(b.condition || {}),
+          sig.sig_team_position, sig.sig_supervisor_position,
+          sig.sig_building_position, sig.sig_engineer_position,
         ]));
         await client.query('COMMIT');
         break;
@@ -586,7 +623,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
       LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL
     `, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    res.json(rows[0]);
+    res.json(await fillLegacyPositions(req, rows[0]));
   } catch (err) { serverError(res, err); }
 });
 
@@ -622,7 +659,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
       `SELECT created_by, status,
               sig_engineer, sig_engineer_name, sig_department, sig_department_name,
               sig_team, sig_team_name, sig_supervisor, sig_supervisor_name,
-              sig_building, sig_building_name
+              sig_building, sig_building_name,
+              sig_team_position, sig_supervisor_position, sig_building_position, sig_engineer_position
        FROM simple_work_orders WHERE id = $1`, [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
@@ -635,7 +673,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ส่งกลับก่อนจึงแก้ได้' });
     }
     // Only the user's own signature slot may be (re)written; others keep their value.
-    const sig = resolveSigs(req.user.role, b, rows[0]);
+    const sig = resolveSigs(req.user.role, b, rows[0], await myPosition(req));
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
@@ -645,7 +683,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
         sig_team=$21, sig_team_name=$22, gallery_urls=$23, ac_info=$24,
         sig_building=$25, sig_building_name=$26, sig_supervisor=$27, sig_supervisor_name=$28,
         grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, pts_zone=$33,
-        condition=$34, updated_at=NOW()
+        condition=$34,
+        sig_team_position=$35, sig_supervisor_position=$36,
+        sig_building_position=$37, sig_engineer_position=$38, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -664,6 +704,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
       JSON.stringify(b.grid_rows || []), b.recommendation || null,
       b.location || null, b.ac_type || null, b.pts_zone || null,
       JSON.stringify(b.condition || {}),
+      sig.sig_team_position, sig.sig_supervisor_position,
+      sig.sig_building_position, sig.sig_engineer_position,
     ]);
     res.json(upd[0]);
   } catch (err) { serverError(res, err); }
@@ -760,9 +802,10 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
     const blk = blockingSlot(slot, rows[0]);
     if (blk) { await client.query('ROLLBACK'); return res.status(409).json({ error: `ต้องรอ "${SLOT_TH[blk]}" เซ็นก่อน` }); }
     const { rows: upd } = await client.query(
-      `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2, updated_at = NOW()
-       WHERE id = $3 RETURNING id`,
-      [signature_data, signer_name || req.user.name || '', req.params.id]
+      `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2,
+              sig_${slot}_position = $3, updated_at = NOW()
+       WHERE id = $4 RETURNING id`,
+      [signature_data, signer_name || req.user.name || '', await myPosition(req), req.params.id]
     );
     await client.query('COMMIT');
     res.json({ ok: true, slot, id: upd[0].id });
@@ -794,8 +837,8 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
     const skipped = cleanIds.length - ready.length;
     if (ready.length) {
       await client.query(
-        `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2 WHERE id = ANY($3)`,
-        [signature_data, signer_name || '', ready]);
+        `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2, sig_${slot}_position = $3 WHERE id = ANY($4)`,
+        [signature_data, signer_name || '', await myPosition(req), ready]);
     }
     await client.query('COMMIT');
     res.json({ ok: true, signed: ready.length, skipped, slot });

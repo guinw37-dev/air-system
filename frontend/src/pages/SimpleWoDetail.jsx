@@ -417,7 +417,7 @@ export default function SimpleWoDetail() {
               const prevLabel = SIG_DEFS.find((d) => d.slot === blockSlot)?.label
               return (
                 <div key={slot} className="flex flex-col gap-1.5">
-                  <SigBox label={label} name={wo[`sig_${slot}_name`]} data={wo[`sig_${slot}`]} />
+                  <SigBox label={label} name={wo[`sig_${slot}_name`]} data={wo[`sig_${slot}`]} position={wo[`sig_${slot}_position`]} />
                   {canSign && (
                     <button onClick={() => openSign(slot)} disabled={busy}
                       className="btn-secondary text-xs flex items-center justify-center gap-1 py-1.5">
@@ -598,7 +598,7 @@ function Flag({ on, label }) {
   )
 }
 
-function SigBox({ label, name, data }) {
+function SigBox({ label, name, data, position }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs text-ink-muted">{label}</p>
@@ -610,6 +610,8 @@ function SigBox({ label, name, data }) {
         </div>
       )}
       {name && <p className="text-xs text-ink text-center font-medium">{name}</p>}
+      {/* ตำแหน่งใต้ชื่อผู้เซ็น (Request 22-07 ข้อ 2) */}
+      {name && position && <p className="text-[11px] text-ink-muted text-center">{position}</p>}
     </div>
   )
 }
