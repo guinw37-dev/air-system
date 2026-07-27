@@ -8,6 +8,7 @@ import { compressImage } from '../lib/image'
 import { CONDITION_ISSUES, PRIORITIES } from '../lib/condition'
 import { useAuthStore } from '../store/auth'
 import { useTenantStore } from '../store/tenant'
+import { useHasMinorMeasure } from '../lib/zones'
 
 
 const WORK_TYPES = [
@@ -129,6 +130,8 @@ export default function SimpleWoForm() {
   // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
   const forceCamera = useTenantStore((s) => s.forceCamera)
   const tenantName = useTenantStore((s) => s.name)
+  // ล้างย่อย: ช่องวัดลม/อุณหภูมิ + รูปที่ 4 — เฉพาะสาขาใน MINOR_MEASURE_SLUGS
+  const hasMinorMeasure = useHasMinorMeasure()
 
   // ทะเบียนแอร์ (wash_units): asset_code → ข้อมูลเครื่อง สำหรับ dropdown + auto-fill
   const [washMap, setWashMap] = useState({})
@@ -639,7 +642,7 @@ export default function SimpleWoForm() {
         {/* ── Grid form (ล้างย่อย / พัดลม) ── */}
         {isGrid && (
           <>
-            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} forceCamera={forceCamera} unitCodes={unitCodes} />
+            <GridEditor workType={header.work_type} rows={gridRows} onChange={setGridRows} uploadOne={uploadOne} forceCamera={forceCamera} unitCodes={unitCodes} measure={hasMinorMeasure} />
             <div className="card flex flex-col gap-3">
               <h2 className="section-header">ข้อแนะนำ</h2>
               <textarea className="input" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} placeholder="ข้อแนะนำ / หมายเหตุ" />
@@ -1336,11 +1339,16 @@ function ClientCombobox({ value, onChange }) {
 //   ล้างย่อย: ห้อง/แผนก + เลขเครื่อง + checks + 3 รูป (ก่อน/หลัง/ขณะ) ต่อเครื่อง.
 //   พัดลม:   ชื่อ/เลขเครื่อง + checks + ชำรุด.
 const ROW_PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']]
-function GridEditor({ workType, rows, onChange, uploadOne, forceCamera, unitCodes = [] }) {
+// รูปที่ 4 (วัดความเร็วลม + อุณหภูมิหลังล้าง) — ล้างย่อยสาขาที่เปิด measure เท่านั้น
+const MEASURE_PHASE = ['measure', 'วัดลม/อุณหภูมิ']
+function GridEditor({ workType, rows, onChange, uploadOne, forceCamera, unitCodes = [], measure = false }) {
   const cols = GRID_COLS[workType] || []
   const fan = workType === 'fan'
   // both ล้างย่อย & พัดลม carry ห้อง/แผนก + เลขเครื่อง + 3 photos per machine.
   const roomGrid = workType === 'minor' || fan
+  // ล้างย่อย + สาขาเปิด measure → ช่องวัดลม/อุณหภูมิ + รูปที่ 4 (Request ศรีราชา 22-07)
+  const minorMeasure = measure && workType === 'minor'
+  const phases = minorMeasure ? [...ROW_PHASES, MEASURE_PHASE] : ROW_PHASES
   const addRow = () => onChange([...rows, roomGrid
     ? { room: '', machine_no: '', checks: cols.map(() => false), photos: {}, ...(fan ? { broken: '' } : {}) }
     : { name: '', checks: cols.map(() => false), broken: '' }])
@@ -1378,11 +1386,17 @@ function GridEditor({ workType, rows, onChange, uploadOne, forceCamera, unitCode
           {workType === 'fan' && (
             <input className="input" placeholder="ชำรุดเนื่องจาก (ถ้ามี)" value={r.broken || ''} onChange={(e) => setRow(i, { broken: e.target.value })} />
           )}
+          {minorMeasure && (
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input min-w-0" inputMode="decimal" placeholder="ความเร็วลม (ft/m)" value={r.air_speed || ''} onChange={(e) => setRow(i, { air_speed: e.target.value })} />
+              <input className="input min-w-0" inputMode="decimal" placeholder="อุณหภูมิหลังล้าง (°C)" value={r.temp_after || ''} onChange={(e) => setRow(i, { temp_after: e.target.value })} />
+            </div>
+          )}
           {roomGrid && (
             <div>
-              <div className="text-xs text-ink-muted mb-1">รูปถ่าย (3 รูป/เครื่อง)</div>
-              <div className="grid grid-cols-3 gap-2">
-                {ROW_PHASES.map(([k, label]) => (
+              <div className="text-xs text-ink-muted mb-1">รูปถ่าย ({phases.length} รูป/เครื่อง)</div>
+              <div className={`grid gap-2 ${phases.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+                {phases.map(([k, label]) => (
                   <PhotoSlot
                     key={k}
                     label={label}

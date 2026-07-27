@@ -6,3 +6,10 @@ export const ZONE_BRANCH_SLUGS = ['phayathai-sriracha']
 
 export const useHasZones = () =>
   useTenantStore((s) => ZONE_BRANCH_SLUGS.includes(s.slug))
+
+// ล้างย่อย: ช่องวัด ความเร็วลม (ft/m) + อุณหภูมิหลังล้าง (°C) + รูปที่ 4
+// (รูปวัดค่า) — ลูกค้าสั่งเฉพาะศรีราชา (Request 22-07-2569 ข้อ 1).
+export const MINOR_MEASURE_SLUGS = ['phayathai-sriracha']
+
+export const useHasMinorMeasure = () =>
+  useTenantStore((s) => MINOR_MEASURE_SLUGS.includes(s.slug))

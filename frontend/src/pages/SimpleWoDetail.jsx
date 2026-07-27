@@ -258,9 +258,20 @@ export default function SimpleWoDetail() {
                   ))}
                 </div>
                 {wo.work_type === 'fan' && r.broken && <p className="text-sm text-danger mt-1.5">ชำรุด: {r.broken}</p>}
-                {r.photos && Object.values(r.photos).some(Boolean) && (
-                  <div className="grid grid-cols-3 gap-2 mt-2">
-                    {[['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']].map(([k, label]) => (
+                {/* ค่าวัดหลังล้าง (ศรีราชา) — แสดงเมื่อมีข้อมูลเท่านั้น */}
+                {(r.air_speed || r.temp_after) && (
+                  <p className="text-sm text-ink mt-1.5">
+                    {r.air_speed && <span className="mr-3">ความเร็วลม: <span className="font-medium">{r.air_speed}</span> ft/m</span>}
+                    {r.temp_after && <span>อุณหภูมิหลังล้าง: <span className="font-medium">{r.temp_after}</span> °C</span>}
+                  </p>
+                )}
+                {r.photos && Object.values(r.photos).some(Boolean) && (() => {
+                  // รูปที่ 4 (วัดลม/อุณหภูมิ) โชว์เฉพาะแถวที่มีรูปจริง — ใบเก่าคงหน้าตา 3 รูปเดิม
+                  const phases = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน'],
+                    ...(r.photos.measure ? [['measure', 'วัดลม/อุณหภูมิ']] : [])]
+                  return (
+                  <div className={`grid gap-2 mt-2 ${phases.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+                    {phases.map(([k, label]) => (
                       <div key={k} className="text-center">
                         <div className="text-[11px] text-ink-muted mb-0.5">{label}</div>
                         {r.photos[k]
@@ -269,7 +280,8 @@ export default function SimpleWoDetail() {
                       </div>
                     ))}
                   </div>
-                )}
+                  )
+                })()}
               </div>
             ))}
           </div>

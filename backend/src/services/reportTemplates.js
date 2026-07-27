@@ -1221,7 +1221,10 @@ function gridLetterhead(fan) {
 // Per-machine photo block for ล้างย่อย: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
 // Renders only the rows that actually carry photos; returns '' if none do.
 function gridPhotoSection(rows, title = 'รูปถ่ายงานล้างย่อย') {
-  const PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน']];
+  // รูปที่ 4 (วัดลม/อุณหภูมิ — ศรีราชา) เพิ่มเฉพาะเมื่อมีบางแถวถ่ายไว้จริง
+  const anyMeasure = (rows || []).some((r) => r.photos && r.photos.measure);
+  const PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน'],
+    ...(anyMeasure ? [['measure', 'วัดลม/อุณหภูมิหลังล้าง']] : [])];
   const withPhotos = (rows || []).filter((r) => r.photos && PHASES.some(([k]) => r.photos[k]));
   if (!withPhotos.length) return '';
   const cell = (src, label) => `
@@ -1252,9 +1255,11 @@ function simpleGridPage(data, includePhotos = true) {
   const fan = wo.work_type === 'fan';
   const cols = GRID_COLS_PDF[wo.work_type] || GRID_COLS_PDF.minor;
   const rows = Array.isArray(d.gridRows) ? d.gridRows : [];
+  // ค่าวัดหลังล้าง (ศรีราชา): เพิ่ม 2 คอลัมน์เมื่อมีบางแถวกรอกไว้จริงเท่านั้น
+  const hasMeasure = !fan && rows.some((r) => r.air_speed || r.temp_after);
   // both ล้างย่อย & พัดลม: ห้อง/แผนก + เลขเครื่อง (2 cols); fan adds ชำรุด.
-  const nCols = 3 + cols.length + (fan ? 1 : 0);
-  const checkW = `${Math.floor(50 / cols.length)}%`;
+  const nCols = 3 + cols.length + (fan ? 1 : 0) + (hasMeasure ? 2 : 0);
+  const checkW = `${Math.floor((hasMeasure ? 34 : 50) / cols.length)}%`;
   const acType = wo.ac_type || (fan ? 'Exhaust Fan' : 'FCU');
   const jobLabel = fan ? 'ล้างพัดลมดูดอากาศ' : `ล้างแอร์ แบบล้างย่อย (${escapeHtml(acType)})`;
 
@@ -1262,12 +1267,14 @@ function simpleGridPage(data, includePhotos = true) {
     <th style="width:24px">ลำดับ</th>
     <th style="width:20%">ห้อง/แผนก</th><th style="width:16%">เลขเครื่อง</th>
     ${cols.map((c) => `<th style="width:${checkW}">${escapeHtml(c)}</th>`).join('')}
+    ${hasMeasure ? '<th style="width:8%">ความเร็วลม (ft/m)</th><th style="width:8%">อุณหภูมิหลังล้าง (°C)</th>' : ''}
     ${fan ? '<th>ชำรุดเนื่องจาก</th>' : ''}
   </tr></thead>`;
   const body = rows.map((r, i) => `<tr>
     <td class="center">${i + 1}</td>
     <td>${dash(r.room)}</td><td>${dash(r.machine_no || r.name)}</td>
     ${cols.map((_, ci) => `<td class="tk ${(r.checks || [])[ci] ? 'on' : ''}">${(r.checks || [])[ci] ? TICK : ''}</td>`).join('')}
+    ${hasMeasure ? `<td class="center">${dash(r.air_speed)}</td><td class="center">${dash(r.temp_after)}</td>` : ''}
     ${fan ? `<td>${escapeHtml(r.broken || '')}</td>` : ''}
   </tr>`).join('') || `<tr><td colspan="${nCols}" class="center muted">ไม่มีรายการ</td></tr>`;
 

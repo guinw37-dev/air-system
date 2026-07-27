@@ -308,6 +308,10 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
     const gridSheetFor = (wt, cols, sheetName) => {
       const fan = wt === 'fan';
       const typeLabel = fan ? 'ประเภทพัดลม' : 'ประเภทแอร์';  // both ล้างย่อย & พัดลม carry สถานที่ + ห้อง/เลขเครื่อง
+      // ค่าวัดหลังล้าง (ศรีราชา) — add the columns only when some row carries data,
+      // so branches without the feature keep their sheet unchanged.
+      const hasMeasure = !fan && rows.some((r) => r.work_type === wt
+        && (Array.isArray(r.grid_rows) ? r.grid_rows : []).some((g) => g.air_speed || g.temp_after));
       const out = [];
       for (const r of rows) {
         if (r.work_type !== wt) continue;
@@ -327,6 +331,10 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
             'เลขเครื่อง': g.machine_no || g.name || '',
           };
           cols.forEach((c, ci) => { row[c] = (g.checks || [])[ci] ? '1' : '-'; });
+          if (hasMeasure) {
+            row['ความเร็วลม (ft/m)'] = g.air_speed || '';
+            row['อุณหภูมิหลังล้าง (°C)'] = g.temp_after || '';
+          }
           if (fan) row['ชำรุดเนื่องจาก'] = g.broken || '';
           row['ข้อแนะนำ'] = r.recommendation || '';
           out.push(row);
@@ -335,7 +343,8 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       if (!out.length) return;
       const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'สถานที่', typeLabel, 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
         'ห้อง/แผนก', 'เลขเครื่อง',
-        ...cols, ...(fan ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
+        ...cols, ...(hasMeasure ? ['ความเร็วลม (ft/m)', 'อุณหภูมิหลังล้าง (°C)'] : []),
+        ...(fan ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out, { header: hdr }), sheetName);
     };
     gridSheetFor('minor', GRID_COLS_X.minor, 'ล้างย่อย');
