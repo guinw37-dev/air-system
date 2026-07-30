@@ -68,9 +68,10 @@ function resolveSigs(role, b, cur = {}, myPosition = null) {
     out[`sig_${slot}`] = b[`sig_${slot}`] || null;
     out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
     if (hasPos) {
-      // Snapshot the signer's position only when they sign THEIR OWN slot
-      // (admin/super writing another slot leaves it null → name-join fallback).
-      out[`sig_${slot}_position`] = (b[`sig_${slot}`] && slotForRole(role) === slot)
+      // Past the canSignSlot guard = the signer signs a slot they own (own slot
+      // or ROLE_EXTRA_SLOTS, e.g. checker → team) → snapshot their position.
+      // admin/super never reach here (canSignSlot false) → name-join fallback.
+      out[`sig_${slot}_position`] = b[`sig_${slot}`]
         ? (myPosition || null)
         : (cur[`sig_${slot}_position`] || null);
     }
@@ -782,9 +783,20 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
 // /admin. checker / approve_* roles sign their own slot here without being the
 // creator. admin/super may NOT sign. Once วางบิลแล้ว (approved=locked) no more signing.
 router.post('/:id/sign', authMiddleware, async (req, res) => {
-  const { signature_data, signer_name } = req.body || {};
+  const { signature_data, signer_name, slot: reqSlot } = req.body || {};
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
-  const slot = slotForRole(req.user.role);
+  // Requested slot must be one this role may sign (own slot or ROLE_EXTRA_SLOTS,
+  // e.g. checker → team); no slot in the body falls back to the role's own slot.
+  // Whitelisted via canSignSlot before interpolation into the sig_<slot> columns.
+  let slot;
+  if (reqSlot != null) {
+    if (!POSITION_SLOTS.includes(reqSlot) || !canSignSlot(req.user.role, reqSlot)) {
+      return res.status(403).json({ error: 'role นี้เซ็นช่องนี้ไม่ได้' });
+    }
+    slot = reqSlot;
+  } else {
+    slot = slotForRole(req.user.role);
+  }
   if (!slot) return res.status(403).json({ error: 'role นี้ไม่มีช่องเซ็น' });
   // One transaction with a row lock: read status + the chain, validate, then write
   // atomically so a concurrent reject/sign can't slip the chain check (audit M-4).

@@ -9,8 +9,10 @@ import api, { uploadsBase } from '../api/client'
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
 import { useAuthStore } from '../store/auth'
 
-// Each role signs ONE slot on a ใบงาน (backend enforces it too); admin/super any.
+// Each role signs its own slot (backend enforces it too); admin/super do not sign.
 const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
+// หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ (ช่างไม่อยู่/ลืมเซ็น) — mirror ROLE_EXTRA_SLOTS backend
+const EXTRA_SLOTS_FOR_ROLE = { checker: ['team'] }
 const SIG_DEFS = [
   { slot: 'team',       label: 'ช่างแอร์' },
   { slot: 'supervisor', label: 'หัวหน้าช่างแอร์' },
@@ -56,7 +58,8 @@ export default function SimpleWoDetail() {
   const { user } = useAuthStore()
   const role = user?.role
   const privileged = role === 'admin' || role === 'super_admin'
-  const canSignSlot = (slot) => SLOT_FOR_ROLE[role] === slot   // admin/super do not sign
+  const canSignSlot = (slot) => SLOT_FOR_ROLE[role] === slot
+    || (EXTRA_SLOTS_FOR_ROLE[role] || []).includes(slot)   // admin/super do not sign
 
   const [wo, setWo] = useState(null)
   const [schema, setSchema] = useState({ sections: [] })
