@@ -45,9 +45,15 @@ const ROLE_SLOT = {
   approve_engineer: 'engineer',    // เจ้าหน้าวิศวกรรม
   approver:         'engineer',    // legacy alias
 };
-// A role may sign ONLY the slot mapped to it. admin / super_admin do NOT sign at
-// all (they manage + bill) — signing is reserved for the field/approval roles.
-const canSignSlot = (role, slot) => ROLE_SLOT[role] === slot;
+// Extra slots a role may sign IN ADDITION to its own (Worawit 27 Jul 2026):
+// หัวหน้าช่างแอร์ (checker) may also sign the ช่างแอร์ slot — covers a tech who
+// is absent / forgot. Single-WO signing only; batch-sign stays own-slot.
+const ROLE_EXTRA_SLOTS = { checker: ['team'] };
+// A role may sign the slot mapped to it (plus any ROLE_EXTRA_SLOTS). admin /
+// super_admin do NOT sign at all (they manage + bill) — signing is reserved for
+// the field/approval roles.
+const canSignSlot = (role, slot) =>
+  ROLE_SLOT[role] === slot || (ROLE_EXTRA_SLOTS[role] || []).includes(slot);
 // A ใบงาน is "เซ็นครบ" (billable / ดำเนินการเสร็จสิ้น) only when ALL FOUR slots
 // are signed: ช่างแอร์ + หัวหน้าช่าง + ช่างอาคาร + วิศวกรรม. (Worawit 8 Jul 2026 —
 // previously the building/engineer pair could sign in place of each other, which

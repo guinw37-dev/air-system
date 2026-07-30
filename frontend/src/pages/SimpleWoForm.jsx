@@ -65,9 +65,12 @@ export default function SimpleWoForm() {
   // other slots are read-only. admin/super do NOT sign at all (they manage + bill).
   // Step chain: a slot is signable only after every earlier slot is signed.
   const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
+  // หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ — mirror ROLE_EXTRA_SLOTS backend
+  const EXTRA_SLOTS_FOR_ROLE = { checker: ['team'] }
   // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
   const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
   const canSignSlot = (slot) => SLOT_FOR_ROLE[user?.role] === slot
+    || (EXTRA_SLOTS_FOR_ROLE[user?.role] || []).includes(slot)
 
   const [header, setHeader] = useState({
     tech_name: '',
