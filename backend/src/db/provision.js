@@ -25,6 +25,10 @@ async function migratePublic(client) {
     // force_camera = บังคับถ่ายรูปสด + timestamp (ห้ามเลือกจาก gallery). เปิดเฉพาะ
     // สาขาที่ต้องการ (เช่น ศรีราชา); สาขาอื่น false = อัปจาก gallery ได้เหมือนเดิม.
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS force_camera BOOLEAN DEFAULT false`);
+    // require_department_sign = ใบงานต้องมีลายเซ็น "เจ้าหน้าที่เจ้าของพื้นที่" ด้วยจึงนับว่า
+    // เซ็นครบ/พร้อมวางบิล. เปิดเฉพาะสาขาที่ขอ (พญาไท นวมินทร์); สาขาอื่น false =
+    // กติกาเดิม 4 ช่อง ไม่ขยับ (ใบที่รอวางบิลอยู่ต้องไม่เด้งกลับเป็นไม่ครบ).
+    await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS require_department_sign BOOLEAN DEFAULT false`);
     await c.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS line_group_id TEXT`);
     await c.query(`CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
     await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_slug        ON clients(slug)        WHERE slug        IS NOT NULL`);
@@ -104,8 +108,9 @@ async function provisionBranchSchema(schemaName) {
     }
     // สภาพแอร์/แจ้งเปลี่ยนอะไหล่ assessment (added after the table shipped).
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS condition JSONB DEFAULT '{}'::jsonb`);
-    // ตำแหน่งผู้เซ็น snapshot ณ วันเซ็น (Request 22-07 ข้อ 2).
-    for (const slot of ['team', 'supervisor', 'building', 'engineer']) {
+    // ตำแหน่งผู้เซ็น snapshot ณ วันเซ็น (Request 22-07 ข้อ 2). department = ตำแหน่ง
+    // ที่ผู้เปิดแท็บเล็ตพิมพ์ให้เจ้าหน้าที่ รพ. (ไม่ได้ snapshot จาก users).
+    for (const slot of ['team', 'supervisor', 'building', 'engineer', 'department']) {
       await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS sig_${slot}_position VARCHAR(150)`);
     }
     // vw_simple_wo_minor/_fan reference ac_type AND changed column names/order

@@ -428,6 +428,14 @@ function firstUnit(data) {
   return (data.units && data.units[0]) || {};
 }
 
+// ช่องเซ็นที่ 5 "เจ้าหน้าที่เจ้าของพื้นที่" — เฉพาะสาขาที่เปิด require_department_sign
+// (PTN). สาขาอื่นได้ฟอร์มเดิม 4 ช่องเป๊ะ. วางก่อนวิศวกรรมตามลำดับที่ รพ. ขอ.
+function ownerSignatureBox(d, sigs) {
+  return d && d.require_department_sign
+    ? signatureBox('ลงชื่อเจ้าหน้าที่เจ้าของพื้นที่', sigs.department)
+    : '';
+}
+
 // Render one signature box (img + role + name + position + date). Graceful when missing.
 function signatureBox(roleLabel, sig) {
   const inner = sig && sig.signature_data
@@ -1308,6 +1316,7 @@ function simpleGridPage(data, includePhotos = true) {
       ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
       ${signatureBox('ลงชื่อหัวหน้าช่างแอร์', sigs.supervisor)}
       ${signatureBox('ลงชื่อเจ้าหน้าที่ช่างอาคาร', sigs.building)}
+      ${ownerSignatureBox(d, sigs)}
       ${signatureBox('ลงชื่อเจ้าหน้าวิศวกรรม', sigs.engineer)}
     </div>
   </div>`;
@@ -1363,6 +1372,7 @@ function simpleReportPages(data, includePhotos = true) {
       ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
       ${signatureBox('ลงชื่อหัวหน้าช่างแอร์', sigs.supervisor)}
       ${signatureBox('ลงชื่อเจ้าหน้าที่ช่างอาคาร', sigs.building)}
+      ${ownerSignatureBox(d, sigs)}
       ${signatureBox('ลงชื่อเจ้าหน้าวิศวกรรม', sigs.engineer)}
     </div>
   </div>`;

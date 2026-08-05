@@ -229,7 +229,9 @@ router.post('/line-test', authMiddleware, canEdit, async (req, res) => {
   if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขา' });
   try {
     const { rows } = await pool.query(
-      'SELECT id, slug, name, schema_name, line_group_id FROM clients WHERE id = $1', [req.branch.id]);
+      `SELECT id, slug, name, schema_name, line_group_id,
+              COALESCE(require_department_sign, false) AS require_department_sign
+         FROM clients WHERE id = $1`, [req.branch.id]);
     await runDigestForBranch(rows[0] || req.branch);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }

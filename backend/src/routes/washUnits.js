@@ -6,6 +6,7 @@ const router = express.Router();
 const multer = require('multer');
 const XLSX = require('xlsx');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { allSignedSql } = require('../utils/roles');
 const { serverError } = require('../utils/respond');
 
 const canEdit = requireRole('admin', 'super_admin');
@@ -336,8 +337,8 @@ router.get('/export-all', authMiddleware, async (req, res) => {
       } catch { /* ตารางอาจยังไม่ migrate → ข้าม sheet */ }
     };
 
-    // เซ็นครบ = ครบทั้ง 4 ช่อง (ตรงกับ roles.allSigned / dashboard.ALL_SIGNED)
-    const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
+    // เซ็นครบ = 4 ช่อง (+ เจ้าของพื้นที่ ถ้าสาขานี้เปิด require_department_sign)
+    const ALL_SIGNED = allSignedSql({ requireDepartment: !!(req.branch && req.branch.require_department_sign) });
     await sheet('ทะเบียนแอร์', 'SELECT * FROM wash_units ORDER BY pts_zone NULLS LAST, asset_code');
     // ใบงานล้าง — เลือกคอลัมน์ (เลี่ยง base64 ลายเซ็น/รูป/checklist)
     await sheet('ใบงานล้าง',

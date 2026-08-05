@@ -1,13 +1,15 @@
 // แจ้งเตือน LINE ประจำวัน (08:45 น.) ต่อสาขา — แผนล้างวันนี้ + สรุปเมื่อวาน + งานรอเซ็น
 // ตั้ง env: LINE_CHANNEL_ACCESS_TOKEN. ตั้ง line_group_id ต่อสาขาในตาราง clients.
 const { pool, query } = require('../db');
+const { allSignedSql } = require('../utils/roles');
 
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const TH_DOW = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const pad = (n) => String(n).padStart(2, '0');
 
-// เซ็นครบ = ครบทั้ง 4 ช่อง (ตรงกับ roles.allSigned / dashboard.ALL_SIGNED)
-const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
+// เซ็นครบ = ครบทั้ง 4 ช่อง + เจ้าของพื้นที่ เฉพาะสาขาที่เปิด require_department_sign
+// (ตรงกับ roles.allSigned / dashboard) — ต่อสาขา เพราะ job นี้วนทุกสาขา
+const allSignedOf = (b) => allSignedSql({ requireDepartment: !!(b && b.require_department_sign) });
 
 // token: system_settings (แก้จากเว็บได้) ก่อน, fallback env
 async function getLineToken() {
@@ -22,6 +24,7 @@ async function getLineToken() {
 async function buildText(branch) {
   const schema = branch.schema_name || branch.slug;
   const safe = async (sql) => { try { return (await query(schema, sql)).rows; } catch { return []; } };
+  const ALL_SIGNED = allSignedOf(branch);
 
   const today = await safe(
     `SELECT work_type, COUNT(*)::int n FROM wash_schedule
@@ -85,7 +88,9 @@ async function pushLine(to, text) {
 async function runDigest() {
   if (!(await getLineToken())) { console.log('[line] skip — no LINE token'); return { sent: 0 }; }
   const { rows } = await pool.query(
-    `SELECT id, slug, name, schema_name, line_group_id FROM clients
+    `SELECT id, slug, name, schema_name, line_group_id,
+            COALESCE(require_department_sign, false) AS require_department_sign
+       FROM clients
       WHERE active = true AND schema_name IS NOT NULL AND COALESCE(line_group_id,'') <> ''`);
   let sent = 0;
   for (const b of rows) {

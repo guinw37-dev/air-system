@@ -45,10 +45,21 @@ const ROLE_SLOT = {
   approve_engineer: 'engineer',    // เจ้าหน้าวิศวกรรม
   approver:         'engineer',    // legacy alias
 };
+// EXTERNAL slots are signed by someone who has NO account here — the hospital's
+// own staff. Whoever holds the device opens the pad for them, so the signer's
+// name/position are TYPED IN, never snapshotted from the logged-in user.
+const EXTERNAL_SLOTS = ['department'];   // เจ้าหน้าที่เจ้าของพื้นที่ (คนของ รพ.)
 // Extra slots a role may sign IN ADDITION to its own (Worawit 27 Jul 2026):
 // หัวหน้าช่างแอร์ (checker) may also sign the ช่างแอร์ slot — covers a tech who
 // is absent / forgot. Single-WO signing only; batch-sign stays own-slot.
-const ROLE_EXTRA_SLOTS = { checker: ['team'] };
+// Every on-site branch role may open the เจ้าของพื้นที่ pad (PTN, 5 Aug 2026) —
+// it is a proxy for an outside signer, not an approval of their own.
+const ROLE_EXTRA_SLOTS = {
+  checker:          ['team', 'department'],
+  technician:       ['department'],
+  approve_building: ['department'],
+  approve_engineer: ['department'],
+};
 // A role may sign the slot mapped to it (plus any ROLE_EXTRA_SLOTS). admin /
 // super_admin do NOT sign at all (they manage + bill) — signing is reserved for
 // the field/approval roles.
@@ -59,20 +70,41 @@ const canSignSlot = (role, slot) =>
 // previously the building/engineer pair could sign in place of each other, which
 // let a WO show "เสร็จสิ้น" while the badge still said "รอช่างอาคารตรวจเช็ค".)
 // building/engineer still sign in ANY ORDER — only the completeness rule changed.
+//
+// A branch may additionally require เจ้าหน้าที่เจ้าของพื้นที่ (department) — opt-in
+// per branch via clients.require_department_sign (PTN, 5 Aug 2026). Branches with
+// the flag OFF keep the exact 4-slot rule, so their existing ใบงาน never move.
+// Callers pass { requireDepartment } from req.branch; omitting it = the 4-slot rule.
 const REQUIRED_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
-const allSigned = (wo) =>
-  !!(wo && wo.sig_team && wo.sig_supervisor && wo.sig_building && wo.sig_engineer);
+const requiredSlots = (opts = {}) =>
+  opts.requireDepartment ? [...REQUIRED_SLOTS, 'department'] : REQUIRED_SLOTS;
+const allSigned = (wo, opts = {}) =>
+  !!(wo && requiredSlots(opts).every((s) => wo[`sig_${s}`]));
+// Same rule as SQL, for the queries that derive "เซ็นครบ" in the database.
+// `alias` prefixes the columns (e.g. 's' → s.sig_team). Slot names are literals
+// from REQUIRED_SLOTS — nothing from a request is interpolated here.
+const allSignedSql = (opts = {}, alias = '') => {
+  const p = alias ? `${alias}.` : '';
+  return `(${requiredSlots(opts).map((s) => `${p}sig_${s} IS NOT NULL`).join(' AND ')})`;
+};
 
 // Signing order (display) + per-slot prerequisites. The chain is:
 //   ช่างแอร์ → หัวหน้าช่าง → { ช่างอาคาร , วิศวกรรม }
 // ช่างอาคาร and วิศวกรรม are a PARALLEL pair — once ช่างแอร์ + หัวหน้า have signed,
 // either can sign in any order (they don't wait on each other).
-const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer'];
-const SLOT_TH = { team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', engineer: 'เจ้าหน้าวิศวกรรม' };
+// เจ้าหน้าที่เจ้าของพื้นที่ sits 4th in the DISPLAY order (ก่อนวิศวกรรม) but is a
+// third member of the parallel group — วิศวกรรม never waits on it, or one ward
+// staffer being unavailable would stall the whole ใบงาน.
+const SIGN_ORDER = ['team', 'supervisor', 'building', 'department', 'engineer'];
+const SLOT_TH = {
+  team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร',
+  department: 'เจ้าหน้าที่เจ้าของพื้นที่', engineer: 'เจ้าหน้าวิศวกรรม',
+};
 const SIG_PREREQ = {
   team:       [],
   supervisor: ['team'],
   building:   ['team', 'supervisor'],
+  department: ['team', 'supervisor'],
   engineer:  ['team', 'supervisor'],
 };
 // First prerequisite slot still unsigned (the one blocking `slot`), or null if ready.
@@ -108,6 +140,7 @@ const REMAP_CASE_SQL = `CASE role
 module.exports = {
   ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES,
   SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, REQUIRED_SLOTS, allSigned,
+  requiredSlots, allSignedSql, EXTERNAL_SLOTS, ROLE_EXTRA_SLOTS,
   SIGN_ORDER, SIG_PREREQ, SLOT_TH, blockingSlot,
   LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
 };
