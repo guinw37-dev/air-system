@@ -70,7 +70,9 @@ router.put('/branch/:id', authMiddleware, onlySuper, async (req, res) => {
 router.post('/test/:id', authMiddleware, onlySuper, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, slug, name, schema_name, line_group_id FROM clients WHERE id = $1`, [req.params.id]);
+      `SELECT id, slug, name, schema_name, line_group_id,
+              COALESCE(require_department_sign, false) AS require_department_sign
+         FROM clients WHERE id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบสาขา' });
     await runDigestForBranch(rows[0]);
     res.json({ ok: true });

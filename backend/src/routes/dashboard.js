@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { pool, query } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
+const { allSignedSql } = require('../utils/roles');
 const { serverError } = require('../utils/respond');
 
 // ── per-schema summary. Tolerant: a branch missing a table (mid-migration)
@@ -22,11 +23,13 @@ const AC_SQL = `
   FROM ac_repair_jobs`;
 
 // งานล้าง buckets — same sig logic as the simple-wo list (team + supervisor +
-// เซ็นครบ = ครบทั้ง 4 ช่อง (team+supervisor+building+engineer — Worawit 8 Jul 2026).
+// เซ็นครบ = ครบทั้ง 4 ช่อง (team+supervisor+building+engineer — Worawit 8 Jul 2026),
+// บวก เจ้าหน้าที่เจ้าของพื้นที่ เฉพาะสาขาที่เปิด clients.require_department_sign (PTN).
 // pending = not yet all-signed; ready = all-signed but not billed; billed = approved.
-const ALL_SIGNED = `(sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
-                     AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL)`;
-const WO_SQL = `
+const allSignedOf = (b) => allSignedSql({ requireDepartment: !!(b && b.require_department_sign) });
+const woSql = (b) => {
+  const ALL_SIGNED = allSignedOf(b);
+  return `
   SELECT
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND status <> 'rejected' AND NOT ${ALL_SIGNED})      AS wo_pending,
@@ -47,8 +50,7 @@ const WO_SQL = `
                      AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
                      AND sig_building IS NOT NULL AND sig_engineer IS NULL) AS wo_wait_engineer,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
-                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
-                     AND sig_building IS NOT NULL AND sig_engineer IS NOT NULL) AS wo_done_full,
+                     AND ${ALL_SIGNED})                                   AS wo_done_full,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND ${ALL_SIGNED})                                   AS wo_ready,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'approved')    AS wo_billed,
@@ -59,6 +61,7 @@ const WO_SQL = `
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND work_type = 'fan')                              AS wo_fan
   FROM simple_work_orders`;
+};
 
 async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
@@ -72,7 +75,7 @@ async function summarizeBranch(branch) {
     Object.assign(out, mapInts(ac.rows[0]));
   } catch (e) { out.error = true; }
   try {
-    const wo = await query(schema, WO_SQL);
+    const wo = await query(schema, woSql(branch));
     Object.assign(out, mapInts(wo.rows[0]));
   } catch (e) { out.error = true; }
   // derived
@@ -97,9 +100,9 @@ const RECENT_AC_SQL = `
   FROM ac_repair_jobs
   WHERE status NOT IN ('Close','Cancel')
   ORDER BY register_time DESC LIMIT 6`;
-const RECENT_WO_SQL = `
+const recentWoSql = (b) => `
   SELECT wo_number, client_name, work_type, status, created_at,
-         ${ALL_SIGNED} AS all_signed
+         ${allSignedOf(b)} AS all_signed
   FROM simple_work_orders
   WHERE deleted_at IS NULL
   ORDER BY created_at DESC LIMIT 6`;
@@ -133,7 +136,7 @@ async function branchDetail(branch) {
   try {
     const [ra, rw, ta, tw] = await Promise.all([
       query(schema, RECENT_AC_SQL),
-      query(schema, RECENT_WO_SQL),
+      query(schema, recentWoSql(branch)),
       query(schema, TREND_AC_SQL),
       query(schema, TREND_WO_SQL),
     ]);
@@ -160,7 +163,9 @@ router.get('/', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'เฉพาะ super-admin ดูภาพรวมทุกสาขาได้' });
     }
     const { rows } = await pool.query(
-      `SELECT id, slug, name, schema_name FROM clients
+      `SELECT id, slug, name, schema_name,
+              COALESCE(require_department_sign, false) AS require_department_sign
+         FROM clients
          WHERE active = true AND schema_name IS NOT NULL ORDER BY name`
     );
     const branches = await Promise.all(rows.map(summarizeBranch));

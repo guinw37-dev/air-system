@@ -497,6 +497,8 @@ CREATE TABLE IF NOT EXISTS simple_work_orders (
   sig_supervisor_position VARCHAR(150),
   sig_building_position   VARCHAR(150),
   sig_engineer_position   VARCHAR(150),
+  -- เจ้าหน้าที่เจ้าของพื้นที่ = คนของ รพ. (ไม่มี user) → ชื่อ/ตำแหน่งพิมพ์เอง
+  sig_department_position VARCHAR(150),
   grid_rows           JSONB DEFAULT '[]'::jsonb,
   recommendation      TEXT,
   updated_at          TIMESTAMPTZ,
@@ -522,7 +524,9 @@ CREATE OR REPLACE VIEW vw_simple_wo_major AS
          sig_team_name       AS "เซ็น_ช่างแอร์",
          sig_supervisor_name AS "เซ็น_หัวหน้าช่างแอร์",
          sig_building_name   AS "เซ็น_เจ้าหน้าที่ช่างอาคาร",
-         sig_engineer_name   AS "เซ็น_เจ้าหน้าวิศวกรรม"
+         sig_engineer_name   AS "เซ็น_เจ้าหน้าวิศวกรรม",
+         -- appended LAST — CREATE OR REPLACE VIEW may only add columns at the end
+         sig_department_name AS "เซ็น_เจ้าหน้าที่เจ้าของพื้นที่"
   FROM simple_work_orders
   WHERE deleted_at IS NULL AND (work_type = 'major' OR work_type IS NULL);
 

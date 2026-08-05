@@ -6,6 +6,7 @@ import SignaturePad from '../components/SignaturePad'
 import api, { uploadsBase } from '../api/client'
 import { compressImage } from '../lib/image'
 import { CONDITION_ISSUES, PRIORITIES } from '../lib/condition'
+import { refrigerantRefText } from '../lib/refrigerant'
 import { useAuthStore } from '../store/auth'
 import { useTenantStore } from '../store/tenant'
 import { useHasMinorMeasure } from '../lib/zones'
@@ -65,10 +66,19 @@ export default function SimpleWoForm() {
   // other slots are read-only. admin/super do NOT sign at all (they manage + bill).
   // Step chain: a slot is signable only after every earlier slot is signed.
   const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
-  // หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ — mirror ROLE_EXTRA_SLOTS backend
-  const EXTRA_SLOTS_FOR_ROLE = { checker: ['team'] }
-  // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
-  const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
+  // หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ + ทุก role หน้างานเปิดแผ่นเซ็นให้เจ้าของพื้นที่ได้
+  // — mirror ROLE_EXTRA_SLOTS backend
+  const EXTRA_SLOTS_FOR_ROLE = {
+    checker: ['team', 'department'],
+    technician: ['department'],
+    approve_building: ['department'],
+    approve_engineer: ['department'],
+  }
+  // ช่างอาคาร + เจ้าของพื้นที่ + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
+  const SIG_PREREQ = {
+    team: [], supervisor: ['team'], building: ['team', 'supervisor'],
+    department: ['team', 'supervisor'], engineer: ['team', 'supervisor'],
+  }
   const canSignSlot = (slot) => SLOT_FOR_ROLE[user?.role] === slot
     || (EXTRA_SLOTS_FOR_ROLE[user?.role] || []).includes(slot)
 
@@ -133,6 +143,8 @@ export default function SimpleWoForm() {
   // บังคับถ่ายสด+timestamp เฉพาะสาขาที่ตั้ง force_camera (เช่น ศรีราชา)
   const forceCamera = useTenantStore((s) => s.forceCamera)
   const tenantName = useTenantStore((s) => s.name)
+  // ช่องเซ็น "เจ้าหน้าที่เจ้าของพื้นที่" — เฉพาะสาขาที่เปิด require_department_sign (PTN)
+  const requireDeptSign = useTenantStore((s) => s.requireDeptSign)
   // ล้างย่อย: ช่องวัดลม/อุณหภูมิ + รูปที่ 4 — เฉพาะสาขาใน MINOR_MEASURE_SLUGS
   const hasMinorMeasure = useHasMinorMeasure()
 
@@ -204,7 +216,8 @@ export default function SimpleWoForm() {
 
   const [signatures, setSignatures] = useState({
     engineer:   { name: '', data: '' },
-    department: { name: '', data: '' },
+    // department = เจ้าหน้าที่ รพ. (ไม่มี user) → เก็บตำแหน่งที่พิมพ์เองมาด้วย
+    department: { name: '', data: '', position: '' },
     team:       { name: '', data: '' },
     supervisor: { name: '', data: '' },
     building:   { name: '', data: '' },
@@ -264,7 +277,7 @@ export default function SimpleWoForm() {
             issue_priority: (w.condition && typeof w.condition.issue_priority === 'object' && w.condition.issue_priority) || {} })
           setSignatures({
             engineer:   { name: w.sig_engineer_name || '',   data: w.sig_engineer || '' },
-            department: { name: w.sig_department_name || '',  data: w.sig_department || '' },
+            department: { name: w.sig_department_name || '',  data: w.sig_department || '', position: w.sig_department_position || '' },
             team:       { name: w.sig_team_name || '',        data: w.sig_team || '' },
             supervisor: { name: w.sig_supervisor_name || '',   data: w.sig_supervisor || '' },
             building:   { name: w.sig_building_name || '',     data: w.sig_building || '' },
@@ -425,7 +438,7 @@ export default function SimpleWoForm() {
     setCondition(CONDITION_DEFAULT)
     setSignatures({
       engineer:   { name: '', data: '' },
-      department: { name: '', data: '' },
+      department: { name: '', data: '', position: '' },
       team:       { name: '', data: '' },
       supervisor: { name: '', data: '' },
       building:   { name: '', data: '' },
@@ -502,6 +515,7 @@ export default function SimpleWoForm() {
         sig_engineer_name: signatures.engineer.name,
         sig_department: signatures.department.data,
         sig_department_name: signatures.department.name,
+        sig_department_position: signatures.department.position || '',
         sig_team: signatures.team.data,
         sig_team_name: signatures.team.name,
         sig_supervisor: signatures.supervisor.data,
@@ -943,18 +957,21 @@ export default function SimpleWoForm() {
             { role: 'team',       label: 'ช่างแอร์' },
             { role: 'supervisor', label: 'หัวหน้าช่างแอร์' },
             { role: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
+            // ช่องที่ 4 เฉพาะสาขาที่เปิดกติกา (PTN) — ผู้เซ็นเป็นคนของ รพ.
+            ...(requireDeptSign ? [{ role: 'department', label: 'เจ้าหน้าที่เจ้าของพื้นที่', external: true }] : []),
             { role: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
-          ].map(({ role, label }) => {
+          ].map(({ role, label, external }) => {
             const mine = canSignSlot(role)
             // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ — ต้องการแค่ ช่างแอร์ + หัวหน้า
             const ready = (SIG_PREREQ[role] || []).every((p) => !!signatures[p]?.data)
             const canSign = mine && ready
             const blockSlot = (SIG_PREREQ[role] || []).find((p) => !signatures[p]?.data)
-            const prevLabel = { team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', engineer: 'เจ้าหน้าวิศวกรรม' }[blockSlot]
+            const prevLabel = { team: 'ช่างแอร์', supervisor: 'หัวหน้าช่างแอร์', building: 'เจ้าหน้าที่ช่างอาคาร', department: 'เจ้าหน้าที่เจ้าของพื้นที่', engineer: 'เจ้าหน้าวิศวกรรม' }[blockSlot]
             return (
             <div key={role} className="flex flex-col gap-2 border-b border-line last:border-0 pb-4 last:pb-0">
               <label className="label flex items-center gap-2">{label}
-                {!mine && <span className="text-[11px] font-normal text-ink-muted">(เซ็นได้เฉพาะช่องของคุณ)</span>}</label>
+                {external && <span className="text-[11px] font-normal text-ink-muted">(เจ้าหน้าที่ รพ. เซ็นเอง)</span>}
+                {!mine && !external && <span className="text-[11px] font-normal text-ink-muted">(เซ็นได้เฉพาะช่องของคุณ)</span>}</label>
               <input
                 className="input"
                 placeholder="ชื่อผู้ลงนาม"
@@ -962,6 +979,15 @@ export default function SimpleWoForm() {
                 value={signatures[role].name}
                 onChange={(e) => setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], name: e.target.value } }))}
               />
+              {external && (
+                <input
+                  className="input"
+                  placeholder="ตำแหน่ง / แผนก (เช่น หัวหน้าห้อง LR)"
+                  disabled={!canSign}
+                  value={signatures[role].position || ''}
+                  onChange={(e) => setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], position: e.target.value } }))}
+                />
+              )}
               {signatures[role].data ? (
                 <div className="flex items-center gap-3">
                   <img src={signatures[role].data} alt="sig" className="h-16 w-32 object-contain border border-line rounded-lg bg-white" />
@@ -1250,6 +1276,11 @@ function ChecklistField({ field, value, onChange }) {
             <option value="">-- น้ำยา --</option>
             {REFRIGERANTS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
+          {refrigerantRefText(value.refrigerant_type) && (
+            <p className="text-xs text-ink-muted bg-page rounded-lg px-2 py-1.5">
+              {refrigerantRefText(value.refrigerant_type)}
+            </p>
+          )}
           <p className="text-xs text-ink-muted">Suction / Discharge (ก่อนล้าง)</p>
           <div className="grid grid-cols-2 gap-2">
             <input className="input" inputMode="decimal" placeholder="Suction" value={value.val_suction_before || ''} onChange={(e) => onChange({ val_suction_before: e.target.value })} />

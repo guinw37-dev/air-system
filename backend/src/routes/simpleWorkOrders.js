@@ -7,7 +7,8 @@ const dayjs = require('dayjs');
 const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
-const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, blockingSlot, SLOT_TH } = require('../utils/roles');
+const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, allSignedSql,
+        EXTERNAL_SLOTS, blockingSlot, SLOT_TH } = require('../utils/roles');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -48,8 +49,13 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads
 // Slots the user can't sign keep their existing value (edit) or stay empty
 // (create) — this stops one role forging another's signature on the form.
 // `cur` = current DB row (edit) or {} (create).
-// Slots that carry a sig_<slot>_position snapshot column (department = legacy, none).
-const POSITION_SLOTS = ['team', 'supervisor', 'building', 'engineer'];
+// Slots that carry a sig_<slot>_position column. For the four staff slots it is a
+// SNAPSHOT of users.position; for department (เจ้าหน้าที่เจ้าของพื้นที่ — an outside
+// signer with no account) it is typed in alongside the name.
+const POSITION_SLOTS = ['team', 'supervisor', 'building', 'engineer', 'department'];
+
+// "เซ็นครบ" rule for the branch this request runs in (PTN also needs department).
+const signOpts = (req) => ({ requireDepartment: !!(req.branch && req.branch.require_department_sign) });
 
 function resolveSigs(role, b, cur = {}, myPosition = null) {
   const out = {};
@@ -71,8 +77,11 @@ function resolveSigs(role, b, cur = {}, myPosition = null) {
       // Past the canSignSlot guard = the signer signs a slot they own (own slot
       // or ROLE_EXTRA_SLOTS, e.g. checker → team) → snapshot their position.
       // admin/super never reach here (canSignSlot false) → name-join fallback.
+      // EXTERNAL slots are a proxy for someone with no account — take the typed
+      // position from the body; snapshotting the operator's would be plain wrong.
+      const posted = EXTERNAL_SLOTS.includes(slot) ? (b[`sig_${slot}_position`] || null) : (myPosition || null);
       out[`sig_${slot}_position`] = b[`sig_${slot}`]
-        ? (myPosition || null)
+        ? posted
         : (cur[`sig_${slot}_position`] || null);
     }
   }
@@ -90,7 +99,9 @@ async function myPosition(req) {
 // เติมตำแหน่งให้ใบเก่าที่เซ็นก่อนมี snapshot — join signer_name ↔ users.name
 // (ชื่อซ้ำหลายคน → กำกวม ไม่เติม). Mutates and returns the row.
 async function fillLegacyPositions(req, wo) {
-  const missing = POSITION_SLOTS.filter((s) => wo[`sig_${s}_name`] && !wo[`sig_${s}_position`]);
+  // EXTERNAL slots are hospital staff, not users here — never name-join those.
+  const missing = POSITION_SLOTS.filter((s) => !EXTERNAL_SLOTS.includes(s))
+    .filter((s) => wo[`sig_${s}_name`] && !wo[`sig_${s}_position`]);
   if (!missing.length) return wo;
   try {
     const { rows } = await req.db(`SELECT name, position FROM users WHERE COALESCE(position,'') <> ''`);
@@ -324,6 +335,9 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
         'เซ็น: หัวหน้าช่างแอร์': r.sig_supervisor_name || '',
         'เซ็น: เจ้าหน้าที่ช่างอาคาร': r.sig_building_name || '',
         'เซ็น: เจ้าหน้าวิศวกรรม': r.sig_engineer_name || '',
+        // ช่องที่ 5 มีเฉพาะสาขาที่เปิดกติกา (PTN) — สาขาอื่นคอลัมน์เดิมไม่เปลี่ยน
+        ...(signOpts(req).requireDepartment
+          ? { 'เซ็น: เจ้าหน้าที่เจ้าของพื้นที่': r.sig_department_name || '' } : {}),
       };
       for (const c of itemCols) {
         row[c.header] = atomicValue(cv[c.id] || cv[String(c.id)], c.key);
@@ -415,8 +429,9 @@ router.post('/', authMiddleware, async (req, res) => {
             sig_engineer, sig_engineer_name, sig_department, sig_department_name, sig_team, sig_team_name,
             sig_supervisor, sig_supervisor_name, sig_building, sig_building_name,
             grid_rows, recommendation, location, ac_type, condition,
-            sig_team_position, sig_supervisor_position, sig_building_position, sig_engineer_position, updated_at
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,NOW())
+            sig_team_position, sig_supervisor_position, sig_building_position, sig_engineer_position,
+            sig_department_position, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,NOW())
           RETURNING id, wo_number
         `, [
           wo_number, req.user.id, b.tech_name || null, b.work_date || null,
@@ -436,6 +451,7 @@ router.post('/', authMiddleware, async (req, res) => {
           b.location || null, b.ac_type || null, JSON.stringify(b.condition || {}),
           sig.sig_team_position, sig.sig_supervisor_position,
           sig.sig_building_position, sig.sig_engineer_position,
+          sig.sig_department_position,
         ]));
         await client.query('COMMIT');
         break;
@@ -495,12 +511,13 @@ router.get('/', authMiddleware, async (req, res) => {
       SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
              s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status, s.created_by,
              u.name AS created_by_name,
-             (s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL
-              AND s.sig_building IS NOT NULL AND s.sig_engineer IS NOT NULL) AS all_signed,
+             ${allSignedSql(signOpts(req), 's')} AS all_signed,
              CASE
                WHEN s.sig_team       IS NULL THEN 'team'
                WHEN s.sig_supervisor IS NULL THEN 'supervisor'
                WHEN s.sig_building   IS NULL THEN 'building'   -- รอช่างอาคาร
+               ${signOpts(req).requireDepartment
+                 ? `WHEN s.sig_department IS NULL THEN 'department'  -- รอเจ้าของพื้นที่ (สาขาที่เปิดกติกานี้)` : ''}
                WHEN s.sig_engineer   IS NULL THEN 'engineer'   -- รอวิศวกรรม (อาคารเซ็นแล้ว)
                ELSE 'done'
              END AS pending_stage,
@@ -624,14 +641,18 @@ router.get('/:id', authMiddleware, async (req, res) => {
       LEFT JOIN users u ON s.created_by = u.id WHERE s.id = $1 AND s.deleted_at IS NULL
     `, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    res.json(await fillLegacyPositions(req, rows[0]));
+    // ส่งกติกาเซ็นของสาขามากับใบงาน — หน้าใบงานจึงไม่ต้องเดาจาก tenant store
+    // (super-admin สลับสาขาแล้ว store ไม่ re-resolve).
+    const wo = await fillLegacyPositions(req, rows[0]);
+    res.json({ ...wo, require_department_sign: signOpts(req).requireDepartment });
   } catch (err) { serverError(res, err); }
 });
 
 // ── GET /api/simple-wo/:id/pdf ──────────────────────────────────────────────
 router.get('/:id/pdf', authMiddleware, async (req, res) => {
   try {
-    const data = await getSimpleReportData(req.params.id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
+    const data = await getSimpleReportData(req.params.id, {
+      db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment });
     if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const html = buildSimpleReportHtml(data);
     try {
@@ -661,7 +682,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
               sig_engineer, sig_engineer_name, sig_department, sig_department_name,
               sig_team, sig_team_name, sig_supervisor, sig_supervisor_name,
               sig_building, sig_building_name,
-              sig_team_position, sig_supervisor_position, sig_building_position, sig_engineer_position
+              sig_team_position, sig_supervisor_position, sig_building_position,
+              sig_engineer_position, sig_department_position
        FROM simple_work_orders WHERE id = $1`, [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
@@ -686,7 +708,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
         grid_rows=$29, recommendation=$30, location=$31, ac_type=$32, pts_zone=$33,
         condition=$34,
         sig_team_position=$35, sig_supervisor_position=$36,
-        sig_building_position=$37, sig_engineer_position=$38, updated_at=NOW()
+        sig_building_position=$37, sig_engineer_position=$38,
+        sig_department_position=$39, updated_at=NOW()
       WHERE id=$1
       RETURNING id, wo_number
     `, [
@@ -707,6 +730,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       JSON.stringify(b.condition || {}),
       sig.sig_team_position, sig.sig_supervisor_position,
       sig.sig_building_position, sig.sig_engineer_position,
+      sig.sig_department_position,
     ]);
     res.json(upd[0]);
   } catch (err) { serverError(res, err); }
@@ -783,7 +807,7 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
 // /admin. checker / approve_* roles sign their own slot here without being the
 // creator. admin/super may NOT sign. Once วางบิลแล้ว (approved=locked) no more signing.
 router.post('/:id/sign', authMiddleware, async (req, res) => {
-  const { signature_data, signer_name, slot: reqSlot } = req.body || {};
+  const { signature_data, signer_name, signer_position, slot: reqSlot } = req.body || {};
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
   // Requested slot must be one this role may sign (own slot or ROLE_EXTRA_SLOTS,
   // e.g. checker → team); no slot in the body falls back to the role's own slot.
@@ -798,6 +822,12 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
     slot = slotForRole(req.user.role);
   }
   if (!slot) return res.status(403).json({ error: 'role นี้ไม่มีช่องเซ็น' });
+  // An external signer has no account → the name can't fall back to req.user.name
+  // (that would put the technician's name under the hospital staff's signature).
+  const external = EXTERNAL_SLOTS.includes(slot);
+  if (external && !String(signer_name || '').trim()) {
+    return res.status(400).json({ error: 'กรอกชื่อผู้ลงนามก่อน' });
+  }
   // One transaction with a row lock: read status + the chain, validate, then write
   // atomically so a concurrent reject/sign can't slip the chain check (audit M-4).
   const client = await req.tx();
@@ -817,7 +847,10 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
       `UPDATE simple_work_orders SET sig_${slot} = $1, sig_${slot}_name = $2,
               sig_${slot}_position = $3, updated_at = NOW()
        WHERE id = $4 RETURNING id`,
-      [signature_data, signer_name || req.user.name || '', await myPosition(req), req.params.id]
+      [signature_data,
+       external ? String(signer_name).trim() : (signer_name || req.user.name || ''),
+       external ? (String(signer_position || '').trim() || null) : await myPosition(req),
+       req.params.id]
     );
     await client.query('COMMIT');
     res.json({ ok: true, slot, id: upd[0].id });
@@ -868,12 +901,12 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   const ov = cover && typeof cover === 'object' ? cover : {};
   try {
-    // วางบิลได้เฉพาะใบที่ "เซ็นครบ 4 ช่อง" (พร้อมวางบิล). The act of billing locks
+    // วางบิลได้เฉพาะใบที่ "เซ็นครบทุกช่องตามกติกาของสาขา" (พร้อมวางบิล). The act of billing locks
     // each ใบงาน (status='approved' = วางบิลแล้ว) so it can't be edited afterwards.
     const { rows: st } = await req.db(
-      `SELECT id, wo_number, status, sig_team, sig_supervisor, sig_building, sig_engineer
+      `SELECT id, wo_number, status, sig_team, sig_supervisor, sig_building, sig_engineer, sig_department
        FROM simple_work_orders WHERE id = ANY($1) AND deleted_at IS NULL`, [cleanIds]);
-    const notReady = st.filter((r) => !allSigned(r));
+    const notReady = st.filter((r) => !allSigned(r, signOpts(req)));
     if (notReady.length) {
       return res.status(409).json({
         error: `วางบิลได้เฉพาะใบที่เซ็นครบทุกช่อง — ยังเซ็นไม่ครบ ${notReady.length} ใบ: ${notReady.map((r) => r.wo_number || r.id).join(', ')}`,
@@ -882,7 +915,8 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
     const toLock = st.filter((r) => r.status !== 'approved').map((r) => r.id);
     const dataArray = [];
     for (const id of cleanIds) {
-      const d = await getSimpleReportData(id, { db: req.db, publicBaseUrl: PUBLIC_BASE });
+      const d = await getSimpleReportData(id, {
+        db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment });
       if (d) dataArray.push(d);
     }
     if (!dataArray.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });

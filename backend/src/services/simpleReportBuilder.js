@@ -46,7 +46,9 @@ function combineDateTime(dateVal, timeStr) {
 // simple_work_orders row. Returns null when the WO does not exist.
 // Schema-per-tenant: pass the request-scoped `db` (req.db) so the WO is read from
 // the caller's branch schema. Falls back to pool (public) when not supplied.
-async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
+// requireDepartment = สาขานี้เปิดช่องเซ็น "เจ้าหน้าที่เจ้าของพื้นที่" (clients
+// .require_department_sign) → PDF แสดงช่องที่ 5; สาขาอื่นฟอร์มเดิม 4 ช่อง.
+async function getSimpleReportData(id, { db, publicBaseUrl = '', requireDepartment = false } = {}) {
   const run = db || ((sql, params) => pool.query(sql, params));
   const { rows } = await run(`
     SELECT s.*, u.name AS created_by_name
@@ -159,7 +161,10 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
 
   const sigs = {
     engineer:   withPos(r.sig_engineer_name,   r.sig_engineer_position,   { signer_name: r.sig_engineer_name,   signature_data: r.sig_engineer,   signed_at: r.created_at }),
-    department: withPos(r.sig_department_name, null,                      { signer_name: r.sig_department_name, signature_data: r.sig_department, signed_at: r.created_at }),
+    // เจ้าหน้าที่เจ้าของพื้นที่ = คนของ รพ. → ตำแหน่งมาจากที่พิมพ์ไว้เท่านั้น
+    // (ห้าม fallback join users.name — ชื่ออาจไปตรงกับพนักงานเราโดยบังเอิญ)
+    department: { signer_name: r.sig_department_name, signature_data: r.sig_department,
+                  signed_at: r.created_at, position: r.sig_department_position || null },
     team:       withPos(r.sig_team_name,       r.sig_team_position,       { signer_name: r.sig_team_name,       signature_data: r.sig_team,       signed_at: r.created_at }),
     supervisor: withPos(r.sig_supervisor_name, r.sig_supervisor_position, { signer_name: r.sig_supervisor_name, signature_data: r.sig_supervisor, signed_at: r.created_at }),
     building:   withPos(r.sig_building_name,   r.sig_building_position,   { signer_name: r.sig_building_name,    signature_data: r.sig_building,   signed_at: r.created_at }),
@@ -185,7 +190,8 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '' } = {}) {
     }
     return { ...g, photos: inline };
   });
-  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '', gridRows, recommendation: r.recommendation || '' };
+  return { wo, unit, sigs, ac: r.ac_info || {}, brand: BRAND, qr: '', woUrl, imageBase: '',
+           gridRows, recommendation: r.recommendation || '', require_department_sign: !!requireDepartment };
 }
 
 module.exports = { getSimpleReportData };

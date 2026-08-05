@@ -7,18 +7,30 @@ import SignaturePad from '../components/SignaturePad'
 import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
+import { refrigerantRefText } from '../lib/refrigerant'
 import { useAuthStore } from '../store/auth'
 
 // Each role signs its own slot (backend enforces it too); admin/super do not sign.
 const SLOT_FOR_ROLE = { technician: 'team', checker: 'supervisor', approve_building: 'building', approve_engineer: 'engineer' }
-// หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ (ช่างไม่อยู่/ลืมเซ็น) — mirror ROLE_EXTRA_SLOTS backend
-const EXTRA_SLOTS_FOR_ROLE = { checker: ['team'] }
-const SIG_DEFS = [
+// หัวหน้าช่างแอร์เซ็นช่องช่างแอร์แทนได้ (ช่างไม่อยู่/ลืมเซ็น) — mirror ROLE_EXTRA_SLOTS backend.
+// ช่อง "เจ้าหน้าที่เจ้าของพื้นที่" เป็นคนของ รพ. (ไม่มี user) — ใครถือเครื่องอยู่หน้างานก็เปิด
+// แผ่นเซ็นให้ได้ แต่ต้องพิมพ์ชื่อ/ตำแหน่งของเจ้าหน้าที่เอง
+const EXTRA_SLOTS_FOR_ROLE = {
+  checker: ['team', 'department'],
+  technician: ['department'],
+  approve_building: ['department'],
+  approve_engineer: ['department'],
+}
+const EXTERNAL_SLOTS = ['department']
+const SIG_DEFS_BASE = [
   { slot: 'team',       label: 'ช่างแอร์' },
   { slot: 'supervisor', label: 'หัวหน้าช่างแอร์' },
   { slot: 'building',   label: 'เจ้าหน้าที่ช่างอาคาร' },
+  { slot: 'department', label: 'เจ้าหน้าที่เจ้าของพื้นที่', branchOnly: true },
   { slot: 'engineer',   label: 'เจ้าหน้าวิศวกรรม' },
 ]
+// branchOnly slots show only where the branch turned the rule on (PTN).
+const sigDefsFor = (requireDept) => SIG_DEFS_BASE.filter((d) => !d.branchOnly || requireDept)
 
 // Status. "พร้อมวางบิล" is DERIVED (all 4 signed) not stored. approved = วางบิลแล้ว (ล็อก).
 const STATUS_LABEL = {
@@ -68,12 +80,20 @@ export default function SimpleWoDetail() {
   const [busy, setBusy] = useState(false)
   const [signSlot, setSignSlot] = useState(null)   // slot being signed (modal open)
   const [signName, setSignName] = useState('')
+  const [signPosition, setSignPosition] = useState('')   // external signer only
 
   // Sign one slot via the dedicated sign endpoint (no full edit needed). Then refresh.
   const submitSign = async (dataUrl) => {
+    const external = EXTERNAL_SLOTS.includes(signSlot)
+    if (external && !signName.trim()) { alert('กรอกชื่อเจ้าหน้าที่ผู้ลงนามก่อน'); return }
     setBusy(true)
     try {
-      await api.post(`/simple-wo/${id}/sign`, { slot: signSlot, signature_data: dataUrl, signer_name: signName || user?.name || '' })
+      await api.post(`/simple-wo/${id}/sign`, {
+        slot: signSlot,
+        signature_data: dataUrl,
+        signer_name: external ? signName.trim() : (signName || user?.name || ''),
+        ...(external ? { signer_position: signPosition.trim() } : {}),
+      })
       setSignSlot(null)
       const r = await api.get(`/simple-wo/${id}`)
       setWo(r.data)
@@ -81,7 +101,14 @@ export default function SimpleWoDetail() {
       alert(err.response?.data?.error || 'เซ็นไม่สำเร็จ')
     } finally { setBusy(false) }
   }
-  const openSign = (slot) => { setSignName(user?.name || ''); setSignSlot(slot) }
+  // External signer = hospital staff → start blank; prefilling our own name is
+  // exactly the mistake that makes the signature worthless.
+  const openSign = (slot) => {
+    const external = EXTERNAL_SLOTS.includes(slot)
+    setSignName(external ? '' : (user?.name || ''))
+    setSignPosition('')
+    setSignSlot(slot)
+  }
 
   // Run an approval-workflow transition then refresh the WO.
   const transition = async (action) => {
@@ -159,27 +186,29 @@ export default function SimpleWoDetail() {
   const isGrid = wo.work_type === 'minor' || wo.work_type === 'fan'
   const gridRows = Array.isArray(wo.grid_rows) ? wo.grid_rows : []
   const gridCols = GRID_COLS[wo.work_type] || []
-  // พร้อมวางบิล = เซ็นครบ 4 ช่อง และยังไม่วางบิล (approved)
-  const SIGN_ORDER = ['team', 'supervisor', 'building', 'engineer']
-  // ช่างอาคาร + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
-  const SIG_PREREQ = { team: [], supervisor: ['team'], building: ['team', 'supervisor'], engineer: ['team', 'supervisor'] }
+  // พร้อมวางบิล = เซ็นครบทุกช่องที่สาขานี้ต้องมี และยังไม่วางบิล (approved).
+  // requireDept มากับใบงาน (backend รู้จากสาขา) — สาขาที่ไม่เปิด = กติกาเดิม 4 ช่อง
+  const requireDept = !!wo.require_department_sign
+  const SIG_DEFS = sigDefsFor(requireDept)
+  const SIGN_ORDER = SIG_DEFS.map((d) => d.slot)
+  // ช่างอาคาร + เจ้าของพื้นที่ + วิศวกรรม เซ็นพร้อมกันได้ (ขนาน) — ต้องการแค่ ช่างแอร์ + หัวหน้า
+  const SIG_PREREQ = {
+    team: [], supervisor: ['team'], building: ['team', 'supervisor'],
+    department: ['team', 'supervisor'], engineer: ['team', 'supervisor'],
+  }
   const signed = (s) => !!wo[`sig_${s}`]
-  // เซ็นครบ = ครบทั้ง 4 ช่อง (อาคาร+วิศวกรรม ต้องเซ็นทั้งคู่ — เซ็นก่อนหลังสลับกันได้)
-  const allSigned = signed('team') && signed('supervisor') && signed('building') && signed('engineer')
+  // เซ็นครบ = ทุกช่องในกติกาของสาขา (คู่ขนานเซ็นก่อนหลังสลับกันได้)
+  const allSigned = SIGN_ORDER.every(signed)
   const readyBill = allSigned && wo.status !== 'approved'
   // A slot is signable once its prerequisites are signed.
   const priorsSigned = (slot) => (SIG_PREREQ[slot] || []).every(signed)
   // Which signature the ใบงาน is waiting on.
-  const pendingStage =
-    !signed('team') ? 'team'
-      : !signed('supervisor') ? 'supervisor'
-      : !signed('building') ? 'building'
-      : !signed('engineer') ? 'engineer'
-      : 'done'
+  const pendingStage = SIGN_ORDER.find((s) => !signed(s)) || 'done'
   const STAGE_BADGE = {
     team:       { label: 'ยังไม่เสร็จ',            color: 'badge-warn' },
     supervisor: { label: 'รอหัวหน้าตรวจงาน',        color: 'badge-warn' },
     building:   { label: 'รอช่างอาคารตรวจเช็ค',     color: 'bg-indigo-50 text-indigo-600' },
+    department: { label: 'รอเจ้าของพื้นที่เซ็น',     color: 'bg-amber-50 text-amber-700' },
     engineer:   { label: 'รอวิศวกรรมตรวจเช็ค',      color: 'bg-blue-50 text-blue-600' },
     done:       { label: 'รอวางบิล',                color: 'badge-success' },
   }
@@ -409,7 +438,7 @@ export default function SimpleWoDetail() {
         {/* Signatures — each role signs its own slot here (no need to open edit) */}
         <div className="card">
           <h2 className="section-header mb-3">ลายเซ็น</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-2 gap-4 ${requireDept ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
             {SIG_DEFS.map(({ slot, label }) => {
               const isSigned = !!wo[`sig_${slot}`]
               const mine = canSignSlot(slot) && wo.status !== 'approved'
@@ -505,10 +534,22 @@ export default function SimpleWoDetail() {
             <h3 className="font-semibold text-ink mb-3">
               เซ็น — {SIG_DEFS.find((d) => d.slot === signSlot)?.label}
             </h3>
+            {EXTERNAL_SLOTS.includes(signSlot) && (
+              <p className="text-xs text-ink-muted mb-2">
+                ส่งเครื่องให้เจ้าหน้าที่เจ้าของพื้นที่กรอกชื่อและเซ็นเอง
+              </p>
+            )}
             <div className="mb-3">
               <label className="label">ชื่อผู้ลงนาม</label>
               <input className="input" placeholder="ชื่อผู้ลงนาม" value={signName} onChange={(e) => setSignName(e.target.value)} />
             </div>
+            {EXTERNAL_SLOTS.includes(signSlot) && (
+              <div className="mb-3">
+                <label className="label">ตำแหน่ง / แผนก</label>
+                <input className="input" placeholder="เช่น หัวหน้าห้อง LR"
+                  value={signPosition} onChange={(e) => setSignPosition(e.target.value)} />
+              </div>
+            )}
             <SignaturePad onSave={submitSign} onCancel={() => setSignSlot(null)} />
             {busy && <p className="text-xs text-ink-muted mt-2 text-center">กำลังบันทึก...</p>}
           </div>
@@ -545,7 +586,9 @@ function formatFieldValue(field, val) {
       // old records stored a single value as the "after" reading → fall back to it
       const sucA = v.val_suction_after ?? v.val_suction
       const disA = v.val_discharge_after ?? v.val_discharge
-      return `น้ำยา ${g(v.refrigerant_type)} · ก่อน Suc ${g(v.val_suction_before)}/Dis ${g(v.val_discharge_before)} · หลัง Suc ${g(sucA)}/Dis ${g(disA)} PSI`
+      // ต่อท้ายด้วยเกณฑ์อ้างอิงของน้ำยาชนิดนั้น (ถ้ารู้จัก) — ไว้เทียบตาเปล่า
+      const ref = refrigerantRefText(v.refrigerant_type)
+      return `น้ำยา ${g(v.refrigerant_type)} · ก่อน Suc ${g(v.val_suction_before)}/Dis ${g(v.val_discharge_before)} · หลัง Suc ${g(sucA)}/Dis ${g(disA)} PSI${ref ? ` · ${ref}` : ''}`
     }
     default:
       return summarizeValue(v)

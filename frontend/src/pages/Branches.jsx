@@ -21,7 +21,11 @@ function branchUrl(b) {
 }
 
 function EditModal({ branch, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: branch.name || '', subdomain: branch.subdomain || branch.slug || '', card_image: branch.card_image || '', force_camera: !!branch.force_camera })
+  const [form, setForm] = useState({
+    name: branch.name || '', subdomain: branch.subdomain || branch.slug || '',
+    card_image: branch.card_image || '', force_camera: !!branch.force_camera,
+    require_department_sign: !!branch.require_department_sign,
+  })
   const [saving, setSaving] = useState(false)
   const [qr, setQr] = useState(null)
   const [err, setErr] = useState('')
@@ -45,6 +49,7 @@ function EditModal({ branch, onClose, onSaved }) {
         subdomain: form.subdomain ? slugify(form.subdomain) : undefined,
         card_image: form.card_image,
         force_camera: form.force_camera,
+        require_department_sign: form.require_department_sign,
       })
       onSaved()
     } catch (e) { setErr(e.response?.data?.error || 'บันทึกไม่สำเร็จ') } finally { setSaving(false) }
@@ -93,6 +98,20 @@ function EditModal({ branch, onClose, onSaved }) {
                 บังคับถ่ายรูปสด (ใบงานล้าง)
                 <span className="block text-xs text-ink-muted">
                   เปิด = ช่างต้องถ่ายสดหน้างาน + ติด timestamp (เลือกรูปเก่าจาก Gallery ไม่ได้) · ปิด = อัพจาก Gallery ได้
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {/* ช่องเซ็นที่ 5 — เปิดเฉพาะสาขาที่ รพ. ขอ (พญาไท นวมินทร์) */}
+          <div className="border-t border-line pt-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="checkbox" className="accent-primary h-4 w-4 mt-0.5" checked={form.require_department_sign}
+                onChange={(e) => setForm({ ...form, require_department_sign: e.target.checked })} />
+              <span className="text-sm text-ink">
+                ต้องมีลายเซ็น “เจ้าหน้าที่เจ้าของพื้นที่”
+                <span className="block text-xs text-ink-muted">
+                  เปิด = ใบงานล้างมีช่องเซ็นที่ 5 และต้องเซ็นครบ 5 ช่องจึงวางบิลได้ · ปิด = 4 ช่องตามเดิม
                 </span>
               </span>
             </label>

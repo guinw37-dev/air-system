@@ -81,4 +81,21 @@ html = buildSimpleReportHtml(rst('220'));
 assert(html.includes('220V 1φ') && html.includes('LN=380'), '220V shows LN/L');
 ok('rst_amp 220V shows LN/L (1φ)');
 
+// ── ช่องเซ็นที่ 5 "เจ้าหน้าที่เจ้าของพื้นที่" — เฉพาะสาขาที่เปิดกติกา ──────────
+const OWNER_LABEL = 'ลงชื่อเจ้าหน้าที่เจ้าของพื้นที่';
+const ownerSigs = { ...baseSigs, department: { signer_name: 'พว.สมศรี', position: 'หัวหน้าห้อง LR', signature_data: 'data:image/png;base64,S' } };
+
+// สาขาที่ไม่เปิด (ค่า default) — ฟอร์มเดิม 4 ช่อง แม้ในใบจะมีลายเซ็นค้างอยู่ก็ไม่โผล่
+for (const wt of ['major', 'minor']) {
+  const d = baseData({ wo: { work_type: wt }, gridRows: wt === 'minor' ? [{ room: 'R', machine_no: 'M', checks: [true] }] : [] });
+  const off = buildSimpleReportHtml({ ...d, sigs: ownerSigs });
+  assert(!off.includes(OWNER_LABEL), `${wt}: owner box hidden when the branch has not opted in`);
+  const on = buildSimpleReportHtml({ ...d, sigs: ownerSigs, require_department_sign: true });
+  assert(on.includes(OWNER_LABEL), `${wt}: owner box rendered when opted in`);
+  assert(on.includes('พว.สมศรี') && on.includes('หัวหน้าห้อง LR'), `${wt}: owner name + typed position`);
+  assert(on.includes('ลงชื่อเจ้าหน้าวิศวกรรม'), `${wt}: วิศวกรรม box still last`);
+  assert(on.indexOf(OWNER_LABEL) < on.indexOf('ลงชื่อเจ้าหน้าวิศวกรรม'), `${wt}: owner box sits before วิศวกรรม`);
+}
+ok('signature box 5 (เจ้าของพื้นที่) renders only for opted-in branches, before วิศวกรรม');
+
 console.log(`\n${passed} passed`);

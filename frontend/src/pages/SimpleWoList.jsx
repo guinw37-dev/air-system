@@ -31,6 +31,7 @@ const STAGE_BADGE = {
   team:              { label: 'ยังไม่เสร็จ',          color: 'badge-warn' },                  // ยังไม่เซ็นเลย
   supervisor:        { label: 'รอหัวหน้าตรวจงาน',      color: 'badge-warn' },
   building:          { label: 'รอช่างอาคารตรวจเช็ค',   color: 'bg-indigo-50 text-indigo-600' },
+  department:        { label: 'รอเจ้าของพื้นที่เซ็น',    color: 'bg-amber-50 text-amber-700' },  // สาขาที่เปิดกติกานี้
   engineer:          { label: 'รอวิศวกรรมตรวจเช็ค',     color: 'bg-blue-50 text-blue-600' },
   building_engineer: { label: 'รออาคาร/วิศวกรรม',      color: 'bg-indigo-50 text-indigo-600' }, // legacy
   done:              { label: 'ดำเนินการเสร็จสิ้น',     color: 'badge-success' },
@@ -47,7 +48,7 @@ const SLOT_LABEL = { technician: 'ช่างแอร์', checker: 'หัว
 
 // ?pending=<stage> quick views (from the ใบงาน sidebar group) — filter to ใบงาน
 // waiting at a given signing step.
-const PENDING_LABEL = { team: 'รอช่างแอร์เซ็น', supervisor: 'รอหัวหน้าช่างเซ็น', building: 'รอช่างอาคารเซ็น', engineer: 'รอวิศวกรรมเซ็น', building_engineer: 'รออาคาร/วิศวกรรมเซ็น' }
+const PENDING_LABEL = { team: 'รอช่างแอร์เซ็น', supervisor: 'รอหัวหน้าช่างเซ็น', building: 'รอช่างอาคารเซ็น', department: 'รอเจ้าของพื้นที่เซ็น', engineer: 'รอวิศวกรรมเซ็น', building_engineer: 'รออาคาร/วิศวกรรมเซ็น' }
 
 export default function SimpleWoList() {
   const navigate = useNavigate()
