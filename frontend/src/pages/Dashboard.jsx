@@ -341,13 +341,20 @@ function BranchDashboard({ b = {}, navigate }) {
       {/* ภาพรวมงานล้างแอร์ — แยกตาม stage การเซ็น (กดเข้าดูเฉพาะใบที่ต้องเซ็น) */}
       <div>
         <h2 className="font-bold text-slate-800 mb-3">ภาพรวมงานล้างแอร์</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* สาขาที่เปิดกติกาเจ้าของพื้นที่มี 5 การ์ด — ใบเดียวรอได้หลายช่องพร้อมกัน
+            (อาคาร/เจ้าของพื้นที่/วิศวกรรม เซ็นขนาน) ยอดรวมจึงมากกว่าจำนวนใบได้ */}
+        <div className={`grid grid-cols-2 gap-4 ${b.require_department_sign ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
           <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_supervisor || 0}
             label="รอหัวหน้าช่างตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=supervisor')} />
           <StatCard icon={Sparkles} tone="indigo" value={b.wo_wait_building || 0}
             label="รอช่างอาคารตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=building')} />
+          {b.require_department_sign && (
+            <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_department || 0}
+              label="รอเจ้าหน้าที่เจ้าของพื้นที่เซ็น"
+              onClick={() => navigate('/simple-wo?pending=department')} />
+          )}
           <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_engineer || 0}
             label="รอวิศวกรรมตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=engineer')} />

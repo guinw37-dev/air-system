@@ -107,6 +107,35 @@ const SIG_PREREQ = {
   department: ['team', 'supervisor'],
   engineer:  ['team', 'supervisor'],
 };
+// ── "ค้างรอช่องนี้เซ็น" — ONE definition shared by the dashboard cards and the
+// ใบงาน list filter. They used to be written separately and drifted the moment a
+// 5th slot appeared: the card counted 213 while ?pending=engineer showed 0,
+// because the list derived its stage from "first unsigned slot" (department cut
+// in front of engineer) while the card used its own hardcoded condition.
+//
+// Slots that sign in parallel are counted independently, so ONE ใบงาน can be
+// waiting on ช่างอาคาร + เจ้าของพื้นที่ + วิศวกรรม at the same time and appear in
+// all three cards. That is the truth of the workflow — the cards are "งานที่รอ
+// ให้คุณเซ็น", not a partition of the ใบงาน.
+//
+// engineer keeps its historical prerequisite (building must have signed) so the
+// numbers every other branch sees are unchanged; it deliberately does NOT wait on
+// department — วิศวกรรม must never be blocked by ward staff being unavailable.
+const WAIT_PREREQ = {
+  team:       [],
+  supervisor: ['team'],
+  building:   ['team', 'supervisor'],
+  department: ['team', 'supervisor'],
+  engineer:   ['team', 'supervisor', 'building'],
+};
+// SQL: prerequisites signed AND this slot still empty. `alias` prefixes columns.
+// Slot names are literals from WAIT_PREREQ — no request data is interpolated.
+function waitSlotSql(slot, alias = '') {
+  const p = alias ? `${alias}.` : '';
+  const pre = (WAIT_PREREQ[slot] || []).map((s) => `${p}sig_${s} IS NOT NULL`);
+  return `(${[...pre, `${p}sig_${slot} IS NULL`].join(' AND ')})`;
+}
+
 // First prerequisite slot still unsigned (the one blocking `slot`), or null if ready.
 function blockingSlot(slot, wo) {
   for (const pre of SIG_PREREQ[slot] || []) {
@@ -141,6 +170,7 @@ module.exports = {
   ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES,
   SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, REQUIRED_SLOTS, allSigned,
   requiredSlots, allSignedSql, EXTERNAL_SLOTS, ROLE_EXTRA_SLOTS,
+  WAIT_PREREQ, waitSlotSql,
   SIGN_ORDER, SIG_PREREQ, SLOT_TH, blockingSlot,
   LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
 };

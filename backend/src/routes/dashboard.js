@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { pool, query } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
-const { allSignedSql } = require('../utils/roles');
+const { allSignedSql, waitSlotSql } = require('../utils/roles');
 const { serverError } = require('../utils/respond');
 
 // ── per-schema summary. Tolerant: a branch missing a table (mid-migration)
@@ -33,22 +33,21 @@ const woSql = (b) => {
   SELECT
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND status <> 'rejected' AND NOT ${ALL_SIGNED})      AS wo_pending,
-    -- stage buckets for ภาพรวมงานล้างแอร์ (landing): ช่างเซ็นแล้วรอหัวหน้า /
-    -- หัวหน้าเซ็นแล้วรออาคารหรือวิศวกรรม. building/engineer = คู่ขนาน.
+    -- stage buckets for ภาพรวมงานล้างแอร์ (landing). ใช้ waitSlotSql เดียวกับตัวกรอง
+    -- ของหน้า ใบงาน (?pending=<slot>) — เลขบนการ์ดกับจำนวนแถวที่กดเข้าไปเห็นต้องตรงกัน.
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
-                     AND status <> 'rejected'
-                     AND sig_team IS NOT NULL AND sig_supervisor IS NULL) AS wo_wait_supervisor,
+                     AND status <> 'rejected' AND ${waitSlotSql('supervisor')}) AS wo_wait_supervisor,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND status <> 'rejected'
                      AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
                      AND NOT ${ALL_SIGNED})                               AS wo_wait_buildeng,
-    -- แยกแสดงผล 4 stage: รอช่างอาคาร (building ยังไม่เซ็น) / รอวิศวกรรม (building เซ็นแล้ว engineer ยังไม่เซ็น)
+    -- อาคาร / เจ้าของพื้นที่ / วิศวกรรม เซ็นขนานกัน → ใบเดียวนับได้หลายการ์ด
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved' AND status <> 'rejected'
-                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
-                     AND sig_building IS NULL)                            AS wo_wait_building,
+                     AND ${waitSlotSql('building')})                      AS wo_wait_building,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved' AND status <> 'rejected'
-                     AND sig_team IS NOT NULL AND sig_supervisor IS NOT NULL
-                     AND sig_building IS NOT NULL AND sig_engineer IS NULL) AS wo_wait_engineer,
+                     AND ${waitSlotSql('department')})                    AS wo_wait_department,
+    COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved' AND status <> 'rejected'
+                     AND ${waitSlotSql('engineer')})                      AS wo_wait_engineer,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
                      AND ${ALL_SIGNED})                                   AS wo_done_full,
     COUNT(*) FILTER (WHERE deleted_at IS NULL AND status <> 'approved'
@@ -67,9 +66,11 @@ async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
   const z = { ac_register:0, ac_assign:0, ac_work:0, ac_clear:0, ac_close:0, ac_cancel:0,
               wo_pending:0, wo_wait_supervisor:0, wo_wait_buildeng:0,
-              wo_wait_building:0, wo_wait_engineer:0, wo_done_full:0,
+              wo_wait_building:0, wo_wait_department:0, wo_wait_engineer:0, wo_done_full:0,
               wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
-  const out = { id: branch.id, slug: branch.slug, name: branch.name, ...z };
+  // การ์ด "รอเจ้าของพื้นที่เซ็น" โผล่เฉพาะสาขาที่เปิดกติกา → ส่ง flag ไปให้ FE ตัดสินใจ
+  const out = { id: branch.id, slug: branch.slug, name: branch.name,
+                require_department_sign: !!branch.require_department_sign, ...z };
   try {
     const ac = await query(schema, AC_SQL);
     Object.assign(out, mapInts(ac.rows[0]));

@@ -1,7 +1,7 @@
 const assert = require('assert');
 const { ROLE_RANK, ALL_ROLES, SUPER_ROLES, BRANCH_ROLES, LEGACY_ROLE_MAP, rankOf, REMAP_CASE_SQL,
         ROLE_SLOT, canSignSlot, slotForRole, allSigned, blockingSlot,
-        allSignedSql, requiredSlots, EXTERNAL_SLOTS } = require('../src/utils/roles');
+        allSignedSql, requiredSlots, EXTERNAL_SLOTS, waitSlotSql, WAIT_PREREQ } = require('../src/utils/roles');
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; };
@@ -151,6 +151,40 @@ t('department signs in parallel — never blocks วิศวกรรม', () =
   // วิศวกรรม/อาคาร ไม่ต้องรอเจ้าของพื้นที่ (ward staff ไม่ว่าง = งานไม่ค้างทั้งใบ)
   assert.strictEqual(blockingSlot('engineer', ts), null);
   assert.strictEqual(blockingSlot('building', ts), null);
+});
+
+// ── การ์ดหน้าภาพรวม vs ตัวกรอง ใบงาน ต้องใช้นิยามเดียวกัน ─────────────────────
+// บั๊กจริง 5 ส.ค. 2026: การ์ด "รอวิศวกรรม" โชว์ 213 แต่กดเข้าไป list ว่าง เพราะ
+// list ใช้ "ช่องแรกที่ยังว่าง" (department แทรกหน้า engineer) ส่วนการ์ดใช้สูตรของตัวเอง
+t('waitSlotSql: one definition, parallel slots counted independently', () => {
+  // วิศวกรรมรออาคาร (ของเดิม) แต่ต้องไม่รอเจ้าของพื้นที่ — ward staff ไม่ว่าง ห้ามบล็อก
+  assert.deepStrictEqual(WAIT_PREREQ.engineer, ['team', 'supervisor', 'building']);
+  assert.ok(!WAIT_PREREQ.engineer.includes('department'));
+  // อาคาร + เจ้าของพื้นที่ ขนานกัน: prereq เท่ากัน ไม่รอกันเอง
+  assert.deepStrictEqual(WAIT_PREREQ.building, WAIT_PREREQ.department);
+
+  assert.strictEqual(waitSlotSql('supervisor'),
+    '(sig_team IS NOT NULL AND sig_supervisor IS NULL)');
+  assert.strictEqual(waitSlotSql('engineer', 's'),
+    '(s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL AND s.sig_building IS NOT NULL AND s.sig_engineer IS NULL)');
+  assert.strictEqual(waitSlotSql('department', 's'),
+    '(s.sig_team IS NOT NULL AND s.sig_supervisor IS NOT NULL AND s.sig_department IS NULL)');
+  // ช่องแรกของสาย ไม่มี prereq
+  assert.strictEqual(waitSlotSql('team'), '(sig_team IS NULL)');
+});
+
+t('waitSlotSql: ใบที่รอทั้งวิศวกรรมและเจ้าของพื้นที่ ต้องเข้าทั้งสองการ์ด', () => {
+  // จำลองผลของ SQL ด้วย JS ตามนิยามเดียวกัน (แถวเดียวกัน สองการ์ด)
+  const waits = (wo, slot) => (WAIT_PREREQ[slot] || []).every((p) => wo[`sig_${p}`]) && !wo[`sig_${slot}`];
+  const wo = { sig_team: 'a', sig_supervisor: 'b', sig_building: 'c' };   // อาคารเซ็นแล้ว
+  assert.ok(waits(wo, 'engineer'), 'ต้องอยู่การ์ดรอวิศวกรรม');
+  assert.ok(waits(wo, 'department'), 'และอยู่การ์ดรอเจ้าของพื้นที่ด้วย');
+  assert.ok(!waits(wo, 'building'));
+  // เจ้าของพื้นที่เซ็นแล้ว ยังรอวิศวกรรมได้
+  assert.ok(waits({ ...wo, sig_department: 'e' }, 'engineer'));
+  // ยังไม่ผ่านหัวหน้า → ไม่ควรโผล่ในการ์ดปลายทางเลย
+  const early = { sig_team: 'a' };
+  for (const s of ['building', 'department', 'engineer']) assert.ok(!waits(early, s));
 });
 
 console.log(`${pass} passed`);
