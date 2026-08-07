@@ -8,7 +8,7 @@ const XLSX = require('xlsx');
 const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, allSignedSql,
-        EXTERNAL_SLOTS, waitSlotSql, blockingSlot, SLOT_TH } = require('../utils/roles');
+        EXTERNAL_SLOTS, waitSlotSql, requiredSlots, blockingSlot, SLOT_TH } = require('../utils/roles');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -515,7 +515,7 @@ router.get('/', authMiddleware, async (req, res) => {
              -- "ค้างรอช่องนี้เซ็น" ต่อช่อง — นิยามเดียวกับการ์ดบนหน้าภาพรวม (waitSlotSql)
              -- ตัวกรอง ?pending=<slot> ใช้ค่านี้ ไม่ใช่ pending_stage: ช่องคู่ขนานทำให้
              -- "ช่องแรกที่ยังว่าง" ไม่เท่ากับ "ใบที่รอช่องนั้น" (เลขการ์ด 213 vs list 0)
-             ${SIG_SLOTS.map((s) => `${waitSlotSql(s, 's')} AS wait_${s}`).join(',\n             ')},
+             ${requiredSlots(signOpts(req)).map((s) => `${waitSlotSql(s, 's')} AS wait_${s}`).join(',\n             ')},
              -- ป้ายสถานะบนตาราง = ช่องที่ค้างซึ่ง "สำคัญที่สุด" ตามสายงานหลัก.
              -- เจ้าของพื้นที่อยู่ท้ายสุดโดยตั้งใจ: ใบที่รอทั้งวิศวกรรมและเจ้าของพื้นที่
              -- ต้องยังอ่านว่า "รอวิศวกรรม" เหมือนเดิม ไม่งั้นกดการ์ดวิศวกรรมเข้ามาแล้ว

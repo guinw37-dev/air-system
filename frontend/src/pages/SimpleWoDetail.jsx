@@ -8,6 +8,7 @@ import { PageSpinner } from '../components/Spinner'
 import api, { uploadsBase } from '../api/client'
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
 import { refrigerantRefText } from '../lib/refrigerant'
+import { waitingBadge } from '../lib/signStage'
 import { useAuthStore } from '../store/auth'
 
 // Each role signs its own slot (backend enforces it too); admin/super do not sign.
@@ -203,18 +204,9 @@ export default function SimpleWoDetail() {
   // A slot is signable once its prerequisites are signed.
   const priorsSigned = (slot) => (SIG_PREREQ[slot] || []).every(signed)
   // Which signature the ใบงาน is waiting on.
-  // ป้ายสถานะไล่ตามสายงานหลัก — เจ้าของพื้นที่ท้ายสุด (ตรงกับ CASE ฝั่ง backend):
-  // ใบที่รอทั้งวิศวกรรมและเจ้าของพื้นที่ ต้องยังอ่านว่า "รอวิศวกรรม"
-  const BADGE_ORDER = ['team', 'supervisor', 'building', 'engineer', ...(requireDept ? ['department'] : [])]
-  const pendingStage = BADGE_ORDER.find((s) => !signed(s)) || 'done'
-  const STAGE_BADGE = {
-    team:       { label: 'ยังไม่เสร็จ',            color: 'badge-warn' },
-    supervisor: { label: 'รอหัวหน้าตรวจงาน',        color: 'badge-warn' },
-    building:   { label: 'รอช่างอาคารตรวจเช็ค',     color: 'bg-indigo-50 text-indigo-600' },
-    department: { label: 'รอเจ้าของพื้นที่เซ็น',     color: 'bg-amber-50 text-amber-700' },
-    engineer:   { label: 'รอวิศวกรรมตรวจเช็ค',      color: 'bg-blue-50 text-blue-600' },
-    done:       { label: 'รอวางบิล',                color: 'badge-success' },
-  }
+  // ป้ายสถานะ — helper กลางตัวเดียวกับหน้ารายการใบงาน: รวมทุกช่องที่ยังค้างไว้ป้ายเดียว
+  // (ใบที่รอทั้งวิศวกรรมและเจ้าของพื้นที่ → "รอวิศวกรรม + เจ้าของพื้นที่")
+  const stageBadge = waitingBadge(wo, SIGN_ORDER) || { label: 'รอวางบิล', color: 'badge-success' }
 
   // PDF มีให้ดาวน์โหลดเฉพาะใบที่วางบิลแล้ว (approved)
   const billed = wo.status === 'approved'
@@ -241,7 +233,7 @@ export default function SimpleWoDetail() {
               const st = wo.status || 'submitted'
               const s = st === 'approved' ? STATUS_LABEL.approved
                 : st === 'rejected' ? STATUS_LABEL.rejected
-                : (STAGE_BADGE[pendingStage] || STATUS_LABEL[st])
+                : stageBadge
               return s && <span className={`badge ${s.color}`}>{s.label}</span>
             })()}
             {result && <span className={`badge ${result.color}`}>{result.label}</span>}

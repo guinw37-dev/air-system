@@ -7,6 +7,7 @@ import SignaturePad from '../components/SignaturePad'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useHasZones } from '../lib/zones'
+import { waitingBadge } from '../lib/signStage'
 
 const WORK_TYPE_LABEL = {
   major: { label: 'ล้างใหญ่',  color: 'badge-primary' },
@@ -25,22 +26,14 @@ const STATUS_LABEL = {
   approved:  { label: 'วางบิลแล้ว', color: 'badge-success' },
   rejected:  { label: 'ส่งกลับ',  color: 'badge-danger' },
 }
-// Status shown in the list — derived from the signing chain (pending_stage from
-// the API = first unsigned slot). Tells the user which signature is missing.
-const STAGE_BADGE = {
-  team:              { label: 'ยังไม่เสร็จ',          color: 'badge-warn' },                  // ยังไม่เซ็นเลย
-  supervisor:        { label: 'รอหัวหน้าตรวจงาน',      color: 'badge-warn' },
-  building:          { label: 'รอช่างอาคารตรวจเช็ค',   color: 'bg-indigo-50 text-indigo-600' },
-  department:        { label: 'รอเจ้าของพื้นที่เซ็น',    color: 'bg-amber-50 text-amber-700' },  // สาขาที่เปิดกติกานี้
-  engineer:          { label: 'รอวิศวกรรมตรวจเช็ค',     color: 'bg-blue-50 text-blue-600' },
-  building_engineer: { label: 'รออาคาร/วิศวกรรม',      color: 'bg-indigo-50 text-indigo-600' }, // legacy
-  done:              { label: 'ดำเนินการเสร็จสิ้น',     color: 'badge-success' },
-}
+// Status shown in the list — ทุกช่องที่ยังค้าง รวมไว้ป้ายเดียว (ช่องคู่ขนานทำให้
+// ใบเดียวรอได้หลายคน) ผ่าน helper กลางที่หน้าใบงานก็ใช้ตัวเดียวกัน
+const DONE_BADGE = { label: 'ดำเนินการเสร็จสิ้น', color: 'badge-success' }
 const statusBadge = (wo) => {
   const st = wo.status || 'submitted'
   if (st === 'approved') return STATUS_LABEL.approved   // วางบิลแล้ว (ล็อก)
   if (st === 'rejected') return STATUS_LABEL.rejected   // ส่งกลับให้แก้
-  return STAGE_BADGE[wo.pending_stage] || STATUS_LABEL[st]
+  return waitingBadge(wo) || DONE_BADGE
 }
 
 // role → the signature slot label it batch-signs (mirrors backend ROLE_SLOT).

@@ -350,14 +350,15 @@ function BranchDashboard({ b = {}, navigate }) {
           <StatCard icon={Sparkles} tone="indigo" value={b.wo_wait_building || 0}
             label="รอช่างอาคารตรวจเช็ค"
             onClick={() => navigate('/simple-wo?pending=building')} />
+          <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_engineer || 0}
+            label="รอวิศวกรรมตรวจเช็ค"
+            onClick={() => navigate('/simple-wo?pending=engineer')} />
+          {/* เจ้าของพื้นที่อยู่หลังวิศวกรรม (ลูกค้าขอ 5 ส.ค. 2026) — ตรงกับลำดับป้ายสถานะ */}
           {b.require_department_sign && (
             <StatCard icon={Sparkles} tone="amber" value={b.wo_wait_department || 0}
               label="รอเจ้าหน้าที่เจ้าของพื้นที่เซ็น"
               onClick={() => navigate('/simple-wo?pending=department')} />
           )}
-          <StatCard icon={Sparkles} tone="blue" value={b.wo_wait_engineer || 0}
-            label="รอวิศวกรรมตรวจเช็ค"
-            onClick={() => navigate('/simple-wo?pending=engineer')} />
           <StatCard icon={Sparkles} tone="teal" value={washDone}
             label="ดำเนินการเสร็จสิ้น"
             onClick={() => navigate('/simple-wo?view=done')} />
