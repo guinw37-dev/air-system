@@ -115,7 +115,14 @@ export default function SimpleWoList() {
   // ready = พร้อมวางบิล (เซ็นครบ ยังไม่วางบิล); all = ทุกใบ.
   const isApproved = (r) => (r.status || 'submitted') === 'approved'
   const inView = (r) => {
-    if (pending) return r.pending_stage === pending && !isApproved(r)
+    // ?pending=<slot> ใช้ธง wait_<slot> จาก API (นิยามเดียวกับการ์ดหน้าภาพรวม).
+    // ห้ามเทียบ pending_stage — ช่องคู่ขนาน (อาคาร/เจ้าของพื้นที่/วิศวกรรม) ทำให้
+    // "ช่องแรกที่ยังว่าง" ไม่ใช่ใบที่รอช่องนั้น → การ์ดโชว์ 213 แต่ list ว่างเปล่า.
+    // ใบเก่าจาก API รุ่นก่อน (ไม่มี wait_*) → fallback pending_stage เดิม
+    if (pending) {
+      const w = r[`wait_${pending}`]
+      return (w === undefined ? r.pending_stage === pending : !!w) && !isApproved(r)
+    }
     if (view === 'ready') return r.all_signed && !isApproved(r)
     if (view === 'done') return r.all_signed || isApproved(r)   // เสร็จสิ้น = เซ็นครบ รวมที่วางบิลแล้ว
     if (view === 'all') return true

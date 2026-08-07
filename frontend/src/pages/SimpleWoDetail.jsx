@@ -203,7 +203,10 @@ export default function SimpleWoDetail() {
   // A slot is signable once its prerequisites are signed.
   const priorsSigned = (slot) => (SIG_PREREQ[slot] || []).every(signed)
   // Which signature the ใบงาน is waiting on.
-  const pendingStage = SIGN_ORDER.find((s) => !signed(s)) || 'done'
+  // ป้ายสถานะไล่ตามสายงานหลัก — เจ้าของพื้นที่ท้ายสุด (ตรงกับ CASE ฝั่ง backend):
+  // ใบที่รอทั้งวิศวกรรมและเจ้าของพื้นที่ ต้องยังอ่านว่า "รอวิศวกรรม"
+  const BADGE_ORDER = ['team', 'supervisor', 'building', 'engineer', ...(requireDept ? ['department'] : [])]
+  const pendingStage = BADGE_ORDER.find((s) => !signed(s)) || 'done'
   const STAGE_BADGE = {
     team:       { label: 'ยังไม่เสร็จ',            color: 'badge-warn' },
     supervisor: { label: 'รอหัวหน้าตรวจงาน',        color: 'badge-warn' },
