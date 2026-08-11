@@ -92,6 +92,15 @@ async function migratePublic(client) {
                           AND item_label IN ('ตรวจวัดอุณหภูมิ (°C)', $1))`, [TEMP_RH_SUPPLY]);
 
     // ── ลูกค้า 08-11-2569 — แบบฟอร์มล้างใหญ่ (ทุกสาขา) ────────────────────────
+    // value_type มี CHECK constraint อยู่ → ต้องขยายรายการก่อน ไม่งั้น INSERT/UPDATE
+    // ข้างล่างล้มด้วย 23514 แล้ว migrate ที่เหลือถูกข้ามทั้งชุด (เจอจริงตอน deploy รอบแรก:
+    // relabel แถวแรกผ่าน แต่ 3 แถวถัดไปเงียบหาย)
+    await c.query(`ALTER TABLE inspection_template_items
+      DROP CONSTRAINT IF EXISTS inspection_template_items_value_type_check`);
+    await c.query(`ALTER TABLE inspection_template_items
+      ADD CONSTRAINT inspection_template_items_value_type_check CHECK (value_type IN (
+        'check','number','before_after','text','rst_amp','ln_vi','pressure_pair',
+        'single_number','temp_rh','temp_rh_after'))`);
     // ค่าที่วัดจริงย้ายจุดวัดจาก "หน้า Filter" ไป "หน้าช่องจ่ายลม" และเพิ่มความชื้น
     // + จุดวัดฝั่ง Return. relabel ทับแถวเดิม (Worawit 8 ส.ค. 2569) → ใบงานเก่า
     // เก็บค่าไว้ครบเพราะ checklist_values ผูกกับ id ของแถว ไม่ใช่ชื่อ.

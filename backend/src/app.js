@@ -96,13 +96,19 @@ app.get('/api/health', (req, res) => {
 // deploy never leaves a tenant missing a newly-added column/role. Best-effort:
 // a migration hiccup logs loudly but still lets the API come up.
 async function migrateOnBoot() {
+  const { migratePublic, migrateBranchSchemas } = require('./db/provision');
+  let stage = 'public';
   try {
-    const { migratePublic, migrateBranchSchemas } = require('./db/provision');
     await migratePublic();
+    stage = 'branch schemas';
     const n = await migrateBranchSchemas();
     console.log(`✓ boot migration done (public + ${n} branch schemas)`);
   } catch (err) {
-    console.error('⚠ boot migration failed (continuing):', err.message);
+    // ต้องอ่านออกจาก log ทันทีว่าล้มที่ขั้นไหน: ล้มที่ public แปลว่า branch schemas
+    // ไม่ได้รันเลยสักสาขา (เจอจริง 08-11-2569 — CHECK constraint ปฏิเสธ value_type
+    // ใหม่ แล้วทุกอย่างหลังจากนั้นเงียบหาย เห็นแค่ครึ่งเดียวของงานที่ deploy ไป)
+    console.error(`⚠ boot migration FAILED at "${stage}" — every later step was SKIPPED:`, err.message);
+    console.error(err.stack);
   }
 }
 

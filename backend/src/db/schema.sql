@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS inspection_template_items (
   equipment_type VARCHAR(10) NOT NULL CHECK (equipment_type IN ('ac','fan')),
   category       VARCHAR(50),     -- 'ใช้งานทั้ง3' / 'แอร์น้ำยา' / 'FCU' / 'AHU' / 'fan'
   item_label     VARCHAR(200) NOT NULL,
-  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair')),
+  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair','single_number','temp_rh','temp_rh_after')),
   unit_label     VARCHAR(30),     -- หน่วย เช่น °C, A, V, RPM
   applies_major  BOOLEAN DEFAULT false,
   applies_minor  BOOLEAN DEFAULT false,

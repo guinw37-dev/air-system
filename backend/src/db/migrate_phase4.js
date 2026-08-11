@@ -10,7 +10,8 @@ async function migrate() {
     await client.query(`ALTER TABLE inspection_template_items DROP CONSTRAINT IF EXISTS inspection_template_items_value_type_check`);
     await client.query(`ALTER TABLE inspection_template_items
       ADD CONSTRAINT inspection_template_items_value_type_check
-      CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair'))`);
+      CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair',
+                            'single_number','temp_rh','temp_rh_after'))`);
 
     // 2) inspection_values — extra structured columns for the special types
     await client.query(`ALTER TABLE inspection_values

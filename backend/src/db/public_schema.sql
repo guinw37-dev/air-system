@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS inspection_template_items (
   equipment_type VARCHAR(10) NOT NULL CHECK (equipment_type IN ('ac','fan')),
   category       VARCHAR(50),
   item_label     VARCHAR(200) NOT NULL,
-  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair')),
+  -- single_number/temp_rh/temp_rh_after = ชุด 08-11-2569 (ขนาดช่องจ่ายลม, อุณหภูมิ+ความชื้น)
+  value_type     VARCHAR(20) NOT NULL CHECK (value_type IN ('check','number','before_after','text','rst_amp','ln_vi','pressure_pair','single_number','temp_rh','temp_rh_after')),
   unit_label     VARCHAR(30),
   applies_major  BOOLEAN DEFAULT false,
   applies_minor  BOOLEAN DEFAULT false,
