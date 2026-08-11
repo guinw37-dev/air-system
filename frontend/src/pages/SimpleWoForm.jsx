@@ -29,16 +29,43 @@ const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
 // ประเภทพัดลม (พัดลม) — stored in the same ac_type field, job-level.
 const FAN_TYPES = ['Exhaust Fan', 'Exhaust Fan Duct Type']
 
-// Photo points (ก่อน + หลัง each). 1-5 required, 6-8 optional.
+// จุดถ่ายรูปชุด 08-11-2569 (ลูกค้าสั่ง). ทุกช่องเก็บเป็น 1 แถวใน photo_urls:
+//   { url, point_no, slot, phase, label }
+//   • slot  = ช่องในฟอร์ม (คีย์จริงที่ใช้อ้างรูป) — จุดหนึ่งมีได้หลายช่อง
+//   • phase = 'before' | 'after' ใช้จัดกองใน PDF/หน้าใบงาน (ของเดิมรู้จักแค่สองค่านี้)
+//   • label = ข้อความใต้รูปใน PDF → เขียนให้อ่านรู้เรื่องเอง ไม่ต้องพึ่งชื่อกอง
+//
+// point_no เริ่มที่ 11 โดยตั้งใจ: ชุดเก่าใช้ 1–8 คนละความหมาย (2=วัดไฟ, 4=คอยล์ FCU,
+// 5=Strainer) ถ้าใช้เลขซ้ำ ใบงานเก่าจะถูกอ่านใหม่เป็นหัวข้อที่ไม่ตรงกับรูปจริง
+// require: 'all' = ทุกช่อง · 'any' = อย่างน้อยหนึ่งช่อง · 'none' = ไม่บังคับ
+const BEFORE_AFTER = [
+  { key: 'before', label: 'ก่อน', phase: 'before' },
+  { key: 'after',  label: 'หลัง', phase: 'after' },
+]
 const PHOTO_POINTS = [
-  { no: 1, label: 'Location',     required: true },
-  { no: 2, label: 'วัดไฟ',        required: true },
-  { no: 3, label: 'วัดลม',        required: true },
-  { no: 4, label: 'คอยล์ FCU',    required: true },
-  { no: 5, label: 'Strainer',     required: true },
-  { no: 6, label: 'รูปเพิ่มเติม 1', required: false },
-  { no: 7, label: 'รูปเพิ่มเติม 2', required: false },
-  { no: 8, label: 'รูปเพิ่มเติม 3', required: false },
+  { no: 11, label: 'Location', require: 'all', slots: BEFORE_AFTER },
+  // แอร์น้ำเย็นไม่มีคอยล์ร้อน → ลงรูปเดียวก็ผ่าน
+  { no: 12, label: 'Name plate', require: 'any', slots: [
+    { key: 'coil_cold', label: 'คอยล์เย็น', phase: 'before' },
+    { key: 'coil_hot',  label: 'คอยล์ร้อน', phase: 'after' },
+  ] },
+  { no: 13, label: 'วัดไฟ', require: 'all', slots: BEFORE_AFTER },
+  { no: 14, label: 'วัดลมหน้าช่องจ่ายลม', require: 'all', slots: BEFORE_AFTER },
+  { no: 15, label: 'วัด PM2.5, CO₂, อุณหภูมิ และความชื้น หน้าหัวจ่ายลม', require: 'all', slots: BEFORE_AFTER },
+  { no: 16, label: 'วัดอุณหภูมิ และความชื้น หน้าช่อง Return', require: 'all', slots: [
+    { key: 'after', label: 'หลัง', phase: 'after' },
+  ] },
+  { no: 17, label: 'ขณะปฏิบัติงาน', require: 'all', slots: [
+    { key: 'during', label: 'ขณะปฏิบัติงาน', phase: 'after' },
+  ] },
+  { no: 18, label: 'ปัญหาที่พบ', require: 'none', slots: [
+    { key: 'issue1', label: 'ปัญหาที่พบ 1', phase: 'after' },
+    { key: 'issue2', label: 'ปัญหาที่พบ 2', phase: 'after' },
+  ] },
+  { no: 19, label: 'รูปเพิ่มเติม (เช่น แรงดันน้ำยา)', require: 'none', slots: [
+    { key: 'extra1', label: 'เพิ่มเติม 1', phase: 'after' },
+    { key: 'extra2', label: 'เพิ่มเติม 2', phase: 'after' },
+  ] },
 ]
 
 // Grid columns per grid work_type (ล้างย่อย / พัดลม) — multi-unit checkbox grid.
@@ -339,9 +366,10 @@ export default function SimpleWoForm() {
 
   const setAc = (patch) => setAcInfo((p) => ({ ...p, ...patch }))
 
-  // The single photo stored for a given point + phase (or undefined).
-  const getPointPhoto = (point_no, phase) =>
-    photoUrls.find((p) => p.point_no === point_no && p.phase === phase)
+  // รูปของช่องหนึ่ง (point + slot). ใบเก่าไม่มี field slot — จับคู่ด้วย phase แทน
+  // เพื่อให้รูปที่ถ่ายไว้ก่อนหน้ายังโผล่ในช่องเดิมตอนเปิดแก้ไข
+  const getPointPhoto = (point_no, slot) =>
+    photoUrls.find((p) => p.point_no === point_no && (p.slot ? p.slot === slot.key : p.phase === slot.phase))
 
   // Compress + upload one file → returns the stored url. Holds NO component
   // state, so each PhotoSlot owns its own busy/preview/error locally and an
@@ -360,20 +388,25 @@ export default function SimpleWoForm() {
     return res.data.url
   }
 
-  // Store/replace the photo for a point + phase (only mutates on success).
-  const setPointPhoto = (point, phase, url) =>
+  // Store/replace the photo for a point + slot (only mutates on success).
+  // label เก็บ "จุด — ช่อง" เพราะ PDF/หน้าใบงานพิมพ์ label ของรูปตรง ๆ
+  const setPointPhoto = (point, slot, url) =>
     setPhotoUrls((prev) => [
-      ...prev.filter((p) => !(p.point_no === point.no && p.phase === phase)),
-      { url, phase, point_no: point.no, label: point.label },
+      ...prev.filter((p) => !(p.point_no === point.no && (p.slot ? p.slot === slot.key : p.phase === slot.phase))),
+      { url, phase: slot.phase, slot: slot.key, point_no: point.no, label: `${point.label} — ${slot.label}` },
     ])
 
-  const removePointPhoto = (point_no, phase) =>
-    setPhotoUrls((prev) => prev.filter((p) => !(p.point_no === point_no && p.phase === phase)))
+  const removePointPhoto = (point_no, slot) =>
+    setPhotoUrls((prev) => prev.filter(
+      (p) => !(p.point_no === point_no && (p.slot ? p.slot === slot.key : p.phase === slot.phase))))
 
-  // Required points missing either ก่อน or หลัง → blocks submit.
-  const missingRequiredPhotos = PHOTO_POINTS.filter(
-    (pt) => pt.required && (!getPointPhoto(pt.no, 'before') || !getPointPhoto(pt.no, 'after'))
-  )
+  // จุดที่ยังถ่ายไม่ครบตามกติกาของจุดนั้น → กันกดส่ง
+  const missingRequiredPhotos = PHOTO_POINTS.filter((pt) => {
+    const filled = pt.slots.filter((s) => getPointPhoto(pt.no, s)).length
+    if (pt.require === 'all') return filled < pt.slots.length
+    if (pt.require === 'any') return filled === 0
+    return false
+  })
 
   // Gallery (คลังรูป): unlimited extra album photos, not in the PDF.
   const handleGallery = async (files) => {
@@ -750,27 +783,26 @@ export default function SimpleWoForm() {
           </div>
           <p className="text-xs text-ink-muted">แตะช่องเพื่อถ่ายรูป หรือเลือกจากอัลบั้มในเครื่อง</p>
           <div className="flex flex-col gap-3">
-            {PHOTO_POINTS.map((pt) => (
+            {PHOTO_POINTS.map((pt, i) => (
               <div key={pt.no} className="rounded-xl border border-line p-3">
                 <div className="text-sm font-medium text-ink mb-2">
-                  {pt.no}. {pt.label}
-                  {pt.required && <span className="text-danger ml-1">*</span>}
+                  {i + 1}. {pt.label}
+                  {pt.require !== 'none' && <span className="text-danger ml-1">*</span>}
+                  {pt.require === 'any' && (
+                    <span className="text-[11px] font-normal text-ink-muted ml-1">(ลงรูปเดียวก็ได้)</span>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <PhotoSlot
-                    label="ก่อน"
-                    forceCamera={forceCamera}
-                    photo={getPointPhoto(pt.no, 'before')}
-                    onUpload={async (file) => setPointPhoto(pt, 'before', await uploadOne(file))}
-                    onRemove={() => removePointPhoto(pt.no, 'before')}
-                  />
-                  <PhotoSlot
-                    label="หลัง"
-                    forceCamera={forceCamera}
-                    photo={getPointPhoto(pt.no, 'after')}
-                    onUpload={async (file) => setPointPhoto(pt, 'after', await uploadOne(file))}
-                    onRemove={() => removePointPhoto(pt.no, 'after')}
-                  />
+                <div className={`grid gap-2 ${pt.slots.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {pt.slots.map((slot) => (
+                    <PhotoSlot
+                      key={slot.key}
+                      label={slot.label}
+                      forceCamera={forceCamera}
+                      photo={getPointPhoto(pt.no, slot)}
+                      onUpload={async (file) => setPointPhoto(pt, slot, await uploadOne(file))}
+                      onRemove={() => removePointPhoto(pt.no, slot)}
+                    />
+                  ))}
                 </div>
               </div>
             ))}
@@ -1177,6 +1209,52 @@ function ChecklistField({ field, value, onChange }) {
             unit={unit_label}
             unitOptions={airflow ? ['ft/m', 'CFM', 'm/s'] : undefined}
           />
+        </div>
+      )
+    }
+
+    // ค่าเดียว ไม่มีก่อน/หลัง (ขนาดช่องจ่ายลม — ขนาดช่องไม่เปลี่ยนตอนล้าง).
+    // เก็บลง value_after เพื่อให้ PDF/Excel ที่อ่าน before/after อยู่แล้วใช้ได้เลย
+    case 'single_number':
+      return (
+        <div>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" className="accent-primary h-4 w-4"
+              checked={!!value.checked} onChange={(e) => onChange({ checked: e.target.checked })} />
+            <span className="text-sm text-ink">{item_label}</span>
+          </label>
+          <div className="flex items-center gap-2 mt-2">
+            <input className="input" inputMode="decimal" placeholder="ค่าที่วัดได้"
+              value={value.value_after || ''} onChange={(e) => onChange({ value_after: e.target.value })} />
+            {unit_label && <span className="text-sm text-ink-muted shrink-0">{unit_label}</span>}
+          </div>
+        </div>
+      )
+
+    // อุณหภูมิ + ความชื้น: ช่องจ่ายลม = temp ก่อน/หลัง + RH หลัง;
+    // Return (temp_rh_after) = วัดหลังล้างอย่างเดียวทั้งคู่
+    case 'temp_rh':
+    case 'temp_rh_after': {
+      const afterOnly = value_type === 'temp_rh_after'
+      return (
+        <div>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" className="accent-primary h-4 w-4"
+              checked={!!value.checked} onChange={(e) => onChange({ checked: e.target.checked })} />
+            <span className="text-sm text-ink">{item_label}</span>
+          </label>
+          <p className="text-xs text-ink-muted mt-2 mb-1">อุณหภูมิ (°C)</p>
+          <div className={`grid gap-2 ${afterOnly ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {!afterOnly && (
+              <input className="input" inputMode="decimal" placeholder="ก่อนล้าง"
+                value={value.value_before || ''} onChange={(e) => onChange({ value_before: e.target.value })} />
+            )}
+            <input className="input" inputMode="decimal" placeholder="หลังล้าง"
+              value={value.value_after || ''} onChange={(e) => onChange({ value_after: e.target.value })} />
+          </div>
+          <p className="text-xs text-ink-muted mt-2 mb-1">ความชื้น (%RH) — หลังล้าง</p>
+          <input className="input" inputMode="decimal" placeholder="หลังล้าง"
+            value={value.rh_after || ''} onChange={(e) => onChange({ rh_after: e.target.value })} />
         </div>
       )
     }

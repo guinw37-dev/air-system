@@ -760,6 +760,8 @@ function rowHasReading(it) {
   const any = (keys) => keys.some((k) => hasVal(it[k]));
   const vt = it.value_type;
   if (vt === 'number' || vt === 'before_after') return hasVal(it.value_before) || hasVal(it.value_after);
+  if (vt === 'single_number') return hasVal(it.value_after);
+  if (vt === 'temp_rh' || vt === 'temp_rh_after') return any(['value_before', 'value_after', 'rh_after']);
   if (vt === 'rst_amp') {
     return any(['val_r_before', 'val_s_before', 'val_t_before', 'val_ln_before', 'val_l_before',
                 'val_r_after', 'val_s_after', 'val_t_after', 'val_ln_after', 'val_l_after']);
@@ -824,6 +826,16 @@ function checklistTable(unit) {
       } else if (applies && (vt === 'number' || vt === 'before_after')) {
         baCells = `<td class="ba bval">${blankOrNum(it.value_before, it.unit_label)}</td>`
           + `<td class="ba aval">${blankOrNum(it.value_after, it.unit_label)}</td>`;
+      } else if (applies && vt === 'single_number') {
+        // ค่าเดียว (ขนาดช่องจ่ายลม) — ไม่มีค่าก่อน กินสองคอลัมน์ไปเลย
+        baCells = `<td class="ba aval" colspan="2">${blankOrNum(it.value_after, it.unit_label)}</td>`;
+      } else if (applies && (vt === 'temp_rh' || vt === 'temp_rh_after')) {
+        // อุณหภูมิลงคอลัมน์ก่อน/หลังตามปกติ + ความชื้นต่อท้ายคอลัมน์หลัง
+        // (ความชื้นวัดหลังล้างอย่างเดียว จึงไม่มีอะไรลงคอลัมน์ก่อน)
+        const beforeCell = vt === 'temp_rh' ? blankOrNum(it.value_before, '°C') : '—';
+        const rh = blankOrNum(it.rh_after, '%RH');
+        baCells = `<td class="ba bval">${beforeCell}</td>`
+          + `<td class="ba aval">${blankOrNum(it.value_after, '°C')}<div class="itpre">${rh}</div></td>`;
       } else if (applies && isMeasure) {
         baCells = `<td class="ba bval">${measureCell(it, 'before')}</td>`
           + `<td class="ba aval">${measureCell(it, 'after')}</td>`;

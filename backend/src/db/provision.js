@@ -10,6 +10,13 @@ const PUBLIC_SQL = fs.readFileSync(path.join(__dirname, 'public_schema.sql'), 'u
 // สาขาที่ใช้ระบบโซน PTS1/PTS2 จริง (ตรงกับ frontend lib/zones.js) — schema names.
 const ZONE_SCHEMAS = ['phayathai_sriracha'];
 
+// ชื่อแถว checklist ล้างใหญ่ชุด 08-11-2569 — ใช้ทั้งตอน seed DB ใหม่ (seed.js) และ
+// ตอน migrate DB เดิม (migratePublic) จึงต้องอ่านจากที่เดียว ไม่พิมพ์ซ้ำสองที่
+const AIRFLOW_SUPPLY = 'ตรวจสอบความเร็วลมด้านหน้าช่องจ่ายลม = (Ft/m)';
+const SUPPLY_SIZE    = 'ขนาดช่องจ่ายลม';
+const TEMP_RH_SUPPLY = 'ตรวจวัดอุณหภูมิ (°C) และความชื้น (%RH) ด้านหน้าช่องจ่ายลม';
+const TEMP_RH_RETURN = 'ตรวจสอบอุณหภูมิ (°C) และความชื้น (%RH) ด้านหน้าช่อง Return';
+
 // Apply the GLOBAL (public) schema + idempotent ALTERs for columns added after
 // an older `clients`/`users`/`notifications` already existed on a live DB.
 async function migratePublic(client) {
@@ -75,11 +82,38 @@ async function migratePublic(client) {
         AND item_label = 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น'`);
     // การเปลี่ยนแถวคอยล์ร้อนเป็น check ทำ "ช่องบันทึกอุณหภูมิ" หาย (ช่างเคยกรอก °C
     // ก่อน/หลังในแถวนั้น) → เพิ่มแถว "ตรวจวัดอุณหภูมิ (°C)" ของตัวเองกลับมา. Idempotent.
+    // guard ต้องรู้จักชื่อใหม่ของแถวนี้ด้วย (ดูบล็อก 08-11-2569 ข้างล่าง) ไม่งั้น
+    // boot รอบถัดไปจะ INSERT แถวชื่อเดิมกลับมาเป็นแถวซ้ำ
     await c.query(`INSERT INTO inspection_template_items
         (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
       SELECT 'ac', 'all3', 'ตรวจวัดอุณหภูมิ (°C)', 'number', '°C', true, true, 24
       WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
-                        WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)')`);
+                        WHERE equipment_type = 'ac'
+                          AND item_label IN ('ตรวจวัดอุณหภูมิ (°C)', $1))`, [TEMP_RH_SUPPLY]);
+
+    // ── ลูกค้า 08-11-2569 — แบบฟอร์มล้างใหญ่ (ทุกสาขา) ────────────────────────
+    // ค่าที่วัดจริงย้ายจุดวัดจาก "หน้า Filter" ไป "หน้าช่องจ่ายลม" และเพิ่มความชื้น
+    // + จุดวัดฝั่ง Return. relabel ทับแถวเดิม (Worawit 8 ส.ค. 2569) → ใบงานเก่า
+    // เก็บค่าไว้ครบเพราะ checklist_values ผูกกับ id ของแถว ไม่ใช่ชื่อ.
+    await c.query(`UPDATE inspection_template_items SET item_label = $1
+      WHERE equipment_type = 'ac'
+        AND item_label = 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)'`, [AIRFLOW_SUPPLY]);
+    // ขนาดช่องจ่ายลม — ค่าเดียว ไม่มีก่อน/หลัง (ขนาดช่องไม่เปลี่ยนตอนล้าง)
+    await c.query(`INSERT INTO inspection_template_items
+        (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
+      SELECT 'ac', 'all3', $1, 'single_number', 'ตร.นิ้ว', true, true, 19
+      WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
+                        WHERE equipment_type = 'ac' AND item_label = $1)`, [SUPPLY_SIZE]);
+    // อุณหภูมิเดิม → อุณหภูมิ ก่อน/หลัง + ความชื้น (หลังอย่างเดียว) ที่ช่องจ่ายลม
+    await c.query(`UPDATE inspection_template_items
+        SET item_label = $1, value_type = 'temp_rh', unit_label = '°C / %RH'
+      WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)'`, [TEMP_RH_SUPPLY]);
+    // ฝั่ง Return — วัดหลังล้างอย่างเดียวทั้งอุณหภูมิและความชื้น
+    await c.query(`INSERT INTO inspection_template_items
+        (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
+      SELECT 'ac', 'all3', $1, 'temp_rh_after', '°C / %RH', true, true, 25
+      WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
+                        WHERE equipment_type = 'ac' AND item_label = $1)`, [TEMP_RH_RETURN]);
   } finally {
     if (!client) c.release();
   }
@@ -252,4 +286,5 @@ async function migrateBranchSchemas() {
   return rows.length;
 }
 
-module.exports = { migratePublic, provisionBranchSchema, migrateBranchSchemas };
+module.exports = { migratePublic, provisionBranchSchema, migrateBranchSchemas,
+                   AIRFLOW_SUPPLY, SUPPLY_SIZE, TEMP_RH_SUPPLY, TEMP_RH_RETURN };

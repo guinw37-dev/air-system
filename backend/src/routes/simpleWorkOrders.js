@@ -254,6 +254,7 @@ function atomicValue(v, key) {
     case 'Suction หลัง': return s(v.val_suction_after ?? v.val_suction);
     case 'Discharge หลัง': return s(v.val_discharge_after ?? v.val_discharge);
     case 'น้ำยา': return s(v.refrigerant_type);
+    case 'ความชื้นหลัง': return s(v.rh_after);
     case 'ข้อความ': return s(v.val_text);
     case 'หมายเหตุ': return s(v.note);
     case 'ติ๊ก': return (v.checked === true || v.checked === 'true') ? '1' : '-';
@@ -265,6 +266,9 @@ function relevantKeys(valueType) {
   switch (valueType) {
     case 'number':
     case 'before_after': return ['ก่อน', 'หลัง', 'หน่วย'];
+    case 'single_number': return ['หลัง', 'หน่วย'];             // ค่าเดียว (ขนาดช่องจ่ายลม)
+    case 'temp_rh': return ['ก่อน', 'หลัง', 'ความชื้นหลัง'];      // อุณหภูมิ ก่อน/หลัง + %RH หลัง
+    case 'temp_rh_after': return ['หลัง', 'ความชื้นหลัง'];        // Return — วัดหลังล้างอย่างเดียว
     case 'rst_amp': return ['R ก่อน', 'S ก่อน', 'T ก่อน', 'R หลัง', 'S หลัง', 'T หลัง', 'LN ก่อน', 'L ก่อน', 'LN หลัง', 'L หลัง'];
     case 'ln_vi': return ['LN หลัง', 'L หลัง', 'R(V)', 'R(A)', 'S(V)', 'S(A)', 'T(V)', 'T(A)'];
     case 'pressure_pair': return ['Suction ก่อน', 'Discharge ก่อน', 'Suction หลัง', 'Discharge หลัง', 'น้ำยา'];

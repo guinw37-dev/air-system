@@ -87,6 +87,7 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '', requireDepartme
       checked: v.checked === true || v.checked === 'true',
       value_before: v.value_before ?? null,
       value_after: v.value_after ?? null,
+      rh_after: v.rh_after ?? null,      // ความชื้น (temp_rh / temp_rh_after) — วัดหลังล้างเท่านั้น
       note: v.note ?? null,
       val_text: v.val_text ?? null,
       val_r_before: v.val_r_before ?? null, val_s_before: v.val_s_before ?? null, val_t_before: v.val_t_before ?? null,

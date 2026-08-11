@@ -81,6 +81,36 @@ html = buildSimpleReportHtml(rst('220'));
 assert(html.includes('220V 1φ') && html.includes('LN=380'), '220V shows LN/L');
 ok('rst_amp 220V shows LN/L (1φ)');
 
+// ── checklist ชุด 08-11-2569: ขนาดช่องจ่ายลม + อุณหภูมิ/ความชื้น ──────────────
+const insp = (over) => baseData({ unit: { inspections: [{ category: 'all3', ...over }] } });
+
+// ขนาดช่องจ่ายลม — ค่าเดียว ไม่มีคอลัมน์ "ก่อน" ให้กรอก
+html = buildSimpleReportHtml(insp({
+  item_label: 'ขนาดช่องจ่ายลม', value_type: 'single_number', unit_label: 'ตร.นิ้ว', value_after: '144',
+}));
+assert(html.includes('ขนาดช่องจ่ายลม'), 'single_number row label');
+assert(html.includes('144'), 'single_number value rendered');
+assert(html.includes('colspan="2"'), 'single_number spans both ก่อน/หลัง columns');
+ok('single_number (ขนาดช่องจ่ายลม) renders one value across both columns');
+
+// ช่องจ่ายลม — อุณหภูมิ ก่อน/หลัง + ความชื้นหลัง
+html = buildSimpleReportHtml(insp({
+  item_label: 'ตรวจวัดอุณหภูมิ (°C) และความชื้น (%RH) ด้านหน้าช่องจ่ายลม',
+  value_type: 'temp_rh', unit_label: '°C / %RH', value_before: '28', value_after: '22', rh_after: '55',
+}));
+assert(html.includes('28') && html.includes('22'), 'temp_rh before + after temperature');
+assert(html.includes('55') && html.includes('%RH'), 'temp_rh humidity rendered with unit');
+ok('temp_rh renders อุณหภูมิ ก่อน/หลัง + ความชื้นหลัง');
+
+// Return — วัดหลังล้างอย่างเดียว: คอลัมน์ "ก่อน" ต้องว่าง ไม่ใช่เอาค่าหลังมาโชว์ซ้ำ
+html = buildSimpleReportHtml(insp({
+  item_label: 'ตรวจสอบอุณหภูมิ (°C) และความชื้น (%RH) ด้านหน้าช่อง Return',
+  value_type: 'temp_rh_after', unit_label: '°C / %RH', value_after: '25', rh_after: '60',
+}));
+assert(html.includes('25') && html.includes('60'), 'temp_rh_after values rendered');
+assert(/class="ba bval">—</.test(html), 'temp_rh_after leaves the ก่อน column empty');
+ok('temp_rh_after (Return) renders after-only readings');
+
 // ── ช่องเซ็นที่ 5 "เจ้าหน้าที่เจ้าของพื้นที่" — เฉพาะสาขาที่เปิดกติกา ──────────
 const OWNER_LABEL = 'ลงชื่อเจ้าหน้าที่เจ้าของพื้นที่';
 const ownerSigs = { ...baseSigs, department: { signer_name: 'พว.สมศรี', position: 'หัวหน้าห้อง LR', signature_data: 'data:image/png;base64,S' } };
