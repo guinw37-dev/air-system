@@ -565,6 +565,12 @@ function formatFieldValue(field, val) {
     case 'number':
     case 'before_after':
       return `ก่อน ${g(v.value_before)} → หลัง ${g(v.value_after)}`
+    case 'single_number':
+      return `${g(v.value_after)}${field.unit_label ? ` ${field.unit_label}` : ''}`
+    case 'temp_rh':
+      return `อุณหภูมิ ก่อน ${g(v.value_before)} → หลัง ${g(v.value_after)} °C · ความชื้นหลัง ${g(v.rh_after)} %RH`
+    case 'temp_rh_after':
+      return `อุณหภูมิหลัง ${g(v.value_after)} °C · ความชื้นหลัง ${g(v.rh_after)} %RH`
     case 'text':
       return g(v.val_text)
     case 'rst_amp': {
