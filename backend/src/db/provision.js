@@ -83,7 +83,10 @@ async function migratePublic(client) {
     // การเปลี่ยนแถวคอยล์ร้อนเป็น check ทำ "ช่องบันทึกอุณหภูมิ" หาย (ช่างเคยกรอก °C
     // ก่อน/หลังในแถวนั้น) → เพิ่มแถว "ตรวจวัดอุณหภูมิ (°C)" ของตัวเองกลับมา. Idempotent.
     // guard ต้องรู้จักชื่อใหม่ของแถวนี้ด้วย (ดูบล็อก 08-11-2569 ข้างล่าง) ไม่งั้น
-    // boot รอบถัดไปจะ INSERT แถวชื่อเดิมกลับมาเป็นแถวซ้ำ
+    // boot รอบถัดไปจะ INSERT แถวชื่อเดิมกลับมาเป็นแถวซ้ำ.
+    // NOTE: พารามิเตอร์ที่โผล่ทั้งใน SELECT list และในเงื่อนไขเปรียบเทียบ ต้อง cast
+    // ให้ตรงกัน (::varchar) ไม่งั้น Postgres deduce type คนละอย่างแล้วโยน
+    // "inconsistent types deduced for parameter $1" — ล้มทั้ง migratePublic
     await c.query(`INSERT INTO inspection_template_items
         (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
       SELECT 'ac', 'all3', 'ตรวจวัดอุณหภูมิ (°C)', 'number', '°C', true, true, 24
@@ -110,9 +113,9 @@ async function migratePublic(client) {
     // ขนาดช่องจ่ายลม — ค่าเดียว ไม่มีก่อน/หลัง (ขนาดช่องไม่เปลี่ยนตอนล้าง)
     await c.query(`INSERT INTO inspection_template_items
         (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
-      SELECT 'ac', 'all3', $1, 'single_number', 'ตร.นิ้ว', true, true, 19
+      SELECT 'ac', 'all3', $1::varchar, 'single_number', 'ตร.นิ้ว', true, true, 19
       WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
-                        WHERE equipment_type = 'ac' AND item_label = $1)`, [SUPPLY_SIZE]);
+                        WHERE equipment_type = 'ac' AND item_label = $1::varchar)`, [SUPPLY_SIZE]);
     // อุณหภูมิเดิม → อุณหภูมิ ก่อน/หลัง + ความชื้น (หลังอย่างเดียว) ที่ช่องจ่ายลม
     await c.query(`UPDATE inspection_template_items
         SET item_label = $1, value_type = 'temp_rh', unit_label = '°C / %RH'
@@ -120,9 +123,9 @@ async function migratePublic(client) {
     // ฝั่ง Return — วัดหลังล้างอย่างเดียวทั้งอุณหภูมิและความชื้น
     await c.query(`INSERT INTO inspection_template_items
         (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
-      SELECT 'ac', 'all3', $1, 'temp_rh_after', '°C / %RH', true, true, 25
+      SELECT 'ac', 'all3', $1::varchar, 'temp_rh_after', '°C / %RH', true, true, 25
       WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
-                        WHERE equipment_type = 'ac' AND item_label = $1)`, [TEMP_RH_RETURN]);
+                        WHERE equipment_type = 'ac' AND item_label = $1::varchar)`, [TEMP_RH_RETURN]);
   } finally {
     if (!client) c.release();
   }
