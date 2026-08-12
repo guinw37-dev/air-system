@@ -3,6 +3,7 @@ const path = require('path');
 const pool = require('../db/pool');
 const QRCode = require('qrcode');
 const { BRAND } = require('./reportBuilder');
+const { fetchTemplateItems } = require('../utils/templateItems');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 
@@ -22,12 +23,9 @@ function inlinePhoto(url, httpBase) {
   }
 }
 
-// Map work_type → which template items apply.
-// Simple-WO uses ONE checklist for every work type (the full AC/major set);
-// the tech just fills what applies. Keeps field ids stable across work types.
-function templateFilter() {
-  return { sql: `equipment_type = 'ac' AND applies_major = true`, params: [] };
-}
+// Simple-WO uses ONE checklist for every work type (the full AC/major set); the
+// tech just fills what applies. Keeps field ids stable across work types — that
+// is why fetchTemplateItems() below is always called with 'major'.
 
 const WORK_TYPE_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
 
@@ -48,7 +46,9 @@ function combineDateTime(dateVal, timeStr) {
 // the caller's branch schema. Falls back to pool (public) when not supplied.
 // requireDepartment = สาขานี้เปิดช่องเซ็น "เจ้าหน้าที่เจ้าของพื้นที่" (clients
 // .require_department_sign) → PDF แสดงช่องที่ 5; สาขาอื่นฟอร์มเดิม 4 ช่อง.
-async function getSimpleReportData(id, { db, publicBaseUrl = '', requireDepartment = false } = {}) {
+// branchSlug = สาขาที่ออกรายงาน — ตัดสินว่า checklist ใช้ชื่อ/ชนิดชุดไหน
+// (ศรีราชามีแถวและชื่อของตัวเอง — ดู utils/templateItems)
+async function getSimpleReportData(id, { db, publicBaseUrl = '', requireDepartment = false, branchSlug = null } = {}) {
   const run = db || ((sql, params) => pool.query(sql, params));
   const { rows } = await run(`
     SELECT s.*, u.name AS created_by_name
@@ -60,13 +60,8 @@ async function getSimpleReportData(id, { db, publicBaseUrl = '', requireDepartme
   const r = rows[0];
 
   // Template items for this work_type → build inspection rows merged with values.
-  const f = templateFilter(r.work_type);
-  const { rows: items } = await run(`
-    SELECT id, category, item_label, value_type, unit_label, sort_order
-    FROM inspection_template_items
-    WHERE ${f.sql}
-    ORDER BY sort_order, id
-  `, f.params);
+  // Simple-WO ใช้ checklist ชุด major ชุดเดียวทุก work_type (ดู templateFilter เดิม)
+  const items = await fetchTemplateItems(run, 'major', branchSlug);
 
   const cv = r.checklist_values || {};
   const inspections = items.map((it) => {

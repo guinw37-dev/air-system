@@ -9,6 +9,7 @@ const pool = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { SIG_SLOTS, ROLE_SLOT, canSignSlot, slotForRole, allSigned, allSignedSql,
         EXTERNAL_SLOTS, waitSlotSql, requiredSlots, blockingSlot, SLOT_TH } = require('../utils/roles');
+const { fetchTemplateItems } = require('../utils/templateItems');
 const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
@@ -155,18 +156,9 @@ const CAT_LABEL = {
 };
 router.get('/form-schema', authMiddleware, async (req, res) => {
   const wt = req.query.work_type || 'major';
-  let where;
-  if (wt === 'fan') where = `equipment_type = 'fan'`;
-  else if (wt === 'minor') where = `equipment_type = 'ac' AND applies_minor = true`;
-  else where = `equipment_type = 'ac' AND applies_major = true`;
   try {
-    // inspection_template_items is GLOBAL (public) — req.db resolves it via the
-    // public fallback on the search_path.
-    const { rows } = await req.db(`
-      SELECT id, category, item_label, value_type, unit_label, sort_order
-      FROM inspection_template_items WHERE ${where}
-      ORDER BY sort_order, id
-    `);
+    // per-branch: ศรีราชาเห็นชื่อ/ชนิดของตัวเอง + แถวเฉพาะสาขา (ดู utils/templateItems)
+    const rows = await fetchTemplateItems(req.db, wt, req.branch && req.branch.slug);
     const byCat = new Map();
     for (const it of rows) {
       if (!byCat.has(it.category)) byCat.set(it.category, []);
@@ -289,12 +281,8 @@ router.get('/export/excel', authMiddleware, async (req, res) => {
       LEFT JOIN users u ON s.created_by = u.id
       WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
     `, params);
-    const { rows: items } = await req.db(`
-      SELECT id, category, item_label, value_type, unit_label, sort_order
-      FROM inspection_template_items
-      WHERE equipment_type = 'ac' AND applies_major = true
-      ORDER BY sort_order, id
-    `);
+    // คอลัมน์ต้องตรงกับ checklist ที่สาขานี้เห็นจริง (ศรีราชามีแถวของตัวเอง)
+    const items = await fetchTemplateItems(req.db, 'major', req.branch && req.branch.slug);
 
     const itemCols = [];
     items.forEach((it, idx) => {
@@ -664,7 +652,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
 router.get('/:id/pdf', authMiddleware, async (req, res) => {
   try {
     const data = await getSimpleReportData(req.params.id, {
-      db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment });
+      db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment,
+      branchSlug: req.branch && req.branch.slug });
     if (!data) return res.status(404).json({ error: 'ไม่พบใบงาน' });
     const html = buildSimpleReportHtml(data);
     try {
@@ -928,7 +917,8 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
     const dataArray = [];
     for (const id of cleanIds) {
       const d = await getSimpleReportData(id, {
-        db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment });
+        db: req.db, publicBaseUrl: PUBLIC_BASE, requireDepartment: signOpts(req).requireDepartment,
+      branchSlug: req.branch && req.branch.slug });
       if (d) dataArray.push(d);
     }
     if (!dataArray.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });

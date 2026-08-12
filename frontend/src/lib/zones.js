@@ -13,3 +13,11 @@ export const MINOR_MEASURE_SLUGS = ['phayathai-sriracha']
 
 export const useHasMinorMeasure = () =>
   useTenantStore((s) => MINOR_MEASURE_SLUGS.includes(s.slug))
+
+// ล้างใหญ่: แบบฟอร์มชุด 08-11-2569 (จุดถ่ายรูป 9 จุด + checklist ช่องจ่ายลม/Return)
+// — ลูกค้าสั่งเฉพาะศรีราชา สาขาอื่นคงฟอร์มเดิม 8 จุด.
+// ฝั่ง backend คือ MAJOR_V3_BRANCHES ใน src/db/provision.js — แก้ต้องแก้คู่กัน
+export const MAJOR_V3_SLUGS = ['phayathai-sriracha']
+
+export const useHasMajorV3 = () =>
+  useTenantStore((s) => MAJOR_V3_SLUGS.includes(s.slug))

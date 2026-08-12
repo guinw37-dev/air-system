@@ -2,7 +2,6 @@ require('dotenv').config();
 const pool = require('./pool');
 const bcrypt = require('bcryptjs');
 const { CHECKLIST_ITEMS } = require('../config/measurements');
-const { AIRFLOW_SUPPLY, SUPPLY_SIZE, TEMP_RH_SUPPLY, TEMP_RH_RETURN } = require('./provision');
 
 // Seed baseline data for the NEW schema (clients → sites → … → units).
 // Does NOT import equipment from Excel — that lives in import.js / a dedicated
@@ -63,16 +62,15 @@ async function seed() {
     const TW = [
       // หมวด 1: ใช้งานทั้ง 3 ประเภท (all3) — major + minor
       { cat: 'all3', sort: 10, label: 'ตรวจสอบแรงดันไฟฟ้า และกระแสไฟฟ้าของมอเตอร์คอยล์เย็น(แอร์น้ำ) หรือมอเตอร์คอยล์ร้อน(แอร์น้ำยา)', type: 'rst_amp', minor: true },
-      // 08-11-2569: จุดวัดย้ายจากหน้า Filter → หน้าช่องจ่ายลม + เพิ่มขนาดช่อง (ค่าเดียว)
-      { cat: 'all3', sort: 19, label: SUPPLY_SIZE, type: 'single_number', unit: 'ตร.นิ้ว', minor: true },
-      { cat: 'all3', sort: 20, label: AIRFLOW_SUPPLY, type: 'number', unit: 'Ft/m', minor: true },
+      // baseline = ฟอร์มเดิมที่ทุกสาขาใช้. ชุด 08-11-2569 ของศรีราชา (ขนาดช่องจ่ายลม /
+      // Return / ชื่อแถวแบบช่องจ่ายลม) เติมโดย migratePublic ตอน boot ในรูปแบบ
+      // only_branches + branch override — seed จึงต้องไม่สร้างให้ทุกสาขา
+      { cat: 'all3', sort: 20, label: 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', type: 'number', unit: 'Ft/m', minor: true },
       { cat: 'all3', sort: 21, label: 'ตรวจวัดฝุ่น PM2.5 (µg/m³)', type: 'number', unit: 'µg/m³', minor: true },
       { cat: 'all3', sort: 22, label: 'ตรวจวัดก๊าซ CO₂ (ppm)', type: 'number', unit: 'ppm', minor: true },
       { cat: 'all3', sort: 23, label: 'ตรวจวัดระดับเสียง (dB)', type: 'number', unit: 'dB', minor: true },
       // แถวอุณหภูมิแยกของตัวเอง — คืนช่องกรอกที่หายไปตอนแถวคอยล์ร้อนเปลี่ยนเป็น check
-      // 08-11-2569: + ความชื้น (หลังอย่างเดียว) ที่ช่องจ่ายลม และเพิ่มจุดวัดฝั่ง Return
-      { cat: 'all3', sort: 24, label: TEMP_RH_SUPPLY, type: 'temp_rh', unit: '°C / %RH', minor: true },
-      { cat: 'all3', sort: 25, label: TEMP_RH_RETURN, type: 'temp_rh_after', unit: '°C / %RH', minor: true },
+      { cat: 'all3', sort: 24, label: 'ตรวจวัดอุณหภูมิ (°C)', type: 'number', unit: '°C', minor: true },
       // ลูกค้า 08-07: แถวนี้ไม่แบ่งก่อน-หลัง → check (เดิม number °C จากแถวตรวจวัดอุณหภูมิ)
       { cat: 'all3', sort: 30, label: 'ตรวจเช็คคอยล์ร้อน คอยล์เย็น และฉีดล้างทำความสะอาดรังผึ้งที่คอยล์ร้อน คอยล์เย็น', type: 'check', minor: true },
       { cat: 'all3', sort: 40, label: 'ฉีดล้างทำความสะอาด Fan coil โดยใช้สารเคมีทิ้งไว้ 15 นาที และใช้ Water High Pressure Jet ฉีดล้างทำความสะอาด', type: 'check', minor: true },
