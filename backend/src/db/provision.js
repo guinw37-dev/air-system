@@ -12,6 +12,9 @@ const ZONE_SCHEMAS = ['phayathai_sriracha'];
 
 // ชื่อแถว checklist ล้างใหญ่ชุด 08-11-2569 — ใช้ทั้งตอน seed DB ใหม่ (seed.js) และ
 // ตอน migrate DB เดิม (migratePublic) จึงต้องอ่านจากที่เดียว ไม่พิมพ์ซ้ำสองที่
+// สาขาที่ใช้แบบฟอร์มล้างใหญ่ชุด 08-11-2569 (checklist ช่องจ่ายลม/Return + รูป 9 จุด).
+// สาขาอื่นคงฟอร์มเดิมทุกอย่าง — ต้องตรงกับ MAJOR_V3_SLUGS ใน frontend/src/lib/zones.js
+const MAJOR_V3_BRANCHES = ['phayathai-sriracha'];
 const AIRFLOW_SUPPLY = 'ตรวจสอบความเร็วลมด้านหน้าช่องจ่ายลม = (Ft/m)';
 const SUPPLY_SIZE    = 'ขนาดช่องจ่ายลม';
 const TEMP_RH_SUPPLY = 'ตรวจวัดอุณหภูมิ (°C) และความชื้น (%RH) ด้านหน้าช่องจ่ายลม';
@@ -94,7 +97,28 @@ async function migratePublic(client) {
                         WHERE equipment_type = 'ac'
                           AND item_label IN ('ตรวจวัดอุณหภูมิ (°C)', $1))`, [TEMP_RH_SUPPLY]);
 
-    // ── ลูกค้า 08-11-2569 — แบบฟอร์มล้างใหญ่ (ทุกสาขา) ────────────────────────
+    // ── ลูกค้า 08-11-2569 — แบบฟอร์มล้างใหญ่ (เฉพาะศรีราชา) ───────────────────
+    // รอบแรกเข้าใจว่าใช้ทุกสาขา จึง relabel แถวกลางทับไปเลย — ที่จริงสาขาอื่นต้องคง
+    // ฟอร์มเดิม (Worawit 11 ส.ค. 2569) จึงต้องคืนแถวกลางให้เหมือนเดิม แล้วให้ศรีราชา
+    // เห็นเวอร์ชันของตัวเองผ่าน override แทน
+    //
+    // สองกลไก:
+    //   • items.only_branches — แถวที่มีเฉพาะบางสาขา (ขนาดช่องจ่ายลม / Return)
+    //   • branch overrides    — แถวเดิม id เดิม แต่ชื่อ/ชนิดต่างกันต่อสาขา
+    // ใช้ override แทนการสร้างแถวใหม่โดยตั้งใจ: ค่าที่ศรีราชาเคยกรอกผูกกับ id เดิม
+    // สร้างแถวใหม่เมื่อไหร่ ใบงานเก่าจะกลายเป็นค่ากำพร้าที่ไม่มีใครแสดง
+    await c.query(`ALTER TABLE inspection_template_items
+      ADD COLUMN IF NOT EXISTS only_branches TEXT[]`);
+    await c.query(`CREATE TABLE IF NOT EXISTS inspection_template_branch_overrides (
+      item_id     INT NOT NULL REFERENCES inspection_template_items(id) ON DELETE CASCADE,
+      branch_slug VARCHAR(63) NOT NULL,
+      item_label  VARCHAR(200),
+      value_type  VARCHAR(20),
+      unit_label  VARCHAR(30),
+      PRIMARY KEY (item_id, branch_slug)
+    )`);
+
+    // ── ลูกค้า 08-11-2569 — แบบฟอร์มล้างใหญ่ (เฉพาะศรีราชา) ───────────────────
     // value_type มี CHECK constraint อยู่ → ต้องขยายรายการก่อน ไม่งั้น INSERT/UPDATE
     // ข้างล่างล้มด้วย 23514 แล้ว migrate ที่เหลือถูกข้ามทั้งชุด (เจอจริงตอน deploy รอบแรก:
     // relabel แถวแรกผ่าน แต่ 3 แถวถัดไปเงียบหาย)
@@ -104,28 +128,56 @@ async function migratePublic(client) {
       ADD CONSTRAINT inspection_template_items_value_type_check CHECK (value_type IN (
         'check','number','before_after','text','rst_amp','ln_vi','pressure_pair',
         'single_number','temp_rh','temp_rh_after'))`);
-    // ค่าที่วัดจริงย้ายจุดวัดจาก "หน้า Filter" ไป "หน้าช่องจ่ายลม" และเพิ่มความชื้น
-    // + จุดวัดฝั่ง Return. relabel ทับแถวเดิม (Worawit 8 ส.ค. 2569) → ใบงานเก่า
-    // เก็บค่าไว้ครบเพราะ checklist_values ผูกกับ id ของแถว ไม่ใช่ชื่อ.
-    await c.query(`UPDATE inspection_template_items SET item_label = $1
-      WHERE equipment_type = 'ac'
-        AND item_label = 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)'`, [AIRFLOW_SUPPLY]);
-    // ขนาดช่องจ่ายลม — ค่าเดียว ไม่มีก่อน/หลัง (ขนาดช่องไม่เปลี่ยนตอนล้าง)
-    await c.query(`INSERT INTO inspection_template_items
-        (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
-      SELECT 'ac', 'all3', $1::varchar, 'single_number', 'ตร.นิ้ว', true, true, 19
-      WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
-                        WHERE equipment_type = 'ac' AND item_label = $1::varchar)`, [SUPPLY_SIZE]);
-    // อุณหภูมิเดิม → อุณหภูมิ ก่อน/หลัง + ความชื้น (หลังอย่างเดียว) ที่ช่องจ่ายลม
+    // 1) คืนสองแถวกลางให้เป็นของเดิม — deploy รอบก่อน relabel ทับไปทุกสาขา
     await c.query(`UPDATE inspection_template_items
-        SET item_label = $1, value_type = 'temp_rh', unit_label = '°C / %RH'
-      WHERE equipment_type = 'ac' AND item_label = 'ตรวจวัดอุณหภูมิ (°C)'`, [TEMP_RH_SUPPLY]);
-    // ฝั่ง Return — วัดหลังล้างอย่างเดียวทั้งอุณหภูมิและความชื้น
-    await c.query(`INSERT INTO inspection_template_items
-        (equipment_type, category, item_label, value_type, unit_label, applies_major, applies_minor, sort_order)
-      SELECT 'ac', 'all3', $1::varchar, 'temp_rh_after', '°C / %RH', true, true, 25
-      WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
-                        WHERE equipment_type = 'ac' AND item_label = $1::varchar)`, [TEMP_RH_RETURN]);
+        SET item_label = 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)'
+      WHERE equipment_type = 'ac' AND item_label = $1::varchar`, [AIRFLOW_SUPPLY]);
+    await c.query(`UPDATE inspection_template_items
+        SET item_label = 'ตรวจวัดอุณหภูมิ (°C)', value_type = 'number', unit_label = '°C'
+      WHERE equipment_type = 'ac' AND item_label = $1::varchar`, [TEMP_RH_SUPPLY]);
+
+    // 2) แถวที่มีเฉพาะศรีราชา — ขนาดช่องจ่ายลม (ค่าเดียว ขนาดไม่เปลี่ยนตอนล้าง)
+    //    และจุดวัดฝั่ง Return (วัดหลังล้างอย่างเดียวทั้งอุณหภูมิและความชื้น)
+    for (const [label, vtype, unit, sort] of [
+      [SUPPLY_SIZE, 'single_number', 'ตร.นิ้ว', 19],
+      [TEMP_RH_RETURN, 'temp_rh_after', '°C / %RH', 25],
+    ]) {
+      await c.query(`INSERT INTO inspection_template_items
+          (equipment_type, category, item_label, value_type, unit_label,
+           applies_major, applies_minor, sort_order, only_branches)
+        SELECT 'ac', 'all3', $1::varchar, $2::varchar, $3::varchar, true, true, $4::int, $5::text[]
+        WHERE NOT EXISTS (SELECT 1 FROM inspection_template_items
+                          WHERE equipment_type = 'ac' AND item_label = $1::varchar)`,
+      [label, vtype, unit, sort, MAJOR_V3_BRANCHES]);
+      // แถวที่สร้างไว้ตอนยังเข้าใจว่าใช้ทุกสาขา → จำกัดให้เหลือศรีราชา
+      await c.query(`UPDATE inspection_template_items SET only_branches = $2::text[]
+        WHERE equipment_type = 'ac' AND item_label = $1::varchar
+          AND only_branches IS DISTINCT FROM $2::text[]`, [label, MAJOR_V3_BRANCHES]);
+    }
+
+    // 3) ศรีราชาเห็นสองแถวกลางเป็นเวอร์ชันของตัวเอง (id เดิม → ค่าเก่าไม่หาย)
+    for (const slug of MAJOR_V3_BRANCHES) {
+      await c.query(`INSERT INTO inspection_template_branch_overrides
+          (item_id, branch_slug, item_label, value_type, unit_label)
+        SELECT id, $1::varchar, $3::varchar, $4::varchar, $5::varchar
+          FROM inspection_template_items
+         WHERE equipment_type = 'ac' AND item_label = $2::varchar
+        ON CONFLICT (item_id, branch_slug) DO UPDATE
+          SET item_label = EXCLUDED.item_label,
+              value_type = EXCLUDED.value_type,
+              unit_label = EXCLUDED.unit_label`,
+      [slug, 'ตรวจสอบความเร็วลมด้านหน้า Filter = (Ft/m)', AIRFLOW_SUPPLY, 'number', 'Ft/m']);
+      await c.query(`INSERT INTO inspection_template_branch_overrides
+          (item_id, branch_slug, item_label, value_type, unit_label)
+        SELECT id, $1::varchar, $3::varchar, $4::varchar, $5::varchar
+          FROM inspection_template_items
+         WHERE equipment_type = 'ac' AND item_label = $2::varchar
+        ON CONFLICT (item_id, branch_slug) DO UPDATE
+          SET item_label = EXCLUDED.item_label,
+              value_type = EXCLUDED.value_type,
+              unit_label = EXCLUDED.unit_label`,
+      [slug, 'ตรวจวัดอุณหภูมิ (°C)', TEMP_RH_SUPPLY, 'temp_rh', '°C / %RH']);
+    }
   } finally {
     if (!client) c.release();
   }
