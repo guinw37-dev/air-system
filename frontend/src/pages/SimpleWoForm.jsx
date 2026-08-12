@@ -53,6 +53,10 @@ const PHOTO_POINTS_LEGACY = [
   { no: 7, label: 'รูปเพิ่มเติม 2', require: 'none', slots: BEFORE_AFTER },
   { no: 8, label: 'รูปเพิ่มเติม 3', require: 'none', slots: BEFORE_AFTER },
 ]
+// ปิดการบังคับรูปของชุด V3 ไว้ก่อน (Worawit 11 ส.ค. 2569) — ช่างเพิ่งเปลี่ยนชุดจุดถ่าย
+// ยังถ่ายไม่ครบตามชุดใหม่ ยังกดส่งใบงานไม่ได้. เปลี่ยนเป็น true เมื่อพร้อมบังคับ —
+// กติกา require ของแต่ละจุดยังอยู่ครบข้างล่าง ไม่ต้องมาไล่ใส่ใหม่
+const V3_PHOTOS_REQUIRED = false
 const PHOTO_POINTS_V3 = [
   { no: 11, label: 'Location', require: 'all', slots: BEFORE_AFTER },
   // แอร์น้ำเย็นไม่มีคอยล์ร้อน → ลงรูปเดียวก็ผ่าน
@@ -185,7 +189,9 @@ export default function SimpleWoForm() {
   const requireDeptSign = useTenantStore((s) => s.requireDeptSign)
   // จุดถ่ายรูปล้างใหญ่: ศรีราชาใช้ชุด 9 จุด (08-11-2569) สาขาอื่นคงชุดเดิม 8 จุด
   const hasMajorV3 = useHasMajorV3()
-  const PHOTO_POINTS = hasMajorV3 ? PHOTO_POINTS_V3 : PHOTO_POINTS_LEGACY
+  const PHOTO_POINTS = hasMajorV3
+    ? (V3_PHOTOS_REQUIRED ? PHOTO_POINTS_V3 : PHOTO_POINTS_V3.map((p) => ({ ...p, require: 'none' })))
+    : PHOTO_POINTS_LEGACY
   // ล้างย่อย: ช่องวัดลม/อุณหภูมิ + รูปที่ 4 — เฉพาะสาขาใน MINOR_MEASURE_SLUGS
   const hasMinorMeasure = useHasMinorMeasure()
 
