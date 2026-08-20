@@ -104,7 +104,7 @@ router.get('/progress', authMiddleware, async (req, res) => {
                        THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
                        ELSE 1 END)::int AS done
        FROM simple_work_orders
-       WHERE deleted_at IS NULL
+       WHERE deleted_at IS NULL AND status <> 'rejected'
          AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1
        GROUP BY 1, 2, 3, 4`, [month]);
     // ปรับยอดเอง (wash_count_adjust) เดือนนี้ — เพิ่มเข้า done ระดับ zone×work_type
