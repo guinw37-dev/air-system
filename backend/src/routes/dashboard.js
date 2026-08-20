@@ -232,7 +232,7 @@ async function buildWashReport(req) {
     const dailyRows = await safeRows(db,
       `SELECT work_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND COALESCE(work_date, created_at::date) = $1::date${swoZ}
         GROUP BY work_type`, [date]) || [];
     const dailyBy = Object.fromEntries(dailyRows.map((r) => [r.work_type, r.done || 0]));
@@ -275,7 +275,7 @@ async function buildWashReport(req) {
     const monRows = await safeRows(db,
       `SELECT work_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1${swoZ}
         GROUP BY work_type`, [month]) || [];
     const monDoneByRaw = Object.fromEntries(monRows.map((r) => [r.work_type, r.done || 0]));
@@ -330,7 +330,7 @@ async function buildWashReport(req) {
     const yrRows = await safeRows(db,
       `SELECT work_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY work_type`, [year]) || [];
     const yrDoneRaw = Object.fromEntries(yrRows.map((r) => [r.work_type, r.done || 0]));
@@ -358,7 +358,7 @@ async function buildWashReport(req) {
       `SELECT EXTRACT(MONTH FROM COALESCE(work_date, created_at::date))::int AS m,
               work_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY m, work_type`, [year]) || [];
     const yrGrandTarget = WASH_TYPES.reduce((s, wt) => s + (yrTargetByType[wt] || 0), 0);
@@ -380,13 +380,13 @@ async function buildWashReport(req) {
     const acDoneMon = await safeRows(db,
       `SELECT work_type, COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1${swoZ}
         GROUP BY 1, 2`, [month]) || [];
     const acDoneYr = await safeRows(db,
       `SELECT work_type, COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type, ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND EXTRACT(YEAR FROM COALESCE(work_date, created_at::date)) = $1${swoZ}
         GROUP BY 1, 2`, [year]) || [];
     // index helpers
@@ -440,7 +440,7 @@ async function buildWashReport(req) {
       `SELECT EXTRACT(DAY FROM COALESCE(work_date, created_at::date))::int AS d,
               ${DONE_EXPR} AS done
          FROM simple_work_orders
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND status <> 'rejected'
           AND to_char(COALESCE(work_date, created_at::date),'YYYY-MM') = $1${swoZ}
         GROUP BY d`, [month]) || [];
     const doneByDay = Object.fromEntries(dayRows.map((r) => [r.d, r.done || 0]));
@@ -529,7 +529,7 @@ async function buildWashRangeReport(req, from, to) {
   const db = req.db;
   const zone = ['PTS1', 'PTS2'].includes(req.query.zone) ? req.query.zone : null;
   const swoZ = zone ? ` AND pts_zone = '${zone}'` : '';
-  const RANGE = `deleted_at IS NULL AND COALESCE(work_date, created_at::date) BETWEEN $1::date AND $2::date${swoZ}`;
+  const RANGE = `deleted_at IS NULL AND status <> 'rejected' AND COALESCE(work_date, created_at::date) BETWEEN $1::date AND $2::date${swoZ}`;
 
   // ยอดรวมต่อประเภท (นับเครื่องแบบเดียวกับหน้า wash-report)
   const totRows = await safeRows(db,
@@ -586,6 +586,13 @@ async function buildWashRangeReport(req, from, to) {
        FROM simple_work_orders WHERE ${RANGE} GROUP BY 1`, [from, to]) || [];
   const resultBy = Object.fromEntries(resRows.map((r) => [r.result, r.n || 0]));
 
+  // แยกยอดตามขั้นอนุมัติ — ให้ deck โชว์ที่มาของยอดรวม (เซ็นครบ vs ยังรอเซ็น)
+  const apRows = await safeRows(db,
+    `SELECT (status = 'approved') AS ap, ${DONE_EXPR} AS done, COUNT(*)::int AS orders
+       FROM simple_work_orders WHERE ${RANGE} GROUP BY 1`, [from, to]) || [];
+  const apBy = { approved: { done: 0, orders: 0 }, pending: { done: 0, orders: 0 } };
+  for (const r of apRows) apBy[r.ap ? 'approved' : 'pending'] = { done: r.done || 0, orders: r.orders || 0 };
+
   // รายละเอียดใบงาน (ส่งงาน) — cap กันช่วงยาวเกิน
   const orderRows = await safeRows(db,
     `SELECT wo_number, COALESCE(work_date, created_at::date)::text AS work_date,
@@ -612,6 +619,7 @@ async function buildWashRangeReport(req, from, to) {
     branch: { name: req.branch?.name || '', slug: req.branch?.slug || '' },
     totals, grand, daily, byAcType, byLocation, conditionIssues,
     result: { ok: resultBy.ok || 0, not_ok: resultBy.not_ok || 0 },
+    approval: apBy,
     orders, orders_truncated: truncated, order_cap: ORDER_CAP,
   };
 }

@@ -138,8 +138,12 @@ function buildWashRangeDeck(model) {
 
     const avgPerDay = model.days > 0 ? Math.round(model.grand.done / model.days) : 0;
     const topLoc = model.byLocation[0];
+    const ap = model.approval || { approved: { done: 0 }, pending: { done: 0 } };
     const bullets = [
       `ช่วง ${rangeTxt} ล้างรวม ${nf(model.grand.done)} เครื่อง จาก ${nf(model.grand.orders)} ใบงาน (เฉลี่ย ${nf(avgPerDay)} เครื่อง/วัน)`,
+      ap.pending.done > 0
+        ? `ใบงานอนุมัติแล้ว ${nf(ap.approved.done)} เครื่อง · อยู่ระหว่างรอเซ็น/ตรวจ ${nf(ap.pending.done)} เครื่อง`
+        : `ใบงานทั้งหมดอนุมัติครบแล้ว (${nf(ap.approved.done)} เครื่อง)`,
       `ผลการล้างผ่าน ${nf(model.result.ok)} ใบงาน (${okPct}%)` + (model.result.not_ok ? ` · ไม่ผ่าน ${nf(model.result.not_ok)} ใบงาน` : ''),
       topLoc ? `พื้นที่ที่ล้างมากที่สุด: ${topLoc.location} (${nf(topLoc.done)} เครื่อง)` : null,
       condTotal ? `ตรวจพบอาการเสื่อมสภาพ ${nf(condTotal)} รายการ — ดูรายละเอียดหน้าสภาพเครื่อง` : 'ไม่พบรายการแจ้งสภาพเสื่อมในช่วงนี้',
