@@ -326,6 +326,85 @@ function ConditionSection({ navigate }) {
   );
 }
 
+// ── งานล้างทั้งสัญญา (ปีนี้) — donut ต่อชนิดแอร์ ยอดล้าง/เป้าปี % ตรงกลาง ──────
+const AC_TYPE_COLORS = ['#0284c7', '#0f6e56', '#f59e0b', '#6366f1', '#dc2626', '#0d9488', '#a855f7', '#64748b'];
+function PctDonut({ label, done, target, color }) {
+  const pct = target > 0 ? Math.round((done / target) * 100) : 0;
+  const filled = Math.min(done, target || done);
+  const rest = Math.max(0, (target || done) - filled);
+  const data = [
+    { name: 'ล้างแล้ว', value: filled || 0.0001, color },
+    { name: 'คงเหลือ', value: rest, color: '#e2e8f0' },
+  ];
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: 110, height: 110 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" innerRadius={38} outerRadius={52}
+              startAngle={90} endAngle={-270} paddingAngle={1} stroke="none">
+              {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-lg font-bold" style={{ color }}>{pct}%</span>
+        </div>
+      </div>
+      <div className="text-sm font-semibold text-slate-700 -mt-1">{label}</div>
+      <div className="text-xs text-slate-500 tabular-nums">{done.toLocaleString()} / {target.toLocaleString()} เครื่อง/ปี</div>
+    </div>
+  );
+}
+
+function ContractWashSection() {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get('/dashboard/wash-report').then((r) => setData(r.data)).catch(() => {});
+  }, []);
+  if (!data) return null;
+  // รวมข้าม work_type → ต่อชนิดแอร์ (ac_type): ยอดล้างปี / เป้าปี
+  const byAc = {};
+  for (const g of (data.byType || [])) {
+    for (const r of (g.rows || [])) {
+      const k = r.ac_type || 'ไม่ระบุ';
+      byAc[k] = byAc[k] || { done: 0, target: 0 };
+      byAc[k].done += r.done_year || 0;
+      byAc[k].target += r.target_year || 0;
+    }
+  }
+  const rows = Object.entries(byAc)
+    .filter(([, v]) => v.done > 0 || v.target > 0)
+    .sort((a, b) => b[1].target - a[1].target);
+  const grandDone = (data.yearly?.types || []).reduce((s, t) => s + (t.done || 0), 0);
+  const grandTarget = (data.yearly?.types || []).reduce((s, t) => s + (t.target || 0), 0);
+  const grandPct = grandTarget > 0 ? Math.round((grandDone / grandTarget) * 100) : 0;
+  if (!rows.length && !grandTarget) return null;
+  return (
+    <Card>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-sky-600" />
+          <span className="font-bold text-slate-800">งานล้างทั้งสัญญา — ปี {(data.yearly?.year || 0) + 543}</span>
+        </div>
+        <div className="text-sm text-slate-500">
+          ล้างแล้ว <b className="text-sky-700 tabular-nums">{grandDone.toLocaleString()}</b>
+          {' / '}เป้าปี <b className="tabular-nums">{grandTarget.toLocaleString()}</b> เครื่อง
+          <b className="ml-2" style={{ color: grandPct >= 100 ? '#059669' : '#0284c7' }}>{grandPct}%</b>
+        </div>
+      </div>
+      {rows.length ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {rows.map(([ac, v], i) => (
+            <PctDonut key={ac} label={ac} done={v.done} target={v.target}
+              color={AC_TYPE_COLORS[i % AC_TYPE_COLORS.length]} />
+          ))}
+        </div>
+      ) : <p className="text-sm text-slate-400">ยังไม่ตั้งเป้าแยกชนิดแอร์</p>}
+    </Card>
+  );
+}
+
 // ── branch-mode landing — "รายการดำเนินงาน : นับใบงาน" ────────────────────────
 // เน้นให้วิศวกรรม/ช่างอาคาร เข้ามาเห็นว่ามีใบงานรอเซ็นกี่ใบ แล้วกดเข้าไปเซ็นได้เลย.
 // ล้างได้/เหลือ · แอร์เสื่อมสภาพ · เป้าหมาย · กราฟ → ย้ายไปหน้า Dashboard (WashReport).
@@ -337,6 +416,9 @@ function BranchDashboard({ b = {}, navigate }) {
 
   return (
     <div className="space-y-5">
+
+      {/* งานล้างทั้งสัญญา (ปีนี้) — donut % ต่อชนิดแอร์ */}
+      <ContractWashSection />
 
       {/* ภาพรวมงานล้างแอร์ — แยกตาม stage การเซ็น (กดเข้าดูเฉพาะใบที่ต้องเซ็น) */}
       <div>

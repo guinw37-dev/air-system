@@ -25,7 +25,11 @@ const NAV = [
       { to: '/simple-wo?view=done',                    label: 'ดำเนินการเสร็จสิ้น', roles: ['admin', 'super_admin'] },
       { to: '/simple-wo?view=all',                     label: 'ทั้งหมด' },
     ] },
-  { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null },
+  { path: '/ac-repair',    icon: Wrench,           label: 'งานซ่อมแอร์',     roles: null,
+    children: [
+      { to: '/ac-repair',   label: 'งานซ่อม' },
+      { to: '/ac-approval', label: 'ซ่อมรออนุมัติ (Memo)' },
+    ] },
   { path: '/attendance',         icon: Clock,       label: 'ลงเวลา',               roles: null },
   { path: '/attendance-summary', icon: BarChart3,  label: 'สรุปการลงเวลาช่าง',   roles: ['admin', 'super_admin'] },
   { path: '/unit-history', icon: Activity,         label: 'ประวัติแอร์',     roles: null },

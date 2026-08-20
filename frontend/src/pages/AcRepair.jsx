@@ -125,127 +125,6 @@ function PartsEditor({ parts, onChange }) {
   );
 }
 
-// ── Parts summary modal (รวมอะไหล่ที่ต้องสั่ง ทุกงานที่ยังไม่ปิด) ──────────────
-function PartsSummaryModal({ onClose }) {
-  const [rows, setRows] = useState([]);
-  const [totalCost, setTotalCost] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get('/ac-repair-jobs/parts-summary')
-      .then((r) => {
-        // Defensive: handle { items, total_cost } OR plain array
-        const data = r.data;
-        if (data && Array.isArray(data.items)) {
-          setRows(data.items);
-          setTotalCost(data.total_cost || 0);
-        } else {
-          const arr = Array.isArray(data) ? data : [];
-          setRows(arr);
-          const computed = arr.reduce((s, row) => s + (parseFloat(row.cost_total) || 0), 0);
-          setTotalCost(computed);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  function downloadCsv() {
-    const BOM = '﻿';
-    const header = ['ชื่ออะไหล่', 'จำนวนรวม', 'ราคา/หน่วย (บาท)', 'รวม (บาท)'];
-    const dataRows = rows.map((r) => [
-      r.name || '',
-      r.qty_total ?? r.qty_list ?? '',
-      r.unit_price != null ? r.unit_price : '',
-      r.cost_total != null ? r.cost_total : '',
-    ]);
-    const csvContent = [header, ...dataRows]
-      .map((cols) => cols.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
-      .join('\r\n');
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `parts-order-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">สรุปอะไหล่ที่ต้องสั่ง</h2>
-            <p className="text-xs text-gray-500 mt-0.5">รวมจากงานซ่อมที่ยังไม่ปิด</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
-        </div>
-        <div className="overflow-y-auto flex-1 p-4">
-          {loading ? <p className="text-center text-gray-400 py-8">กำลังโหลด…</p>
-            : rows.length === 0 ? <p className="text-center text-gray-400 py-8">ยังไม่มีรายการอะไหล่</p>
-            : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b text-xs">
-                    <th className="py-2 pr-2">รายการ</th>
-                    <th className="py-2 w-20 text-center">จำนวนรวม</th>
-                    <th className="py-2 w-10 text-center">งาน</th>
-                    <th className="py-2 w-28 text-right">ราคา/หน่วย</th>
-                    <th className="py-2 w-28 text-right">รวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, idx) => {
-                    const unitPrice = parseFloat(r.unit_price) || 0;
-                    const costTotal = parseFloat(r.cost_total) || 0;
-                    return (
-                      <tr key={r.key || idx} className="border-b last:border-0">
-                        <td className="py-2 pr-2">{r.name}</td>
-                        <td className="py-2 text-center text-gray-600">{r.qty_total ?? r.qty_list ?? '—'}</td>
-                        <td className="py-2 text-center text-gray-400">{r.jobs ?? '—'}</td>
-                        <td className="py-2 text-right text-gray-600 tabular-nums">
-                          {unitPrice > 0 ? `฿${unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
-                        </td>
-                        <td className="py-2 text-right font-medium tabular-nums">
-                          {costTotal > 0 ? `฿${costTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-        </div>
-        {!loading && rows.length > 0 && (
-          <div className="px-6 py-3 border-t flex items-center justify-between">
-            <span className="text-sm font-bold text-gray-800">
-              รวมงบประมาณ{' '}
-              <span className="text-blue-700">
-                ฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-              </span>
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={downloadCsv}
-                className="px-3 py-1.5 rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 text-sm"
-              >
-                ดาวน์โหลด CSV (สั่งซื้อ)
-              </button>
-              <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
-            </div>
-          </div>
-        )}
-        {(loading || rows.length === 0) && (
-          <div className="px-6 py-3 border-t flex justify-end">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Create / Edit modal ──────────────────────────────────────────────────────
 function JobFormModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -752,19 +631,17 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="px-6 py-4 border-b flex items-start justify-between">
+        <div className="px-6 py-4 flex items-start justify-between bg-gradient-to-r from-sky-600 to-blue-700 rounded-t-2xl">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-mono font-bold text-gray-800">{job.job_number}</h2>
+              <h2 className="font-mono font-bold text-white text-lg">{job.job_number}</h2>
               <StatusBadge status={job.status} />
             </div>
-            {job.repair_job_number && (
-              <p className="text-xs text-gray-400 mt-0.5">อ้างอิง repair: {job.repair_job_number}</p>
-            )}
+            <p className="text-xs text-sky-100 mt-0.5">ใบแจ้งซ่อมแอร์ · ทีมช่างแอร์ TW</p>
           </div>
-          <div className="flex items-center gap-1 ml-4">
-            <button onClick={printPdf} title="ปริ้นใบงาน" className="text-gray-500 hover:text-blue-600 border rounded-lg px-2.5 py-1 text-sm">🖨️ ปริ้น</button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-1">&times;</button>
+          <div className="flex items-center gap-1.5 ml-4">
+            <button onClick={printPdf} title="ปริ้นใบงาน" className="text-white bg-white/15 border border-white/30 hover:bg-white/25 rounded-lg px-2.5 py-1 text-sm">🖨️ ปริ้น</button>
+            <button onClick={onClose} className="text-sky-100 hover:text-white text-2xl leading-none px-1">&times;</button>
           </div>
         </div>
 
@@ -969,7 +846,6 @@ export default function AcRepair() {
   const [err, setErr] = useState('');
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showParts, setShowParts] = useState(false);
   const [showMemoList, setShowMemoList] = useState(false);
   const [memoJob, setMemoJob] = useState(null);   // job stub จากรายการ memo → เปิด MemoModal
 
@@ -1002,37 +878,45 @@ export default function AcRepair() {
   return (
     <Layout>
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header — แถบฟ้าเข้าธีมระบบ Air */}
+      <div className="bg-gradient-to-r from-sky-600 to-blue-700 rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">งานซ่อมแอร์</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalActive} งานค้าง</p>
+          <h1 className="text-xl font-bold text-white">❄ งานซ่อมแอร์</h1>
+          <p className="text-sm text-sky-100 mt-0.5">ทีมช่างแอร์ TW · {totalActive} งานค้าง</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowParts(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
-            🧰 สรุปอะไหล่
-          </button>
-          <button onClick={() => setShowMemoList(true)} className="px-3 py-2 border border-sky-200 text-sky-700 rounded-xl text-sm hover:bg-sky-50 flex items-center gap-1.5">
+          <button onClick={() => setShowMemoList(true)} className="px-3 py-2 bg-white/15 border border-white/30 text-white rounded-xl text-sm hover:bg-white/25 flex items-center gap-1.5">
             📄 Memo
           </button>
-          <button onClick={() => setShowCreate(true)} className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 flex items-center gap-1.5">
+          <button onClick={() => setShowCreate(true)} className="px-3 py-2 bg-white text-blue-700 font-semibold rounded-xl text-sm hover:bg-sky-50 flex items-center gap-1.5">
             + แจ้งซ่อม
           </button>
         </div>
       </div>
 
-      {/* Stats bar */}
+      {/* Stats bar — การ์ดสีตามสถานะ */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-        {ALL_STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`rounded-xl border p-2.5 text-center transition-all ${filter === s ? 'ring-2 ring-offset-1 ring-blue-500 bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
-          >
-            <div className="text-lg font-bold text-gray-800">{stats[s] || 0}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{STATUS_LABEL[s]}</div>
-          </button>
-        ))}
+        {ALL_STATUSES.map((s) => {
+          const tone = {
+            Register:     { num: 'text-slate-700', dot: 'bg-slate-400', bg: 'bg-white' },
+            'Work On':    { num: 'text-yellow-600', dot: 'bg-yellow-500', bg: 'bg-white' },
+            'Wait Parts': { num: 'text-orange-600', dot: 'bg-orange-500', bg: 'bg-white' },
+            Clear:        { num: 'text-green-600', dot: 'bg-green-500', bg: 'bg-white' },
+            Cancel:       { num: 'text-red-500', dot: 'bg-red-400', bg: 'bg-white' },
+          }[s] || { num: 'text-gray-800', dot: 'bg-gray-300', bg: 'bg-white' };
+          return (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={`rounded-2xl border p-3 text-center transition-all shadow-sm ${filter === s ? 'ring-2 ring-offset-1 ring-sky-500 bg-sky-50 border-sky-200' : `${tone.bg} hover:shadow border-slate-100`}`}
+            >
+              <div className={`text-2xl font-bold tabular-nums ${tone.num}`}>{stats[s] || 0}</div>
+              <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500 mt-1">
+                <span className={`w-2 h-2 rounded-full ${tone.dot}`} />{STATUS_LABEL[s]}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filter tabs */}
@@ -1111,7 +995,6 @@ export default function AcRepair() {
 
       {/* Modals */}
       {showCreate && <JobFormModal onSave={createJob} onClose={() => setShowCreate(false)} />}
-      {showParts && <PartsSummaryModal onClose={() => setShowParts(false)} />}
       {showMemoList && !memoJob && (
         <MemoListModal
           onOpenMemo={(m) => setMemoJob({ id: m.job_id, job_number: m.job_number, parts: [] })}
