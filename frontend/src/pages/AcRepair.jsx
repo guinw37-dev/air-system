@@ -257,11 +257,11 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
-  // รูปแจ้งซ่อม (สร้างใบงานเท่านั้น) — สูงสุด 3 รูป, ย่อ + ประทับเวลาเหมือนรูปหลังซ่อม
+  // รูปแจ้งซ่อม (สร้างใบงานเท่านั้น) — สูงสุด 6 รูป, ย่อ + ประทับเวลาเหมือนรูปหลังซ่อม
   const [photos, setPhotos] = useState([]);   // [{base64, name}]
   const photoRef = useRef();
   async function pickPhotos(e) {
-    const files = Array.from(e.target.files || []).slice(0, 3 - photos.length);
+    const files = Array.from(e.target.files || []).slice(0, 6 - photos.length);
     e.target.value = '';
     const added = [];
     for (const file of files) {
@@ -273,7 +273,7 @@ function JobFormModal({ initial, onSave, onClose }) {
       });
       added.push({ base64, name: stamped.name || file.name });
     }
-    setPhotos((p) => [...p, ...added].slice(0, 3));
+    setPhotos((p) => [...p, ...added].slice(0, 6));
   }
 
   // Master-data cascade for the อาคาร/ชั้น/แผนก comboboxes (same source as the
@@ -382,7 +382,7 @@ function JobFormModal({ initial, onSave, onClose }) {
           </div>
           {!isEdit && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">รูปแจ้งซ่อม <span className="text-gray-400 font-normal">(ไม่บังคับ สูงสุด 3 รูป)</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">รูปแจ้งซ่อม (ก่อน) <span className="text-gray-400 font-normal">(ไม่บังคับ สูงสุด 6 รูป)</span></label>
               <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={pickPhotos} />
               <div className="flex flex-wrap gap-2">
                 {photos.map((p, i) => (
@@ -392,7 +392,7 @@ function JobFormModal({ initial, onSave, onClose }) {
                       className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none">&times;</button>
                   </div>
                 ))}
-                {photos.length < 3 && (
+                {photos.length < 6 && (
                   <button type="button" onClick={() => photoRef.current?.click()}
                     className="h-20 w-20 border-2 border-dashed rounded-lg text-gray-400 hover:text-gray-600 hover:border-gray-400 text-2xl">+</button>
                 )}
@@ -568,18 +568,25 @@ function MemoModal({ job, onClose }) {
 // ── Clear modal ───────────────────────────────────────────────────────────────
 function ClearModal({ job, onSave, onClose }) {
   const [workDesc, setWorkDesc] = useState('');
-  const [photo, setPhoto] = useState(null);
+  const [photos, setPhotos] = useState([]);   // รูปหลังซ่อม สูงสุด 6 [{base64, name}]
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const fileRef = useRef();
 
-  async function pickPhoto(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const stamped = await compressImage(file, { stamp: true });   // downscale + วัน/เวลา
-    const reader = new FileReader();
-    reader.onload = () => setPhoto({ base64: reader.result, name: stamped.name || file.name });
-    reader.readAsDataURL(stamped);
+  async function pickPhotos(e) {
+    const files = Array.from(e.target.files || []).slice(0, 6 - photos.length);
+    e.target.value = '';
+    const added = [];
+    for (const file of files) {
+      const stamped = await compressImage(file, { stamp: true });   // downscale + วัน/เวลา
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(stamped);
+      });
+      added.push({ base64, name: stamped.name || file.name });
+    }
+    setPhotos((p) => [...p, ...added].slice(0, 6));
   }
 
   async function submit(e) {
@@ -589,8 +596,7 @@ function ClearModal({ job, onSave, onClose }) {
     try {
       await onSave({
         work_desc: workDesc,
-        afterImageBase64: photo?.base64 || undefined,
-        afterImageName:   photo?.name   || undefined,
+        afterPhotosBase64: photos.length ? photos : undefined,
       });
     } catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
   }
@@ -608,14 +614,21 @@ function ClearModal({ job, onSave, onClose }) {
             <textarea autoFocus className="w-full border rounded-lg px-3 py-2 text-sm" rows={4} value={workDesc} onChange={(e) => setWorkDesc(e.target.value)} placeholder="อธิบายการซ่อมที่ทำ…" required />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">รูปหลังซ่อม (ไม่บังคับ)</label>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pickPhoto} />
-            <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-              {photo ? `✓ ${photo.name}` : 'เลือกรูป'}
-            </button>
-            {photo && (
-              <img src={photo.base64} alt="preview" className="mt-2 rounded-lg h-28 object-cover border" />
-            )}
+            <label className="block text-sm font-medium text-gray-700 mb-1">รูปหลังซ่อม <span className="text-gray-400 font-normal">(ไม่บังคับ สูงสุด 6 รูป)</span></label>
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={pickPhotos} />
+            <div className="flex flex-wrap gap-2">
+              {photos.map((p, i) => (
+                <div key={i} className="relative">
+                  <img src={p.base64} alt={`หลังซ่อม ${i + 1}`} className="h-20 w-20 rounded-lg object-cover border" />
+                  <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, x) => x !== i))}
+                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none">&times;</button>
+                </div>
+              ))}
+              {photos.length < 6 && (
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className="h-20 w-20 border-2 border-dashed rounded-lg text-gray-400 hover:text-gray-600 hover:border-gray-400 text-2xl">+</button>
+              )}
+            </div>
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
           <div className="flex justify-end gap-3 pt-2">
@@ -850,12 +863,24 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
             </section>
           )}
 
-          {job.after_image_url && (
-            <section>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปหลังซ่อม</h3>
-              <img src={job.after_image_url} alt="after" className="rounded-xl border max-h-48 object-contain" />
-            </section>
-          )}
+          {(() => {
+            const afters = [
+              ...(Array.isArray(job.after_photo_urls) ? job.after_photo_urls : []),
+              ...(job.after_image_url ? [job.after_image_url] : []),
+            ].filter(Boolean).slice(0, 6);
+            return afters.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปหลังซ่อม</h3>
+                <div className="flex flex-wrap gap-2">
+                  {afters.map((u, i) => (
+                    <a key={i} href={u} target="_blank" rel="noreferrer">
+                      <img src={u} alt={`หลังซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
+                    </a>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
 
           <section>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Timeline</h3>

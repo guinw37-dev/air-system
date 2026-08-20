@@ -6,8 +6,9 @@ const express = require('express');
 const router = express.Router();
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
-const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
+const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 const { buildAcMemoHtml } = require('../services/acMemoPdf');
+const { buildAcRepairReportHtml } = require('../services/reportTemplates');
 
 const canUse = requireRole(
   'technician', 'checker', 'approve_building', 'approve_engineer', 'admin', 'super_admin'
@@ -142,16 +143,21 @@ router.delete('/:id', requireRole('admin', 'super_admin'), async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
-// ── GET /:id/pdf — MEMO PDF (หัวส้ม ระบบ Air) ────────────────────────────────
+// ── GET /:id/pdf — MEMO PDF (ฟ้า-ขาว ระบบ Air) + แนบใบงานเป็นหน้าถัดไป ────────
 router.get('/:id/pdf', async (req, res) => {
   try {
     const { rows } = await req.db('SELECT * FROM ac_memos WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบ Memo' });
     const memo = rows[0];
     const { rows: jr } = await req.db('SELECT * FROM ac_repair_jobs WHERE id = $1', [memo.job_id]);
-    const html = buildAcMemoHtml(memo, jr[0], req.branch);
+    const job = jr[0];
+    const memoHtml = buildAcMemoHtml(memo, job, req.branch);
+    // ปริ้น memo = ได้ใบงานแนบด้วย (หน้า 2) ตามที่ Worawit สั่ง 20 Aug 2026
+    const baseUrl = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const htmls = [memoHtml];
+    if (job) htmls.push(buildAcRepairReportHtml(job, req.branch, { memo, baseUrl }));
     try {
-      const pdf = await htmlToPdf(html);
+      const pdf = await renderAndMerge(htmls);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${memo.memo_number}.pdf"`);
       return res.end(pdf);
@@ -159,7 +165,7 @@ router.get('/:id/pdf', async (req, res) => {
       if (e instanceof PdfUnavailableError) {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('X-PDF-Fallback', 'html');
-        return res.send(html);
+        return res.send(memoHtml);
       }
       throw e;
     }
