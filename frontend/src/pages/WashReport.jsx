@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, AlertTriangle, ChevronRight, Wrench, Layers, GripVertical, ChevronDown, ChevronUp, Save, RotateCcw } from 'lucide-react'
+import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, FileDown, AlertTriangle, ChevronRight, Wrench, Layers, GripVertical, ChevronDown, ChevronUp, Save, RotateCcw } from 'lucide-react'
 import { WidthProvider, Responsive } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -42,6 +42,7 @@ const DEFAULT_LAYOUT = [
   { i: 'coverage', x: 0, y: 32, w: 6, h: 9, minW: 3, minH: 4 },
   { i: 'target', x: 6, y: 32, w: 6, h: 9, minW: 3, minH: 4 },
   { i: 'condition', x: 0, y: 41, w: 12, h: 9, minW: 4, minH: 4 },
+  { i: 'range', x: 0, y: 50, w: 12, h: 12, minW: 4, minH: 5 },
 ]
 const COLLAPSED_H = 1
 
@@ -100,6 +101,94 @@ function ByTypeCard({ title, byType, period, chrome }) {
             </div>
           ))}
         </div>
+      )}
+    </Card>
+  )
+}
+
+// สรุปตามช่วงวันที่ จาก–ถึง + ปุ่ม Export PPTX (deck Theme3 ส่งงาน)
+function RangeSection({ zone, chrome }) {
+  const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'))
+  const [to, setTo] = useState(dayjs().format('YYYY-MM-DD'))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!from || !to) return
+    setLoading(true); setErr('')
+    const params = { from, to }
+    if (zone) params.zone = zone
+    api.get('/dashboard/wash-report/range', { params })
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e.response?.data?.error || e.message))
+      .finally(() => setLoading(false))
+  }, [from, to, zone])
+
+  const exportPptx = async () => {
+    setExporting(true)
+    try {
+      const params = { from, to }
+      if (zone) params.zone = zone
+      const res = await api.get('/dashboard/wash-report/pptx', { params, responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `รายงานล้างแอร์_${from}_${to}_TW.pptx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch { setErr('ออก PPTX ไม่สำเร็จ') } finally { setExporting(false) }
+  }
+
+  const chart = (data?.daily || []).map((d) => ({
+    name: dayjs(d.date).format('D/M'), ล้างใหญ่: d.major, ล้างย่อย: d.minor, พัดลม: d.fan,
+  }))
+  return (
+    <Card title="สรุปตามช่วงวันที่ (จาก – ถึง) + ส่งงาน PPTX" icon={CalendarDays} chrome={chrome}>
+      <div className="flex items-end gap-2 flex-wrap mb-3">
+        <label className="text-xs text-slate-500">จาก
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
+            className="block border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 mt-0.5" />
+        </label>
+        <label className="text-xs text-slate-500">ถึง
+          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)}
+            className="block border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 mt-0.5" />
+        </label>
+        <button onClick={exportPptx} disabled={exporting || loading || !data}
+          className="flex items-center gap-1.5 px-3 py-2 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50">
+          <FileDown size={16} /> {exporting ? 'กำลังสร้าง…' : 'Export PPTX (ส่งงาน)'}
+        </button>
+        {data && <span className="text-xs text-slate-400 mb-1">{data.days} วัน · {data.grand.orders} ใบงาน</span>}
+      </div>
+      {err ? <p className="text-sm text-amber-600 py-2">{err}</p>
+        : loading ? <p className="text-sm text-slate-400 py-2">กำลังโหลด…</p>
+        : !data ? null : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center mb-3">
+            <div className="bg-sky-50 rounded-xl p-3"><div className="text-2xl font-bold text-blue-900">{data.grand.done}</div><div className="text-xs text-slate-500 mt-1">รวมทุกประเภท (เครื่อง)</div></div>
+            {data.totals.map((t) => (
+              <div key={t.work_type} className="bg-slate-50 rounded-xl p-3">
+                <div className="text-2xl font-bold text-blue-800">{t.done}</div>
+                <div className="text-xs text-slate-500 mt-1">{WT[t.work_type]} · {t.orders} ใบงาน</div>
+              </div>
+            ))}
+          </div>
+          {chart.length > 0 && (
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chart} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="ล้างใหญ่" stackId="r" fill="#1e3a8a" /><Bar dataKey="ล้างย่อย" stackId="r" fill="#2563eb" />
+                <Bar dataKey="พัดลม" stackId="r" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+            <span>ผลล้างผ่าน <b className="text-emerald-600">{data.result.ok}</b> ใบงาน</span>
+            {data.result.not_ok > 0 && <span>ไม่ผ่าน <b className="text-red-500">{data.result.not_ok}</b> ใบงาน</span>}
+            {data.orders_truncated && <span className="text-amber-600 text-xs">ใบงานเกิน {data.order_cap} — PPTX แสดง {data.order_cap} ใบแรก</span>}
+          </div>
+        </>
       )}
     </Card>
   )
@@ -229,7 +318,12 @@ export default function WashReport() {
     api.get('/simple-wo/condition-summary').then((r) => setCond(r.data)).catch(() => {})
     api.get(`/auth/prefs/${PREF_KEY}`).then((r) => {
       const v = r.data?.value
-      if (v?.layout?.length) setLayout(v.layout)
+      if (v?.layout?.length) {
+        // การ์ดที่เพิ่มใหม่ภายหลัง (เช่น 'range') ไม่อยู่ใน layout ที่ user เคย save →
+        // เติมจาก DEFAULT_LAYOUT ต่อท้าย ไม่งั้น react-grid-layout จะวางเป็นการ์ดจิ๋ว 1x1
+        const missing = DEFAULT_LAYOUT.filter((d) => !v.layout.some((l) => l.i === d.i))
+        setLayout([...v.layout, ...missing])
+      }
       if (v?.collapsed) setCollapsed(v.collapsed)
       if (v?.expandedH) expandedH.current = v.expandedH
     }).catch(() => {}).finally(() => { prefLoaded.current = true })
@@ -396,6 +490,7 @@ export default function WashReport() {
       )
       case 'bytype_month': return <ByTypeCard title={`แยกประเภทแอร์ — ประจำเดือน ${monthLabel(data.monthly?.month || selMonth)}`} byType={data.byType} period="month" chrome={c} />
       case 'bytype_year': return <ByTypeCard title={`แยกประเภทแอร์ — สะสมประจำปี ${(data.yearly.year || 0) + 543}`} byType={data.byType} period="year" chrome={c} />
+      case 'range': return <RangeSection zone={selZone} chrome={c} />
       case 'coverage': return <CoverageSection month={selMonth} zone={selZone} chrome={c} />
       case 'target': return <TargetSection month={selMonth} zone={selZone} navigate={navigate} chrome={c} />
       case 'condition': return (

@@ -517,4 +517,136 @@ router.get('/wash-report/excel', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── รายงานล้างแอร์ตามช่วงวันที่ (จาก–ถึง) — ดูบนจอ + ออก PPTX ─────────────────
+// สรุปช่วงวันที่กำหนดเอง: ยอดต่อประเภท, กราฟรายวัน, แยก ac_type, สถานที่,
+// สภาพแอร์เสื่อม และรายละเอียดใบงานทุกใบ (cap ORDER_CAP แถว กัน deck บวม)
+const ORDER_CAP = 400;
+const UNITS_EXPR = `CASE WHEN work_type IN ('minor','fan')
+                         THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
+                         ELSE 1 END`;
+
+async function buildWashRangeReport(req, from, to) {
+  const db = req.db;
+  const zone = ['PTS1', 'PTS2'].includes(req.query.zone) ? req.query.zone : null;
+  const swoZ = zone ? ` AND pts_zone = '${zone}'` : '';
+  const RANGE = `deleted_at IS NULL AND COALESCE(work_date, created_at::date) BETWEEN $1::date AND $2::date${swoZ}`;
+
+  // ยอดรวมต่อประเภท (นับเครื่องแบบเดียวกับหน้า wash-report)
+  const totRows = await safeRows(db,
+    `SELECT work_type, ${DONE_EXPR} AS done, COUNT(*)::int AS orders
+       FROM simple_work_orders WHERE ${RANGE} GROUP BY work_type`, [from, to]) || [];
+  const totBy = Object.fromEntries(totRows.map((r) => [r.work_type, r]));
+  const totals = WASH_TYPES.map((wt) => ({
+    work_type: wt, done: totBy[wt]?.done || 0, orders: totBy[wt]?.orders || 0,
+  }));
+  const grand = {
+    done: totals.reduce((s, t) => s + t.done, 0),
+    orders: totals.reduce((s, t) => s + t.orders, 0),
+  };
+
+  // กราฟรายวัน ต่อประเภท
+  const dayRows = await safeRows(db,
+    `SELECT COALESCE(work_date, created_at::date)::text AS d, work_type, ${DONE_EXPR} AS done
+       FROM simple_work_orders WHERE ${RANGE} GROUP BY d, work_type ORDER BY d`, [from, to]) || [];
+  const dayBy = {};
+  for (const r of dayRows) (dayBy[r.d] ||= {})[r.work_type] = r.done || 0;
+  const daily = Object.keys(dayBy).sort().map((d) => {
+    const v = dayBy[d];
+    const major = v.major || 0, minor = v.minor || 0, fan = v.fan || 0;
+    return { date: d, major, minor, fan, total: major + minor + fan };
+  });
+
+  // แยกชนิดแอร์ (ac_type) ต่อประเภทงาน
+  const acRows = await safeRows(db,
+    `SELECT work_type, COALESCE(NULLIF(ac_type,''),'ไม่ระบุ') AS ac_type, ${DONE_EXPR} AS done
+       FROM simple_work_orders WHERE ${RANGE} GROUP BY 1, 2 ORDER BY 1, done DESC`, [from, to]) || [];
+  const byAcType = WASH_TYPES.map((wt) => ({
+    work_type: wt,
+    rows: acRows.filter((r) => r.work_type === wt).map((r) => ({ ac_type: r.ac_type, done: r.done || 0 })),
+  })).filter((g) => g.rows.length);
+
+  // สถานที่ top (location fallback client_name)
+  const locRows = await safeRows(db,
+    `SELECT COALESCE(NULLIF(location,''), NULLIF(client_name,''), 'ไม่ระบุ') AS location,
+            ${DONE_EXPR} AS done, COUNT(*)::int AS orders
+       FROM simple_work_orders WHERE ${RANGE}
+      GROUP BY 1 ORDER BY done DESC LIMIT 12`, [from, to]) || [];
+  const byLocation = locRows.map((r) => ({ location: r.location, done: r.done || 0, orders: r.orders || 0 }));
+
+  // สภาพแอร์เสื่อม — นับอาการจาก condition.issues ในช่วง
+  const condRows = await safeRows(db,
+    `SELECT k AS issue, COUNT(*)::int AS n
+       FROM simple_work_orders, jsonb_array_elements_text(COALESCE(condition->'issues','[]'::jsonb)) AS k
+      WHERE ${RANGE} GROUP BY k ORDER BY n DESC`, [from, to]) || [];
+  const conditionIssues = condRows.map((r) => ({ issue: r.issue, count: r.n || 0 }));
+
+  // ผลงาน ok / not_ok
+  const resRows = await safeRows(db,
+    `SELECT COALESCE(NULLIF(result,''),'-') AS result, COUNT(*)::int AS n
+       FROM simple_work_orders WHERE ${RANGE} GROUP BY 1`, [from, to]) || [];
+  const resultBy = Object.fromEntries(resRows.map((r) => [r.result, r.n || 0]));
+
+  // รายละเอียดใบงาน (ส่งงาน) — cap กันช่วงยาวเกิน
+  const orderRows = await safeRows(db,
+    `SELECT wo_number, COALESCE(work_date, created_at::date)::text AS work_date,
+            work_type, COALESCE(NULLIF(ac_type,''),'-') AS ac_type,
+            (${UNITS_EXPR})::int AS units,
+            COALESCE(NULLIF(location,''), NULLIF(client_name,''), '-') AS location,
+            COALESCE(NULLIF(building,''),'') AS building, COALESCE(NULLIF(floor,''),'') AS floor,
+            COALESCE(NULLIF(room,''),'') AS room,
+            COALESCE(NULLIF(tech_name,''),'-') AS tech_name,
+            COALESCE(NULLIF(result,''),'-') AS result, status
+       FROM simple_work_orders WHERE ${RANGE}
+      ORDER BY COALESCE(work_date, created_at::date), wo_number
+      LIMIT ${ORDER_CAP + 1}`, [from, to]) || [];
+  const truncated = orderRows.length > ORDER_CAP;
+  const orders = (truncated ? orderRows.slice(0, ORDER_CAP) : orderRows).map((r) => ({
+    ...r,
+    place: [r.location, r.building && `อาคาร ${r.building}`, r.floor && `ชั้น ${r.floor}`, r.room]
+      .filter(Boolean).join(' › '),
+  }));
+
+  const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+  return {
+    from, to, days, zone,
+    branch: { name: req.branch?.name || '', slug: req.branch?.slug || '' },
+    totals, grand, daily, byAcType, byLocation, conditionIssues,
+    result: { ok: resultBy.ok || 0, not_ok: resultBy.not_ok || 0 },
+    orders, orders_truncated: truncated, order_cap: ORDER_CAP,
+  };
+}
+
+// validate + normalize from/to (สลับให้ถ้าใส่กลับด้าน)
+function parseRange(req) {
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  let { from, to } = req.query;
+  if (!D.test(from || '') || !D.test(to || '')) return null;
+  if (from > to) [from, to] = [to, from];
+  return { from, to };
+}
+
+router.get('/wash-report/range', authMiddleware, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'ระบุ from/to เป็น YYYY-MM-DD' });
+  try { res.json(await buildWashRangeReport(req, range.from, range.to)); }
+  catch (err) { serverError(res, err); }
+});
+
+// ── GET /wash-report/pptx — deck Theme3 (TW Corporate Infographic) ────────────
+router.get('/wash-report/pptx', authMiddleware, async (req, res) => {
+  if (!req.branch) return res.status(400).json({ error: 'ต้องเลือกสาขาก่อน' });
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'ระบุ from/to เป็น YYYY-MM-DD' });
+  try {
+    const model = await buildWashRangeReport(req, range.from, range.to);
+    const { buildWashRangeDeck } = require('../services/washRangePptx');
+    const buf = await buildWashRangeDeck(model);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="wash-report_${range.from}_${range.to}_TW.pptx"`);
+    res.send(buf);
+  } catch (err) { serverError(res, err); }
+});
+
 module.exports = router;
