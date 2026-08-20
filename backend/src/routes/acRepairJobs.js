@@ -1,16 +1,14 @@
 // /api/ac-repair-jobs — AC repair job management (air-system owns the record).
-// Fully decoupled from repair-system: once a job is created here it is
-// managed entirely in this schema. repair-system is only read once (optional
-// import) to seed the initial details — nothing is written back.
+// Standalone: no link to repair-system (bridge removed 20 Aug 2026) — jobs are
+// opened by the TW team here and live entirely in this schema.
 //
-// Flow: Register → Assign → Work On → Clear → Close | Cancel
+// Flow: Register → (Work On ⇄ Wait Parts) → Clear (= ปิดงาน) | Cancel
 const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { serverError } = require('../utils/respond');
-const { callRepair, configured } = require('../services/repairClient');
 const { insertJob } = require('../services/acRepairCreate');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
 const { buildAcRepairReportHtml } = require('../services/reportTemplates');
@@ -33,13 +31,14 @@ function savePhoto(slug, base64, filename) {
   return `/uploads/photos/ac-repair/${slug}/${name}`;
 }
 
-// Status transition table.
+// Status transition table. 'Assign' remains only as a legacy from-state so any
+// job still sitting in it (pre-simplification) can move forward; nothing
+// transitions INTO Assign or Close any more.
 const TRANSITIONS = {
-  assign: { from: ['Register'],                          to: 'Assign'   },
-  start:  { from: ['Assign'],                            to: 'Work On'  },
-  clear:  { from: ['Work On'],                           to: 'Clear'    },
-  close:  { from: ['Clear'],                             to: 'Close'    },
-  cancel: { from: ['Register', 'Assign', 'Work On', 'Clear'], to: 'Cancel' },
+  start:      { from: ['Register', 'Assign', 'Wait Parts'],           to: 'Work On'    },
+  wait_parts: { from: ['Register', 'Assign', 'Work On'],              to: 'Wait Parts' },
+  clear:      { from: ['Register', 'Assign', 'Work On', 'Wait Parts'], to: 'Clear'     },
+  cancel:     { from: ['Register', 'Assign', 'Work On', 'Wait Parts'], to: 'Cancel'    },
 };
 
 router.use(authMiddleware, canUse);
@@ -94,20 +93,6 @@ router.get('/locations', async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
-// ── GET /repair-locations — hospital อาคาร/ชั้น/แผนก master from repair-system,
-// for cascading dropdowns on the form. Read-only; never blocks (returns empty on
-// any failure so the form still works offline / when the bridge is off).
-router.get('/repair-locations', async (req, res) => {
-  const slug = req.branch?.repair_slug;
-  if (!configured() || !slug) return res.json({ buildings: [] });
-  try {
-    const data = await callRepair('GET', slug, '/buildings', { actor: req.user?.name || 'air' });
-    res.json({ buildings: Array.isArray(data) ? data : [] });
-  } catch (e) {
-    res.json({ buildings: [] });
-  }
-});
-
 // ── GET /parts-summary — aggregate อะไหล่ที่ต้องสั่ง across open jobs (สั่งของ) ──
 // Response shape: { items: [...rows], total_cost }
 //   row: { key, name, qty_list, jobs,        ← existing (backward compatible)
@@ -135,7 +120,7 @@ router.get('/parts-summary', async (req, res) => {
              ), 0) AS cost_total
       FROM ac_repair_jobs j
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(j.parts,'[]'::jsonb)) AS p
-      WHERE j.status NOT IN ('Close','Cancel') AND trim(p->>'name') <> ''
+      WHERE j.status NOT IN ('Clear','Close','Cancel') AND trim(p->>'name') <> ''
       GROUP BY lower(trim(p->>'name'))
       ORDER BY name`);
     // numeric columns come back as strings from pg → coerce to JS numbers.
@@ -148,20 +133,6 @@ router.get('/parts-summary', async (req, res) => {
     const total_cost = items.reduce((s, r) => s + r.cost_total, 0);
     res.json({ items, total_cost });
   } catch (err) { serverError(res, err); }
-});
-
-// ── GET /pending-repair — fetch active AC jobs from repair-system (import UI)
-router.get('/pending-repair', async (req, res) => {
-  if (!configured()) return res.json({ ok: false, jobs: [], reason: 'ยังไม่ตั้งค่า REPAIR_API_URL / REPAIR_SERVICE_KEY' });
-  const slug = req.branch?.repair_slug;
-  if (!slug) return res.status(400).json({ error: 'สาขานี้ยังไม่ผูก repair_slug' });
-  try {
-    const data = await callRepair('GET', slug, '/ac-jobs?status=active', { actor: req.user?.name || 'air' });
-    const jobs = Array.isArray(data) ? data : (data.jobs || []);
-    res.json({ ok: true, jobs });
-  } catch (e) {
-    res.status(e.status || 502).json({ ok: false, error: e.message });
-  }
 });
 
 // ── GET /:id — detail ──────────────────────────────────────────────────────
@@ -200,20 +171,6 @@ router.post('/', async (req, res) => {
   finally { c.release(); }
 });
 
-// ── POST /import — create job from repair-system record (one-way copy) ───
-router.post('/import', async (req, res) => {
-  if (!req.body.description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
-  const c = await req.tx();
-  try {
-    await c.query('BEGIN');
-    const { row, duplicate } = await insertJob(c, req.body, req.user.id);
-    await c.query('COMMIT');
-    if (duplicate) return res.status(409).json({ error: 'นำเข้างานนี้แล้ว', existing: duplicate });
-    res.status(201).json(row);
-  } catch (e) { await c.query('ROLLBACK'); serverError(res, e); }
-  finally { c.release(); }
-});
-
 // ── PUT /:id — update details (only for non-terminal jobs) ───────────────
 router.put('/:id', async (req, res) => {
   const { building, floor, department, requester, telephone, description,
@@ -238,7 +195,7 @@ router.put('/:id', async (req, res) => {
       'SELECT status FROM ac_repair_jobs WHERE id = $1', [req.params.id]
     );
     if (!cur.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    if (['Close', 'Cancel'].includes(cur[0].status)) {
+    if (['Clear', 'Close', 'Cancel'].includes(cur[0].status)) {
       return res.status(400).json({ error: 'ใบงานปิดแล้ว แก้ไขไม่ได้' });
     }
     const { rows } = await req.db(
@@ -280,12 +237,9 @@ router.get('/:id/pdf', async (req, res) => {
 
 // ── PUT /:id/status — transition status ──────────────────────────────────
 router.put('/:id/status', async (req, res) => {
-  const { action, assign_name, work_desc, afterImageBase64, afterImageName, cancel_reason } = req.body;
+  const { action, work_desc, afterImageBase64, afterImageName, cancel_reason } = req.body;
   const tx = TRANSITIONS[action];
-  if (!tx) return res.status(400).json({ error: 'action ไม่ถูกต้อง (assign|start|clear|close|cancel)' });
-  if (action === 'close' && !['admin', 'super_admin'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'เฉพาะ Admin ปิดงานได้' });
-  }
+  if (!tx) return res.status(400).json({ error: 'action ไม่ถูกต้อง (start|wait_parts|clear|cancel)' });
   try {
     const { rows: cur } = await req.db(
       'SELECT * FROM ac_repair_jobs WHERE id = $1', [req.params.id]
@@ -300,12 +254,12 @@ router.put('/:id/status', async (req, res) => {
     const params = [tx.to];
     const add = (col, val) => { params.push(val); sql += `, ${col}=$${params.length}`; };
 
-    if (action === 'assign') {
-      add('assign_name', assign_name || null);
-      add('assign_time', new Date());
-    }
     if (action === 'start') {
-      add('start_time', new Date());
+      // เริ่มซ่อมครั้งแรกเท่านั้นที่ stamp เวลา (กลับมาจากรออะไหล่ไม่ทับของเดิม)
+      if (!job.start_time) add('start_time', new Date());
+    }
+    if (action === 'wait_parts') {
+      add('wait_parts_time', new Date());
     }
     if (action === 'clear') {
       add('work_desc', work_desc || null);
@@ -313,9 +267,6 @@ router.put('/:id/status', async (req, res) => {
       if (afterImageBase64 && afterImageName) {
         add('after_image_url', savePhoto(req.branch.slug, afterImageBase64, afterImageName));
       }
-    }
-    if (action === 'close') {
-      add('close_time', new Date());
     }
     if (action === 'cancel') {
       add('cancel_reason', cancel_reason || '');

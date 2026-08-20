@@ -245,7 +245,7 @@ async function buildWashReport(req) {
     const repRows = await safeRows(db,
       `SELECT COUNT(*) FILTER (WHERE status <> 'Cancel')::int AS total,
               COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int AS done,
-              COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On'))::int AS pending
+              COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On','Wait Parts'))::int AS pending
          FROM ac_repair_jobs
         WHERE to_char(register_time,'YYYY-MM') = $1`, [month]);
     const r0 = (repRows && repRows[0]) || {};

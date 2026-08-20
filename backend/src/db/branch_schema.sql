@@ -420,6 +420,7 @@ CREATE TABLE IF NOT EXISTS ac_repair_jobs (
   register_time     TIMESTAMPTZ DEFAULT NOW(),
   assign_time       TIMESTAMPTZ,
   start_time        TIMESTAMPTZ,
+  wait_parts_time   TIMESTAMPTZ,
   clear_time        TIMESTAMPTZ,
   close_time        TIMESTAMPTZ,
   created_by        INT
@@ -427,6 +428,30 @@ CREATE TABLE IF NOT EXISTS ac_repair_jobs (
 CREATE INDEX IF NOT EXISTS idx_acr_status        ON ac_repair_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_acr_register_time ON ac_repair_jobs(register_time);
 CREATE INDEX IF NOT EXISTS idx_acr_repair_job    ON ac_repair_jobs(repair_job_id);
+
+-- ── MEMO ขออนุมัติจัดซื้ออะไหล่แอร์ (ออกจากใบงานซ่อม 1 ใบ = 1 memo) ─────────────
+CREATE TABLE IF NOT EXISTS ac_memos (
+  id          SERIAL PRIMARY KEY,
+  memo_number TEXT UNIQUE NOT NULL,          -- MEMO-AIR-{BE_YY}{MM}-{NNN}
+  job_id      INT UNIQUE REFERENCES ac_repair_jobs(id) ON DELETE CASCADE,
+  subject     TEXT NOT NULL,
+  reason      TEXT DEFAULT '',
+  to_line     TEXT DEFAULT '',
+  from_line   TEXT DEFAULT '',
+  -- รายการอะไหล่ snapshot ตอนออก memo — [{name, qty, unit_price, note}]
+  parts       JSONB DEFAULT '[]'::jsonb,
+  -- ผู้เซ็น 4 ช่อง — { requester|inspector|reviewer|approver: {name, pos, org} }
+  signers     JSONB DEFAULT '{}'::jsonb,
+  created_by  INT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ
+);
+-- ค่าฟอร์มล่าสุด (เรียน/จาก/ผู้เซ็น) — memo ใบถัดไปเริ่มจากค่าที่แก้ล่าสุด
+CREATE TABLE IF NOT EXISTS ac_memo_template (
+  id         INT PRIMARY KEY DEFAULT 1,
+  data       JSONB DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ
+);
 
 -- ── หักเงินค่าบริการรายเดือน ────────────────────────────────
 CREATE TABLE IF NOT EXISTS deduction_notes (
