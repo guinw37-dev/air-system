@@ -62,6 +62,20 @@ const cleanParts = (parts) => (Array.isArray(parts) ? parts : [])
     unit_price: Number.isFinite(Number(p?.unit_price)) && Number(p.unit_price) > 0 ? Number(p.unit_price) : 0,
   })).filter((p) => p.name);
 
+// ── GET / — รายการ Memo ทั้งหมดของสาขา (หน้ารวม Memo ที่เคยเปิด) ─────────────
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await req.db(
+      `SELECT m.id, m.memo_number, m.subject, m.created_at, m.updated_at, m.parts,
+              j.id AS job_id, j.job_number, j.building, j.floor, j.department, j.status AS job_status
+         FROM ac_memos m
+         LEFT JOIN ac_repair_jobs j ON j.id = m.job_id
+         ORDER BY m.id DESC`
+    );
+    res.json(rows);
+  } catch (err) { serverError(res, err); }
+});
+
 // ── GET /template — ค่าเริ่มต้นฟอร์ม (ค่าล่าสุดที่เคยแก้) ─────────────────────
 router.get('/template', async (req, res) => {
   try { res.json(await loadTemplate(req.db, req.branch)); }

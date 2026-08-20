@@ -1550,7 +1550,7 @@ function buildAcRepairReportHtml(job, branch) {
     ? `<tr><th style="width:6%;text-align:center">#</th><th>รายการ</th><th style="width:10%;text-align:center">จำนวน</th><th style="width:24%">หมายเหตุ</th><th style="width:15%;text-align:center">ราคา/หน่วย</th><th style="width:15%;text-align:center">รวม</th></tr>`
     : `<tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>`;
   const partsTotalRow = hasPricing
-    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">${fmtTHB(partsTotal)}</td></tr>`
+    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#E0F2FE;color:#075985">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#E0F2FE;color:#075985">${fmtTHB(partsTotal)}</td></tr>`
     : '';
   const afterImg = j.after_image_url
     ? `<div class="sec"><div class="sec-h">รูปหลังซ่อม</div>
@@ -1560,17 +1560,17 @@ function buildAcRepairReportHtml(job, branch) {
 <title>${escapeHtml(j.job_number || 'ใบงานซ่อมแอร์')}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:#1f2937;margin:0;padding:24px;font-size:14px}
-  .head{display:flex;justify-content:space-between;align-items:center;background:#ED7D31;border-radius:10px;padding:12px 18px;margin-bottom:14px;color:#fff}
+  .head{display:flex;justify-content:space-between;align-items:center;background:#0284C7;border-radius:10px;padding:12px 18px;margin-bottom:14px;color:#fff}
   .head .title{font-size:20px;font-weight:700}
   .head .no{font-family:monospace;font-size:15px;font-weight:700}
   .head .sub{font-size:12px;opacity:.92}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#fff;color:#ED7D31;font-size:12px;font-weight:700}
-  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #ED7D31;padding-left:8px;margin-bottom:6px}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#fff;color:#0284C7;font-size:12px;font-weight:700}
+  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #0284C7;padding-left:8px;margin-bottom:6px}
   table{width:100%;border-collapse:collapse} td{padding:5px 8px;vertical-align:top}
-  .kv td.k{width:32%;color:#6b7280;background:#fdf6f0} .kv td{border:1px solid #f3e6da}
-  .parts th{background:#FBE5D6;color:#b45309;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #f0d5bd}
-  .parts td{border:1px solid #f3e6da}
-  .desc{white-space:pre-wrap;border:1px solid #f3e6da;border-radius:6px;padding:8px;background:#fdfaf7;min-height:38px}
+  .kv td.k{width:32%;color:#6b7280;background:#f0f9ff} .kv td{border:1px solid #dceefb}
+  .parts th{background:#E0F2FE;color:#075985;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #bae6fd}
+  .parts td{border:1px solid #dceefb}
+  .desc{white-space:pre-wrap;border:1px solid #dceefb;border-radius:6px;padding:8px;background:#f8fcff;min-height:38px}
 </style></head><body>
   <div class="head">
     <div>

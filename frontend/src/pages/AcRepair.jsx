@@ -498,10 +498,10 @@ function MemoModal({ job, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="px-6 py-4 border-b flex items-center justify-between bg-orange-50 rounded-t-2xl">
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-sky-50 rounded-t-2xl">
           <div>
-            <h2 className="text-lg font-bold text-orange-700">📄 MEMO ขออะไหล่ — {job.job_number}</h2>
-            {memo && <p className="text-xs text-orange-600 mt-0.5 font-mono">{memo.memo_number}</p>}
+            <h2 className="text-lg font-bold text-sky-700">📄 MEMO ขออะไหล่ — {job.job_number}</h2>
+            {memo && <p className="text-xs text-sky-600 mt-0.5 font-mono">{memo.memo_number}</p>}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
         </div>
@@ -551,12 +551,12 @@ function MemoModal({ job, onClose }) {
         <div className="px-6 py-4 border-t flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
           {memo && (
-            <button onClick={openPdf} className="px-4 py-2 rounded-lg border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100 text-sm">
+            <button onClick={openPdf} className="px-4 py-2 rounded-lg border border-sky-300 text-sky-700 bg-sky-50 hover:bg-sky-100 text-sm">
               🖨️ เปิด PDF
             </button>
           )}
           <button onClick={save} disabled={saving || loading}
-            className="px-4 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 text-sm disabled:opacity-50">
+            className="px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 text-sm disabled:opacity-50">
             {saving ? 'กำลังบันทึก…' : memo ? 'บันทึกการแก้ไข' : 'ออก Memo'}
           </button>
         </div>
@@ -625,6 +625,72 @@ function ClearModal({ job, onSave, onClose }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Memo list modal — Memo ที่เคยเปิดทั้งหมด กดเข้าไปแก้ไขได้ ─────────────────
+function MemoListModal({ onOpenMemo, onClose }) {
+  const [memos, setMemos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    api.get('/ac-memos')
+      .then((r) => setMemos(Array.isArray(r.data) ? r.data : []))
+      .catch((e) => setErr(e.response?.data?.error || e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const totalOf = (parts) => (Array.isArray(parts) ? parts : [])
+    .reduce((s, p) => s + (parseFloat(p.qty) || 0) * (parseFloat(p.unit_price) || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-sky-50 rounded-t-2xl">
+          <div>
+            <h2 className="text-lg font-bold text-sky-700">📄 Memo ขออะไหล่ทั้งหมด</h2>
+            <p className="text-xs text-gray-500 mt-0.5">กดรายการเพื่อเปิดดู / แก้ไข / พิมพ์ PDF</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          {loading ? <p className="text-center text-gray-400 py-8">กำลังโหลด…</p>
+            : err ? <p className="text-center text-red-600 py-8">{err}</p>
+            : memos.length === 0 ? <p className="text-center text-gray-400 py-8">ยังไม่เคยออก Memo</p>
+            : (
+              <div className="space-y-2">
+                {memos.map((m) => {
+                  const total = totalOf(m.parts);
+                  return (
+                    <button key={m.id} onClick={() => onOpenMemo(m)}
+                      className="w-full text-left border rounded-xl p-3.5 hover:bg-sky-50 hover:border-sky-200 transition-colors flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-sm font-bold text-sky-700">{m.memo_number}</span>
+                          {m.job_number && <span className="text-xs text-gray-400 border rounded px-1.5 py-0.5">{m.job_number}</span>}
+                          {m.job_status && <StatusBadge status={m.job_status} />}
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1 truncate">{m.subject}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {[m.building, m.floor, m.department].filter(Boolean).join(' › ') || '—'} · 🕒 {fmt(m.created_at)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {total > 0 && <div className="text-sm font-bold text-sky-700 tabular-nums">฿{total.toLocaleString('th-TH')}</div>}
+                        <div className="text-xs text-sky-600 mt-1">แก้ไข →</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+        </div>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
+        </div>
       </div>
     </div>
   );
@@ -846,7 +912,7 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
             <button onClick={() => setShowClear(true)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
               ✅ ซ่อมเสร็จ (ปิดงาน)
             </button>
-            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-orange-300 text-orange-700 bg-orange-50 rounded-lg text-sm hover:bg-orange-100">
+            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-sky-300 text-sky-700 bg-sky-50 rounded-lg text-sm hover:bg-sky-100">
               📄 Memo อะไหล่
             </button>
             <button onClick={() => setCancelling(true)} className="ml-auto px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50">
@@ -856,7 +922,7 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
         )}
         {TERMINAL_STATUSES.includes(job.status) && job.status !== 'Cancel' && (
           <div className="px-6 py-4 border-t flex justify-end">
-            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-orange-300 text-orange-700 bg-orange-50 rounded-lg text-sm hover:bg-orange-100">
+            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-sky-300 text-sky-700 bg-sky-50 rounded-lg text-sm hover:bg-sky-100">
               📄 Memo อะไหล่
             </button>
           </div>
@@ -879,6 +945,8 @@ export default function AcRepair() {
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showParts, setShowParts] = useState(false);
+  const [showMemoList, setShowMemoList] = useState(false);
+  const [memoJob, setMemoJob] = useState(null);   // job stub จากรายการ memo → เปิด MemoModal
 
   const ACR = '/ac-repair-jobs';
 
@@ -918,6 +986,9 @@ export default function AcRepair() {
         <div className="flex gap-2">
           <button onClick={() => setShowParts(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
             🧰 สรุปอะไหล่
+          </button>
+          <button onClick={() => setShowMemoList(true)} className="px-3 py-2 border border-sky-200 text-sky-700 rounded-xl text-sm hover:bg-sky-50 flex items-center gap-1.5">
+            📄 Memo
           </button>
           <button onClick={() => setShowCreate(true)} className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 flex items-center gap-1.5">
             + แจ้งซ่อม
@@ -1016,6 +1087,13 @@ export default function AcRepair() {
       {/* Modals */}
       {showCreate && <JobFormModal onSave={createJob} onClose={() => setShowCreate(false)} />}
       {showParts && <PartsSummaryModal onClose={() => setShowParts(false)} />}
+      {showMemoList && !memoJob && (
+        <MemoListModal
+          onOpenMemo={(m) => setMemoJob({ id: m.job_id, job_number: m.job_number, parts: [] })}
+          onClose={() => setShowMemoList(false)}
+        />
+      )}
+      {memoJob && <MemoModal job={memoJob} onClose={() => setMemoJob(null)} />}
       {selected && (
         <DetailModal
           job={selected}
