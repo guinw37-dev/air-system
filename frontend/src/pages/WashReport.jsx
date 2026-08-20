@@ -203,13 +203,10 @@ function ByTypeCard({ title, byType, period, chrome }) {
   )
 }
 
-// สรุปตามช่วงวันที่ จาก–ถึง + ปุ่ม Export PPTX (deck Theme3 ส่งงาน)
-function RangeSection({ zone, chrome }) {
-  const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'))
-  const [to, setTo] = useState(dayjs().format('YYYY-MM-DD'))
+// สรุปตามช่วงวันที่ที่เลือกบนหัวรายงาน (จาก–ถึง เลือกที่ header ของหน้า)
+function RangeSection({ from, to, zone, chrome }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [exporting, setExporting] = useState(false)
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -223,39 +220,11 @@ function RangeSection({ zone, chrome }) {
       .finally(() => setLoading(false))
   }, [from, to, zone])
 
-  const exportPptx = async () => {
-    setExporting(true)
-    try {
-      const params = { from, to }
-      if (zone) params.zone = zone
-      const res = await api.get('/dashboard/wash-report/pptx', { params, responseType: 'blob' })
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = url; a.download = `รายงานล้างแอร์_${from}_${to}_TW.pptx`; a.click()
-      URL.revokeObjectURL(url)
-    } catch { setErr('ออก PPTX ไม่สำเร็จ') } finally { setExporting(false) }
-  }
-
   const chart = (data?.daily || []).map((d) => ({
     name: dayjs(d.date).format('D/M'), ล้างใหญ่: d.major, ล้างย่อย: d.minor, พัดลม: d.fan,
   }))
   return (
-    <Card title="สรุปตามช่วงวันที่ (จาก – ถึง) + ส่งงาน PPTX" icon={CalendarDays} chrome={chrome}>
-      <div className="flex items-end gap-2 flex-wrap mb-3">
-        <label className="text-xs text-slate-500">จาก
-          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
-            className="block border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 mt-0.5" />
-        </label>
-        <label className="text-xs text-slate-500">ถึง
-          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)}
-            className="block border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 mt-0.5" />
-        </label>
-        <button onClick={exportPptx} disabled={exporting || loading || !data}
-          className="flex items-center gap-1.5 px-3 py-2 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50">
-          <FileDown size={16} /> {exporting ? 'กำลังสร้าง…' : 'Export PPTX (ส่งงาน)'}
-        </button>
-        {data && <span className="text-xs text-slate-400 mb-1">{data.days} วัน · {data.grand.orders} ใบงาน</span>}
-      </div>
+    <Card title={`สรุปช่วง ${thaiDate(from)} – ${thaiDate(to)}${data ? ` · ${data.days} วัน · ${data.grand.orders} ใบงาน` : ''}`} icon={CalendarDays} chrome={chrome}>
       {err ? <p className="text-sm text-amber-600 py-2">{err}</p>
         : loading ? <p className="text-sm text-slate-400 py-2">กำลังโหลด…</p>
         : !data ? null : (
@@ -388,6 +357,29 @@ export default function WashReport() {
   const [cond, setCond] = useState(null)
   const [selDate, setSelDate] = useState('')
   const [selMonth, setSelMonth] = useState(dayjs().format('YYYY-MM'))
+  // ช่วงเวลาหลักของหน้า (จาก–ถึง) — คุมการ์ดสรุปช่วง + Export PPTX;
+  // เปลี่ยน "จาก" แล้วเดือนของการ์ดรายเดือน/ปฏิทินตามไปด้วย
+  const [rangeFrom, setRangeFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'))
+  const [rangeTo, setRangeTo] = useState(dayjs().format('YYYY-MM-DD'))
+  const [exportingPptx, setExportingPptx] = useState(false)
+  const pickFrom = (v) => {
+    if (!v) return
+    setRangeFrom(v)
+    setSelMonth(v.slice(0, 7))
+    if (v > rangeTo) setRangeTo(v)
+  }
+  const exportPptx = async () => {
+    setExportingPptx(true)
+    try {
+      const params = { from: rangeFrom, to: rangeTo }
+      if (selZone) params.zone = selZone
+      const res = await api.get('/dashboard/wash-report/pptx', { params, responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `รายงานล้างแอร์_${rangeFrom}_${rangeTo}_TW.pptx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* ignore */ } finally { setExportingPptx(false) }
+  }
   const [selZone, setSelZone] = useState('')   // '' = ทุกโซน
   const hasZones = useHasZones()               // โซนมีเฉพาะศรีราชา
 
@@ -618,7 +610,7 @@ export default function WashReport() {
           </Card>
         )
       }
-      case 'range': return <RangeSection zone={selZone} chrome={c} />
+      case 'range': return <RangeSection from={rangeFrom} to={rangeTo} zone={selZone} chrome={c} />
       case 'coverage': return <CoverageSection month={selMonth} zone={selZone} chrome={c} />
       case 'target': return <TargetSection month={selMonth} zone={selZone} navigate={navigate} chrome={c} />
       case 'condition': return (
@@ -658,7 +650,16 @@ export default function WashReport() {
             <div className="flex items-center gap-2 text-blue-900 font-semibold flex-wrap">
               <CalendarDays size={18} /><span>รายงานประจำวันที่ : {thaiDate(data.date)}</span>
               <span className="text-xs text-slate-400 font-normal">· ลากหัวการ์ดเพื่อย้าย · ลากมุมเพื่อขยาย</span>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex items-center gap-2 flex-wrap">
+                {/* ช่วงเวลาหลักของหน้า — คุมการ์ดสรุปช่วง + รายเดือน/ปฏิทิน + Export */}
+                <div className="flex items-center gap-1.5 bg-sky-50 border border-sky-100 rounded-lg px-2 py-1">
+                  <span className="text-xs text-slate-500 font-normal">ช่วง</span>
+                  <input type="date" value={rangeFrom} max={rangeTo} onChange={(e) => pickFrom(e.target.value)}
+                    className="border border-slate-200 rounded px-1.5 py-0.5 text-xs text-slate-700 font-normal bg-white" />
+                  <span className="text-xs text-slate-400 font-normal">–</span>
+                  <input type="date" value={rangeTo} min={rangeFrom} onChange={(e) => e.target.value && setRangeTo(e.target.value)}
+                    className="border border-slate-200 rounded px-1.5 py-0.5 text-xs text-slate-700 font-normal bg-white" />
+                </div>
                 {hasZones && (
                   <select value={selZone} onChange={(e) => setSelZone(e.target.value)}
                     className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600">
@@ -669,6 +670,7 @@ export default function WashReport() {
                 )}
                 <button onClick={reset} className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50"><RotateCcw size={15} /> รีเซ็ต</button>
                 <button onClick={save} disabled={saving || !dirty} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white ${dirty ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300'} disabled:opacity-60`}><Save size={15} /> {saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
+                <button onClick={exportPptx} disabled={exportingPptx} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50"><FileDown size={16} /> {exportingPptx ? 'กำลังสร้าง…' : 'Export PPTX'}</button>
                 <button onClick={exportExcel} disabled={exporting} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"><FileSpreadsheet size={16} /> {exporting ? 'กำลังออก…' : 'Export Excel'}</button>
               </div>
             </div>
