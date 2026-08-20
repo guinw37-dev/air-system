@@ -5,25 +5,30 @@ import Layout from '../components/Layout';
 import { compressImage } from '../lib/image';
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// Workflow ย่อ (20 Aug 2026): แจ้งซ่อม → กำลังซ่อม ⇄ รออะไหล่ → ซ่อมเสร็จ (=ปิดงาน).
+// Assign/Close คงไว้แค่ label สำหรับใบเก่า — ไม่อยู่ใน flow ใหม่แล้ว.
 const STATUS_LABEL = {
-  Register:  'แจ้งซ่อม',
-  Assign:    'รับงาน',
-  'Work On': 'กำลังซ่อม',
-  Clear:     'ซ่อมเสร็จ',
-  Close:     'ปิดงาน',
-  Cancel:    'ยกเลิก',
+  Register:     'แจ้งซ่อม',
+  Assign:       'รับงาน',
+  'Work On':    'กำลังซ่อม',
+  'Wait Parts': 'รออะไหล่',
+  Clear:        'ซ่อมเสร็จ',
+  Close:        'ปิดงาน',
+  Cancel:       'ยกเลิก',
 };
 const STATUS_COLOR = {
-  Register:  'bg-gray-100 text-gray-700 border-gray-300',
-  Assign:    'bg-blue-100 text-blue-800 border-blue-300',
-  'Work On': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  Clear:     'bg-teal-100 text-teal-800 border-teal-300',
-  Close:     'bg-green-100 text-green-800 border-green-300',
-  Cancel:    'bg-red-100 text-red-700 border-red-300',
+  Register:     'bg-gray-100 text-gray-700 border-gray-300',
+  Assign:       'bg-blue-100 text-blue-800 border-blue-300',
+  'Work On':    'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Wait Parts': 'bg-orange-100 text-orange-800 border-orange-300',
+  Clear:        'bg-green-100 text-green-800 border-green-300',
+  Close:        'bg-green-100 text-green-800 border-green-300',
+  Cancel:       'bg-red-100 text-red-700 border-red-300',
 };
-const ALL_STATUSES = ['Register', 'Assign', 'Work On', 'Clear', 'Close', 'Cancel'];
-// งานค้าง = ยังไม่ซ่อมเสร็จ (Register/Assign/Work On). Clear(ซ่อมเสร็จ)/Close/Cancel ไม่นับค้าง
-const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On'];
+const ALL_STATUSES = ['Register', 'Work On', 'Wait Parts', 'Clear', 'Cancel'];
+// งานค้าง = ยังไม่ซ่อมเสร็จ. Clear(ซ่อมเสร็จ=ปิดงาน)/Cancel ไม่นับค้าง
+const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On', 'Wait Parts'];
+const TERMINAL_STATUSES = ['Clear', 'Close', 'Cancel'];
 
 function StatusBadge({ status }) {
   return (
@@ -278,10 +283,8 @@ function JobFormModal({ initial, onSave, onClose }) {
   const [floors, setFloors] = useState([]);
   const [rooms, setRooms] = useState([]);
   // Distinct locations already used on this branch's jobs — covers branches whose
-  // master data is empty (e.g. imported jobs on a fresh schema).
+  // master data is empty.
   const [locs, setLocs] = useState({ buildings: [], floors: [], departments: [] });
-  // Full hospital location master from repair-system (อาคาร→ชั้น→แผนก, cascading).
-  const [repairHier, setRepairHier] = useState([]);
   const [acCodes, setAcCodes] = useState([]);
   useEffect(() => { api.get('/wash-units/codes').then((r) => setAcCodes(r.data || [])).catch(() => {}); }, []);
 
@@ -296,30 +299,13 @@ function JobFormModal({ initial, onSave, onClose }) {
     api.get('/ac-repair-jobs/locations')
       .then((r) => { if (alive) setLocs(r.data || { buildings: [], floors: [], departments: [] }); })
       .catch(() => {});
-    api.get('/ac-repair-jobs/repair-locations')
-      .then((r) => { if (alive) setRepairHier(r.data?.buildings || []); })
-      .catch(() => {});
     return () => { alive = false; };
   }, []);
 
   const uniq = (a) => [...new Set(a.filter(Boolean))];
-  // Cascade off the repair-system hierarchy when the chosen อาคาร matches one.
-  const hierB = repairHier.find((h) => h.name === form.building);
-  const hierFloors = (hierB?.floors || []).map((f) => f.name);
-  const hierDepts = (hierB?.departments || [])
-    .filter((d) => !form.floor || d.floor_id === form.floor || d.floor_id === '')
-    .map((d) => d.name);
-  const buildingOpts = uniq([...buildings.map((b) => b.name), ...repairHier.map((h) => h.name), ...(locs.buildings || [])]);
-  // When the chosen อาคาร matches the repair master, cascade STRICTLY from it —
-  // don't mix in the flat distinct-job floors/depts (those aren't scoped to a
-  // building, so other buildings' floors like O-F03 would leak in). The distinct
-  // fallback is only for a building typed by hand / not in the master.
-  const floorOpts = hierB
-    ? uniq([...floors.map((f) => f.name), ...hierFloors])
-    : uniq([...floors.map((f) => f.name), ...(locs.floors || [])]);
-  const roomOpts = hierB
-    ? uniq([...rooms.map((r) => r.name), ...hierDepts])
-    : uniq([...rooms.map((r) => r.name), ...(locs.departments || [])]);
+  const buildingOpts = uniq([...buildings.map((b) => b.name), ...(locs.buildings || [])]);
+  const floorOpts = uniq([...floors.map((f) => f.name), ...(locs.floors || [])]);
+  const roomOpts = uniq([...rooms.map((r) => r.name), ...(locs.departments || [])]);
 
   const buildingId = buildings.find((b) => b.name === form.building)?.id;
   useEffect(() => {
@@ -446,37 +432,134 @@ function JobFormModal({ initial, onSave, onClose }) {
   );
 }
 
-// ── Assign modal ─────────────────────────────────────────────────────────────
-function AssignModal({ job, onSave, onClose }) {
-  const [assignName, setAssignName] = useState(job.assign_name || '');
+// ── Memo modal — ออก MEMO ขออนุมัติจัดซื้ออะไหล่ (หัวส้ม ระบบ Air) ─────────────
+function MemoModal({ job, onClose }) {
+  const [memo, setMemo] = useState(null);        // memo ที่มีอยู่ (ถ้าเคยออกแล้ว)
+  const [form, setForm] = useState(null);        // ฟอร์มพร้อมค่า template
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  async function submit(e) {
-    e.preventDefault();
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      api.get(`/ac-memos/by-job/${job.id}`),
+      api.get('/ac-memos/template'),
+    ]).then(([mRes, tRes]) => {
+      if (!alive) return;
+      const existing = mRes.data;
+      const tpl = tRes.data || {};
+      setMemo(existing);
+      setForm(existing ? {
+        subject: existing.subject, reason: existing.reason || '',
+        to_line: existing.to_line || '', from_line: existing.from_line || '',
+        parts: Array.isArray(existing.parts) ? existing.parts : [],
+        signers: existing.signers || tpl.signers || {},
+      } : {
+        subject: 'ขออนุมัติจัดซื้ออะไหล่เครื่องปรับอากาศ',
+        reason: '',
+        to_line: tpl.to_line || '', from_line: tpl.from_line || '',
+        parts: Array.isArray(job.parts) ? job.parts : [],
+        signers: tpl.signers || {},
+      });
+    }).catch((e) => setErr(e.response?.data?.error || e.message))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [job]);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setSigner = (slot, k) => (e) =>
+    setForm((f) => ({ ...f, signers: { ...f.signers, [slot]: { ...(f.signers?.[slot] || {}), [k]: e.target.value } } }));
+
+  async function save() {
+    if (!form.subject.trim()) { setErr('ต้องระบุเรื่อง'); return; }
     setSaving(true); setErr('');
-    try { await onSave({ assign_name: assignName }); }
-    catch (ex) { setErr(ex.response?.data?.error || ex.message); setSaving(false); }
+    try {
+      const r = memo
+        ? await api.put(`/ac-memos/${memo.id}`, form)
+        : await api.post('/ac-memos', { ...form, job_id: job.id });
+      setMemo(r.data);
+    } catch (e) { setErr(e.response?.data?.error || e.message); }
+    finally { setSaving(false); }
   }
+
+  async function openPdf() {
+    try {
+      const res = await api.get(`/ac-memos/${memo.id}/pdf`, { responseType: 'blob' });
+      window.open(URL.createObjectURL(res.data), '_blank');
+    } catch { setErr('เปิด PDF ไม่สำเร็จ'); }
+  }
+
+  const SIGN_SLOTS = [
+    ['requester', 'ผู้ขออนุมัติ (TW)'], ['inspector', 'ผู้ตรวจสอบ (TW)'],
+    ['reviewer', 'ผู้เห็นชอบ (รพ.)'], ['approver', 'ผู้อนุมัติ (รพ.)'],
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-bold">รับงาน — {job.job_number}</h2>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-orange-50 rounded-t-2xl">
+          <div>
+            <h2 className="text-lg font-bold text-orange-700">📄 MEMO ขออะไหล่ — {job.job_number}</h2>
+            {memo && <p className="text-xs text-orange-600 mt-0.5 font-mono">{memo.memo_number}</p>}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
         </div>
-        <form onSubmit={submit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">ช่างผู้รับงาน</label>
-            <input autoFocus className="w-full border rounded-lg px-3 py-2 text-sm" value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="ชื่อช่าง" />
-          </div>
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ยกเลิก</button>
-            <button disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-50">
-              {saving ? 'กำลังบันทึก…' : 'รับงาน'}
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+          {loading ? <p className="text-center text-gray-400 py-8">กำลังโหลด…</p> : form && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">เรื่อง <span className="text-red-500">*</span></label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.subject} onChange={set('subject')} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">เรียน</label>
+                  <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.to_line} onChange={set('to_line')} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">จาก</label>
+                  <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.from_line} onChange={set('from_line')} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">รายการอะไหล่ (ดึงจากใบงาน แก้ได้)</label>
+                <PartsEditor parts={form.parts} onChange={(parts) => setForm((f) => ({ ...f, parts }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">เหตุผลความจำเป็น</label>
+                <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.reason} onChange={set('reason')} placeholder="เช่น อะไหล่เสื่อมสภาพ ไม่สามารถซ่อมต่อได้" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">ผู้เซ็น 4 ช่อง</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {SIGN_SLOTS.map(([slot, label]) => (
+                    <div key={slot} className="border rounded-xl p-3 space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500">{label}</p>
+                      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="ชื่อ"
+                        value={form.signers?.[slot]?.name || ''} onChange={setSigner(slot, 'name')} />
+                      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="ตำแหน่ง"
+                        value={form.signers?.[slot]?.pos || ''} onChange={setSigner(slot, 'pos')} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {err && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+            </>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
+          {memo && (
+            <button onClick={openPdf} className="px-4 py-2 rounded-lg border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100 text-sm">
+              🖨️ เปิด PDF
             </button>
-          </div>
-        </form>
+          )}
+          <button onClick={save} disabled={saving || loading}
+            className="px-4 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 text-sm disabled:opacity-50">
+            {saving ? 'กำลังบันทึก…' : memo ? 'บันทึกการแก้ไข' : 'ออก Memo'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -516,7 +599,7 @@ function ClearModal({ job, onSave, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div className="px-6 py-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-bold">ปิดงาน — {job.job_number}</h2>
+          <h2 className="text-lg font-bold">ซ่อมเสร็จ (ปิดงาน) — {job.job_number}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
@@ -537,93 +620,11 @@ function ClearModal({ job, onSave, onClose }) {
           {err && <p className="text-sm text-red-600">{err}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ยกเลิก</button>
-            <button disabled={saving} className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm disabled:opacity-50">
-              {saving ? 'กำลังบันทึก…' : 'ยืนยันปิดงาน'}
+            <button disabled={saving} className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm disabled:opacity-50">
+              {saving ? 'กำลังบันทึก…' : 'ยืนยันซ่อมเสร็จ'}
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-// ── Import from repair-system modal ─────────────────────────────────────────
-function ImportModal({ onImport, onClose }) {
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
-  const [importing, setImporting] = useState(null);
-
-  useEffect(() => {
-    api.get('/ac-repair-jobs/pending-repair')
-      .then((r) => setJobs(r.data.jobs || []))
-      .catch((e) => setErr(e.response?.data?.error || e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function doImport(job) {
-    setImporting(job.id);
-    try {
-      await onImport({
-        repair_job_id:     job.id,
-        repair_job_number: job.job_number,
-        building:          job.building,
-        floor:             job.floor,
-        department:        job.department,
-        requester:         job.requester,
-        telephone:         job.telephone || '',
-        description:       job.description,
-        file_url:          job.file_url || '-',
-      });
-    } catch (e) {
-      alert(e.response?.data?.error || e.message);
-    } finally { setImporting(null); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">นำเข้างานจาก repair-system</h2>
-            <p className="text-xs text-gray-500 mt-0.5">งาน AC ที่ยังค้างอยู่ฝั่งช่างอาคาร</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
-        </div>
-        <div className="overflow-y-auto flex-1 p-4">
-          {loading && <p className="text-center text-gray-500 py-8">กำลังโหลด…</p>}
-          {err && <p className="text-center text-red-600 py-8">{err}</p>}
-          {!loading && !err && jobs.length === 0 && (
-            <p className="text-center text-gray-400 py-8">ไม่มีงาน AC ค้างอยู่ฝั่งช่างอาคาร</p>
-          )}
-          <div className="space-y-3">
-            {jobs.map((job) => (
-              <div key={job.id} className="border rounded-xl p-4 hover:bg-gray-50 flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono text-sm font-bold text-gray-800">{job.job_number}</span>
-                    <StatusBadge status={job.status} />
-                  </div>
-                  <p className="text-sm text-gray-700 line-clamp-2">{job.description}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {[job.building, job.floor, job.department].filter(Boolean).join(' › ')}
-                    {job.requester && ` · ${job.requester}`}
-                  </p>
-                </div>
-                <button
-                  disabled={!!importing}
-                  onClick={() => doImport(job)}
-                  className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {importing === job.id ? 'กำลังนำเข้า…' : 'นำเข้า'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="px-6 py-3 border-t flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm">ปิด</button>
-        </div>
       </div>
     </div>
   );
@@ -633,14 +634,12 @@ function ImportModal({ onImport, onClose }) {
 function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
   const [job, setJob] = useState(initialJob);
   const [editing, setEditing] = useState(false);
-  const [showAssign, setShowAssign] = useState(false);
   const [showClear, setShowClear] = useState(false);
+  const [showMemo, setShowMemo] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-
-  const isAdmin = ['admin', 'super_admin'].includes(role);
 
   async function transition(action, body = {}) {
     setBusy(true); setMsg('');
@@ -648,7 +647,7 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
       const r = await api.put(`/ac-repair-jobs/${job.id}/status`, { action, ...body });
       setJob(r.data);
       onRefresh();
-      setShowAssign(false); setShowClear(false); setCancelling(false);
+      setShowClear(false); setCancelling(false);
     } catch (e) { setMsg(e.response?.data?.error || e.message); }
     finally { setBusy(false); }
   }
@@ -668,8 +667,8 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
   }
 
   if (editing) return <JobFormModal initial={job} onSave={saveEdit} onClose={() => setEditing(false)} />;
-  if (showAssign) return <AssignModal job={job} onSave={(b) => transition('assign', b)} onClose={() => setShowAssign(false)} />;
   if (showClear) return <ClearModal job={job} onSave={(b) => transition('clear', b)} onClose={() => setShowClear(false)} />;
+  if (showMemo) return <MemoModal job={job} onClose={() => setShowMemo(false)} />;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -798,7 +797,8 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
               {job.register_time && <p>📋 แจ้งซ่อม — {fmt(job.register_time)}</p>}
               {job.assign_time   && <p>👷 รับงาน — {fmt(job.assign_time)}</p>}
               {job.start_time    && <p>🔧 เริ่มซ่อม — {fmt(job.start_time)}</p>}
-              {job.clear_time    && <p>✅ ซ่อมเสร็จ — {fmt(job.clear_time)}</p>}
+              {job.wait_parts_time && <p>📦 รออะไหล่ — {fmt(job.wait_parts_time)}</p>}
+              {job.clear_time    && <p>✅ ซ่อมเสร็จ (ปิดงาน) — {fmt(job.clear_time)}</p>}
               {job.close_time    && <p>🏁 ปิดงาน — {fmt(job.close_time)}</p>}
               {job.cancel_time   && <p>❌ ยกเลิก — {fmt(job.cancel_time)} {job.cancel_reason ? `(${job.cancel_reason})` : ''}</p>}
             </div>
@@ -826,35 +826,38 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
           {msg && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
         </div>
 
-        {!['Close', 'Cancel'].includes(job.status) && !cancelling && (
+        {!TERMINAL_STATUSES.includes(job.status) && !cancelling && (
           <div className="px-6 py-4 border-t flex flex-wrap gap-2">
             <button onClick={() => setEditing(true)} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
               แก้ไขรายละเอียด
             </button>
-            {job.status === 'Register' && (
-              <button onClick={() => setShowAssign(true)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-                รับงาน
-              </button>
-            )}
-            {job.status === 'Assign' && (
+            {job.status !== 'Work On' && (
               <button disabled={busy} onClick={() => transition('start')}
                 className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600 disabled:opacity-50">
-                {busy ? '…' : 'เริ่มงาน'}
+                {busy ? '…' : '🔧 เริ่มซ่อม'}
               </button>
             )}
-            {job.status === 'Work On' && (
-              <button onClick={() => setShowClear(true)} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700">
-                ปิดงาน
+            {job.status !== 'Wait Parts' && (
+              <button disabled={busy} onClick={() => transition('wait_parts')}
+                className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-50">
+                {busy ? '…' : '📦 รออะไหล่'}
               </button>
             )}
-            {job.status === 'Clear' && isAdmin && (
-              <button disabled={busy} onClick={() => transition('close')}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
-                {busy ? '…' : 'ปิดสมบูรณ์'}
-              </button>
-            )}
+            <button onClick={() => setShowClear(true)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+              ✅ ซ่อมเสร็จ (ปิดงาน)
+            </button>
+            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-orange-300 text-orange-700 bg-orange-50 rounded-lg text-sm hover:bg-orange-100">
+              📄 Memo อะไหล่
+            </button>
             <button onClick={() => setCancelling(true)} className="ml-auto px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50">
               ยกเลิกใบงาน
+            </button>
+          </div>
+        )}
+        {TERMINAL_STATUSES.includes(job.status) && job.status !== 'Cancel' && (
+          <div className="px-6 py-4 border-t flex justify-end">
+            <button onClick={() => setShowMemo(true)} className="px-3 py-1.5 border border-orange-300 text-orange-700 bg-orange-50 rounded-lg text-sm hover:bg-orange-100">
+              📄 Memo อะไหล่
             </button>
           </div>
         )}
@@ -875,7 +878,6 @@ export default function AcRepair() {
   const [err, setErr] = useState('');
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [showParts, setShowParts] = useState(false);
 
   const ACR = '/ac-repair-jobs';
@@ -902,14 +904,7 @@ export default function AcRepair() {
     load();
   }
 
-  async function importJob(data) {
-    await api.post(`${ACR}/import`, data);
-    setShowImport(false);
-    load();
-  }
-
   const totalActive = ACTIVE_STATUSES.reduce((s, k) => s + (stats[k] || 0), 0);
-  const isAdmin = ['admin', 'super_admin'].includes(role);
 
   return (
     <Layout>
@@ -924,17 +919,14 @@ export default function AcRepair() {
           <button onClick={() => setShowParts(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
             🧰 สรุปอะไหล่
           </button>
-          <button onClick={() => setShowImport(true)} className="px-3 py-2 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
-            📥 นำเข้างาน
-          </button>
           <button onClick={() => setShowCreate(true)} className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 flex items-center gap-1.5">
-            + สร้างใบงาน
+            + แจ้งซ่อม
           </button>
         </div>
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
         {ALL_STATUSES.map((s) => (
           <button
             key={s}
@@ -986,11 +978,12 @@ export default function AcRepair() {
               className="bg-white border rounded-xl p-4 cursor-pointer hover:shadow-sm transition-shadow flex items-start gap-4"
             >
               <div className={`w-1.5 self-stretch rounded-full shrink-0 ${
-                job.status === 'Register'  ? 'bg-gray-400' :
-                job.status === 'Assign'    ? 'bg-blue-500' :
-                job.status === 'Work On'   ? 'bg-yellow-500' :
-                job.status === 'Clear'     ? 'bg-teal-500' :
-                job.status === 'Close'     ? 'bg-green-500' : 'bg-red-400'
+                job.status === 'Register'     ? 'bg-gray-400' :
+                job.status === 'Assign'       ? 'bg-blue-500' :
+                job.status === 'Work On'      ? 'bg-yellow-500' :
+                job.status === 'Wait Parts'   ? 'bg-orange-500' :
+                job.status === 'Clear'        ? 'bg-green-500' :
+                job.status === 'Close'        ? 'bg-green-500' : 'bg-red-400'
               }`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1011,10 +1004,9 @@ export default function AcRepair() {
                 </div>
               </div>
               <div className="shrink-0 text-xs">
-                {job.status === 'Register'              && <span className="text-blue-600 font-medium">รับงาน →</span>}
-                {job.status === 'Assign'                && <span className="text-yellow-600 font-medium">เริ่มงาน →</span>}
-                {job.status === 'Work On'               && <span className="text-teal-600 font-medium">ปิดงาน →</span>}
-                {job.status === 'Clear' && isAdmin       && <span className="text-green-600 font-medium">ปิดสมบูรณ์ →</span>}
+                {['Register', 'Assign'].includes(job.status) && <span className="text-yellow-600 font-medium">เริ่มซ่อม →</span>}
+                {job.status === 'Work On'                    && <span className="text-green-600 font-medium">ซ่อมเสร็จ →</span>}
+                {job.status === 'Wait Parts'                 && <span className="text-orange-600 font-medium">รออะไหล่ ⏳</span>}
               </div>
             </div>
           ))}
@@ -1023,7 +1015,6 @@ export default function AcRepair() {
 
       {/* Modals */}
       {showCreate && <JobFormModal onSave={createJob} onClose={() => setShowCreate(false)} />}
-      {showImport && <ImportModal onImport={importJob} onClose={() => setShowImport(false)} />}
       {showParts && <PartsSummaryModal onClose={() => setShowParts(false)} />}
       {selected && (
         <DetailModal

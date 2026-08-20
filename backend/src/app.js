@@ -68,10 +68,10 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/master', require('./routes/master'));
 app.use('/api/work-orders', requireBranch, require('./routes/workOrders'));
 app.use('/api/simple-wo',   requireBranch, require('./routes/simpleWorkOrders'));
-// Inbound auto-import webhook from repair-system — PUBLIC (shared-secret guarded),
-// branch resolved from the body's repairSlug, so NOT behind requireBranch.
-app.use('/api/ac-repair-webhook', require('./routes/acRepairWebhook'));
+// ระบบซ่อมแอร์ standalone — ตัดการเชื่อม repair-system แล้ว (Worawit 20 Aug 2026):
+// webhook รับงานจากฝั่งอาคารถูกถอดออก งานซ่อมแอร์เปิด/ปิดในระบบนี้ที่เดียว.
 app.use('/api/ac-repair-jobs', requireBranch, require('./routes/acRepairJobs'));
+app.use('/api/ac-memos', requireBranch, require('./routes/acMemos'));
 app.use('/api/repair-logs', requireBranch, require('./routes/repairLogs'));
 app.use('/api/pdf',         require('./routes/pdf'));
 app.use('/api/import',      requireBranch, require('./routes/import'));

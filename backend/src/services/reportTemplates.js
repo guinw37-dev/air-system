@@ -1499,7 +1499,7 @@ function buildReportHtml(data, type) {
 
 // ── ใบงานซ่อมแอร์ (AC repair job) — single-page printable ────────────────────
 const AC_STATUS_TH = {
-  Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม',
+  Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม', 'Wait Parts': 'รออะไหล่',
   Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
 };
 function fmtDateTime(v) {
@@ -1550,7 +1550,7 @@ function buildAcRepairReportHtml(job, branch) {
     ? `<tr><th style="width:6%;text-align:center">#</th><th>รายการ</th><th style="width:10%;text-align:center">จำนวน</th><th style="width:24%">หมายเหตุ</th><th style="width:15%;text-align:center">ราคา/หน่วย</th><th style="width:15%;text-align:center">รวม</th></tr>`
     : `<tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>`;
   const partsTotalRow = hasPricing
-    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#eff6ff;color:#1e40af">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#eff6ff;color:#1e40af">${fmtTHB(partsTotal)}</td></tr>`
+    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">${fmtTHB(partsTotal)}</td></tr>`
     : '';
   const afterImg = j.after_image_url
     ? `<div class="sec"><div class="sec-h">รูปหลังซ่อม</div>
@@ -1560,27 +1560,26 @@ function buildAcRepairReportHtml(job, branch) {
 <title>${escapeHtml(j.job_number || 'ใบงานซ่อมแอร์')}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:#1f2937;margin:0;padding:24px;font-size:14px}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px}
-  .head .title{font-size:20px;font-weight:700;color:#1e3a8a}
-  .head .no{font-family:monospace;font-size:15px;color:#2563eb;font-weight:700}
-  .head .sub{font-size:12px;color:#6b7280}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:600}
-  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #2563eb;padding-left:8px;margin-bottom:6px}
+  .head{display:flex;justify-content:space-between;align-items:center;background:#ED7D31;border-radius:10px;padding:12px 18px;margin-bottom:14px;color:#fff}
+  .head .title{font-size:20px;font-weight:700}
+  .head .no{font-family:monospace;font-size:15px;font-weight:700}
+  .head .sub{font-size:12px;opacity:.92}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#fff;color:#ED7D31;font-size:12px;font-weight:700}
+  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #ED7D31;padding-left:8px;margin-bottom:6px}
   table{width:100%;border-collapse:collapse} td{padding:5px 8px;vertical-align:top}
-  .kv td.k{width:32%;color:#6b7280;background:#f9fafb} .kv td{border:1px solid #eef2f7}
-  .parts th{background:#eff6ff;color:#1e40af;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #dbeafe}
-  .parts td{border:1px solid #eef2f7}
-  .desc{white-space:pre-wrap;border:1px solid #eef2f7;border-radius:6px;padding:8px;background:#fafafa;min-height:38px}
+  .kv td.k{width:32%;color:#6b7280;background:#fdf6f0} .kv td{border:1px solid #f3e6da}
+  .parts th{background:#FBE5D6;color:#b45309;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #f0d5bd}
+  .parts td{border:1px solid #f3e6da}
+  .desc{white-space:pre-wrap;border:1px solid #f3e6da;border-radius:6px;padding:8px;background:#fdfaf7;min-height:38px}
 </style></head><body>
   <div class="head">
     <div>
-      <div class="title">ใบงานซ่อมแอร์</div>
-      <div class="sub">${dash(branch && branch.name)}</div>
+      <div class="title">ใบงานแจ้งซ่อมเครื่องปรับอากาศ — ระบบ Air</div>
+      <div class="sub">${dash(branch && branch.name)} · บริษัท เทคนิคอล วอเตอร์ จำกัด</div>
     </div>
     <div style="text-align:right">
       <div class="no">${escapeHtml(j.job_number || '')}</div>
       <div class="sub"><span class="badge">${escapeHtml(AC_STATUS_TH[j.status] || j.status || '')}</span></div>
-      ${j.repair_job_number ? `<div class="sub">อ้างอิง: ${escapeHtml(j.repair_job_number)}</div>` : ''}
     </div>
   </div>
 
@@ -1612,7 +1611,7 @@ function buildAcRepairReportHtml(job, branch) {
   <div class="sec"><div class="sec-h">Timeline</div>
     <table class="kv">
       ${tl('แจ้งซ่อม', j.register_time)}${tl('รับงาน', j.assign_time)}${tl('เริ่มซ่อม', j.start_time)}
-      ${tl('ซ่อมเสร็จ', j.clear_time)}${tl('ปิดงาน', j.close_time)}
+      ${tl('รออะไหล่', j.wait_parts_time)}${tl('ซ่อมเสร็จ', j.clear_time)}${tl('ปิดงาน', j.close_time)}
       ${j.cancel_time ? `<tr><td class="k">ยกเลิก</td><td class="v">${fmtDateTime(j.cancel_time)} ${escapeHtml(j.cancel_reason || '')}</td></tr>` : ''}
     </table></div>
 </body></html>`;
