@@ -208,6 +208,8 @@ async function provisionBranchSchema(schemaName) {
     await c.query(`ALTER TABLE IF EXISTS simple_work_orders ADD COLUMN IF NOT EXISTS condition JSONB DEFAULT '{}'::jsonb`);
     // สถานะ "รออะไหล่" (workflow ย่อ 20 Aug 2026) — stamp เวลาเข้าสถานะล่าสุด.
     await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS wait_parts_time TIMESTAMPTZ`);
+    // รูปหลังซ่อมหลายรูป (สูงสุด 6) — after_image_url เดิมคงไว้เพื่อใบเก่า.
+    await c.query(`ALTER TABLE IF EXISTS ac_repair_jobs ADD COLUMN IF NOT EXISTS after_photo_urls JSONB DEFAULT '[]'::jsonb`);
     // ตำแหน่งผู้เซ็น snapshot ณ วันเซ็น (Request 22-07 ข้อ 2). department = ตำแหน่ง
     // ที่ผู้เปิดแท็บเล็ตพิมพ์ให้เจ้าหน้าที่ รพ. (ไม่ได้ snapshot จาก users).
     for (const slot of ['team', 'supervisor', 'building', 'engineer', 'department']) {

@@ -1,8 +1,9 @@
 // acMemoPdf — HTML สำหรับ MEMO ขออนุมัติจัดซื้ออะไหล่แอร์ (พิมพ์เป็น PDF ผ่าน
 // pdfRenderer). โครงเดียวกับ Memo ฝั่ง repair-system (4 ช่องเซ็น TW/รพ.) แต่
-// หัวเอกสารโทนส้ม + ระบุระบบ Air และเนื้อหาย่อกว่า (Worawit 20 Aug 2026).
-const ORANGE = '#ED7D31';
-const ORANGE_SOFT = '#FBE5D6';
+// หัวเอกสารโทนฟ้า-ขาว + ระบุระบบ Air และเนื้อหาย่อกว่า (Worawit 20 Aug 2026).
+const BLUE = '#0284C7';
+const BLUE_SOFT = '#E0F2FE';
+const BLUE_DEEP = '#075985';
 const NAVY = '#1f2937';
 
 const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -50,21 +51,21 @@ function buildAcMemoHtml(memo, job, branch) {
 <title>${esc(m.memo_number || 'MEMO')}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:${NAVY};margin:0;padding:26px 30px;font-size:14px}
-  .bar{background:${ORANGE};color:#fff;border-radius:10px;padding:12px 18px;display:flex;justify-content:space-between;align-items:center}
+  .bar{background:${BLUE};color:#fff;border-radius:10px;padding:12px 18px;display:flex;justify-content:space-between;align-items:center}
   .bar .t1{font-size:20px;font-weight:700}
   .bar .t2{font-size:11px;opacity:.92}
-  .bar .sys{background:#fff;color:${ORANGE};font-weight:700;border-radius:8px;padding:4px 12px;font-size:13px}
+  .bar .sys{background:#fff;color:${BLUE};font-weight:700;border-radius:8px;padding:4px 12px;font-size:13px}
   .meta{display:flex;justify-content:space-between;margin:12px 2px 4px;font-size:13px}
-  .meta b{color:${ORANGE}}
+  .meta b{color:${BLUE}}
   .field{margin:7px 2px;font-size:14px}
   .field .k{font-weight:700;display:inline-block;min-width:52px}
-  .refbox{background:${ORANGE_SOFT};border:1px solid ${ORANGE};border-radius:8px;padding:8px 12px;margin:10px 0;font-size:13px}
-  .refbox b{color:#b45309}
+  .refbox{background:${BLUE_SOFT};border:1px solid ${BLUE};border-radius:8px;padding:8px 12px;margin:10px 0;font-size:13px}
+  .refbox b{color:${BLUE_DEEP}}
   table{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px}
-  th{background:${ORANGE};color:#fff;padding:6px 8px;font-weight:700;border:1px solid ${ORANGE}}
+  th{background:${BLUE};color:#fff;padding:6px 8px;font-weight:700;border:1px solid ${BLUE}}
   td{border:1px solid #ddd;padding:5px 8px}
   .c{text-align:center} .r{text-align:right}
-  tr.total td{background:${ORANGE_SOFT};font-weight:700;color:#b45309;border-color:${ORANGE}}
+  tr.total td{background:${BLUE_SOFT};font-weight:700;color:${BLUE_DEEP};border-color:${BLUE}}
   .reason{margin:8px 2px;font-size:14px}
   .sigs{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px;margin-top:22px}
   .sig{text-align:center;font-size:13px}

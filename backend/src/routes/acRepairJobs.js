@@ -153,11 +153,11 @@ router.get('/:id', async (req, res) => {
 // ── POST / — create job manually ─────────────────────────────────────────
 router.post('/', async (req, res) => {
   if (!req.body.description?.trim()) return res.status(400).json({ error: 'กรุณาระบุรายละเอียด' });
-  // รูปแจ้งซ่อม (สูงสุด 3) — save base64 → disk ก่อน insert
+  // รูปแจ้งซ่อม (ก่อน สูงสุด 6) — save base64 → disk ก่อน insert
   let photoUrls = [];
   try {
     photoUrls = (Array.isArray(req.body.photosBase64) ? req.body.photosBase64 : [])
-      .slice(0, 3)
+      .slice(0, 6)
       .filter((p) => p && p.base64 && p.name)
       .map((p) => savePhoto(req.branch.slug, p.base64, p.name));
   } catch (e) { return res.status(400).json({ error: e.message }); }
@@ -218,7 +218,14 @@ router.get('/:id/pdf', async (req, res) => {
       `SELECT j.*, u.name AS created_by_name FROM ac_repair_jobs j
          LEFT JOIN users u ON j.created_by = u.id WHERE j.id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบใบงาน' });
-    const html = buildAcRepairReportHtml(rows[0], req.branch);
+    // Memo ของใบงาน (ส่วนที่ 4) — สาขาที่ยังไม่ migrate ตาราง memo ไม่ทำให้ใบงานพัง
+    let memo = null;
+    try {
+      const { rows: mr } = await req.db('SELECT * FROM ac_memos WHERE job_id = $1', [req.params.id]);
+      memo = mr[0] || null;
+    } catch { /* no ac_memos table yet */ }
+    const baseUrl = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const html = buildAcRepairReportHtml(rows[0], req.branch, { memo, baseUrl });
     try {
       const pdf = await htmlToPdf(html);
       res.setHeader('Content-Type', 'application/pdf');
@@ -264,7 +271,14 @@ router.put('/:id/status', async (req, res) => {
     if (action === 'clear') {
       add('work_desc', work_desc || null);
       add('clear_time', new Date());
-      if (afterImageBase64 && afterImageName) {
+      // รูปหลังซ่อมหลายรูป (สูงสุด 6); afterImageBase64 เดี่ยวคงไว้เพื่อ client เก่า
+      const afterList = (Array.isArray(req.body.afterPhotosBase64) ? req.body.afterPhotosBase64 : [])
+        .slice(0, 6).filter((p) => p && p.base64 && p.name);
+      if (afterList.length) {
+        add('after_photo_urls', JSON.stringify(
+          afterList.map((p) => savePhoto(req.branch.slug, p.base64, p.name))
+        ));
+      } else if (afterImageBase64 && afterImageName) {
         add('after_image_url', savePhoto(req.branch.slug, afterImageBase64, afterImageName));
       }
     }

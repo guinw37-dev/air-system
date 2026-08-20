@@ -1523,98 +1523,158 @@ function partPrice(v) {
 function fmtTHB(n) {
   return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function buildAcRepairReportHtml(job, branch) {
+// ใบแจ้งซ่อมแอร์ — โครงเดียวกับใบแจ้งซ่อมช่างอาคาร (repair-system) แต่โทนฟ้า-ขาว
+// แยกทีมช่างแอร์: หัว 2 ฝั่ง + ส่วนที่ 1-4 + สรุปทุกขั้นตอน + รูปก่อน/หลัง (สูงสุด
+// อย่างละ 6) + ช่องเซ็น. opts.memo = memo ของใบงาน (ส่วนที่ 4), opts.baseUrl =
+// origin ของ API สำหรับ resolve รูป /uploads (setContent ไม่มี base URL).
+function buildAcRepairReportHtml(job, branch, opts = {}) {
   const j = job || {};
+  const memo = opts.memo || null;
+  const base = String(opts.baseUrl || '').replace(/\/+$/, '');
+  const absUrl = (u) => (u && String(u).startsWith('/') ? `${base}${u}` : u);
+  const B = '#0284C7', BS = '#E0F2FE', BD = '#075985', LINE = '#bae6fd';
   const parts = Array.isArray(j.parts) ? j.parts : [];
-  const row = (k, v) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${dash(v)}</td></tr>`;
-  const tl = (label, t) => t ? `<tr><td class="k">${escapeHtml(label)}</td><td class="v">${fmtDateTime(t)}</td></tr>` : '';
-  // Show pricing columns only when at least one part carries a price > 0,
-  // so legacy jobs without prices stay clean.
+  const kv = (k, v) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${dash(v)}</td></tr>`;
+
+  const place = [j.building && `อาคาร ${j.building}`, j.floor && `ชั้น ${j.floor}`, j.department]
+    .filter(Boolean).join(' / ');
+  // ระยะเวลาแจ้ง → เสร็จ
+  let elapsed = '-';
+  if (j.register_time && j.clear_time) {
+    const mins = Math.max(0, Math.round((new Date(j.clear_time) - new Date(j.register_time)) / 60000));
+    elapsed = mins >= 60 ? `${Math.floor(mins / 60)} ชม. ${mins % 60} นาที` : `${mins} นาที`;
+  }
+
+  // ส่วนที่ 3 — รายการเบิกอะไหล่
   const hasPricing = parts.some((p) => partPrice(p && p.unit_price) > 0);
   const partsTotal = parts.reduce((s, p) => s + partQty(p && p.qty) * partPrice(p && p.unit_price), 0);
-  const colCount = hasPricing ? 6 : 4;
-  const partsRows = parts.length
-    ? parts.map((p, i) => {
-        const priceCells = hasPricing
-          ? `<td style="text-align:right">${fmtTHB(partPrice(p.unit_price))}</td>
-        <td style="text-align:right">${fmtTHB(partQty(p.qty) * partPrice(p.unit_price))}</td>`
-          : '';
-        return `<tr>
-        <td style="text-align:center">${i + 1}</td>
-        <td>${dash(p.name)}</td>
-        <td style="text-align:center">${dash(p.qty)}</td>
-        <td>${dash(p.note)}</td>${priceCells}</tr>`;
-      }).join('')
-    : `<tr><td colspan="${colCount}" style="text-align:center;color:#888">— ไม่มีรายการอะไหล่ —</td></tr>`;
-  const partsHead = hasPricing
-    ? `<tr><th style="width:6%;text-align:center">#</th><th>รายการ</th><th style="width:10%;text-align:center">จำนวน</th><th style="width:24%">หมายเหตุ</th><th style="width:15%;text-align:center">ราคา/หน่วย</th><th style="width:15%;text-align:center">รวม</th></tr>`
-    : `<tr><th style="width:8%;text-align:center">#</th><th>รายการ</th><th style="width:14%;text-align:center">จำนวน</th><th style="width:30%">หมายเหตุ</th></tr>`;
-  const partsTotalRow = hasPricing
-    ? `<tr><td colspan="5" style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:#FBE5D6;color:#b45309">${fmtTHB(partsTotal)}</td></tr>`
+  const partsBlock = parts.length
+    ? `<table class="parts"><tr><th style="width:7%;text-align:center">#</th><th>รายการ</th>
+         <th style="width:13%;text-align:center">จำนวน</th>
+         ${hasPricing ? '<th style="width:18%;text-align:center">ราคา/หน่วย</th><th style="width:18%;text-align:center">รวม</th>' : '<th style="width:30%">หมายเหตุ</th>'}</tr>
+       ${parts.map((p, i) => `<tr><td style="text-align:center">${i + 1}</td><td>${dash(p.name)}</td>
+         <td style="text-align:center">${dash(p.qty)}</td>
+         ${hasPricing
+           ? `<td style="text-align:right">${fmtTHB(partPrice(p.unit_price))}</td><td style="text-align:right">${fmtTHB(partQty(p.qty) * partPrice(p.unit_price))}</td>`
+           : `<td>${dash(p.note)}</td>`}</tr>`).join('')}
+       ${hasPricing ? `<tr><td colspan="4" style="text-align:right;font-weight:700;background:${BS};color:${BD}">รวมค่าอะไหล่ (บาท)</td><td style="text-align:right;font-weight:700;background:${BS};color:${BD}">${fmtTHB(partsTotal)}</td></tr>` : ''}
+       </table>`
+    : `<div class="empty">— ไม่มีรายการเบิกอะไหล่ —</div>`;
+
+  // ส่วนที่ 4 — Memo เบิกอะไหล่ของใบงานนี้
+  const memoBlock = memo
+    ? `<table class="kv">${kv('เลขที่ Memo', memo.memo_number)}${kv('เรื่อง', memo.subject)}
+       ${kv('วันที่ออก', fmtDateTime(memo.created_at))}</table>`
+    : `<div class="empty">— ยังไม่ออก Memo เบิกอะไหล่ —</div>`;
+
+  // สรุปทุกขั้นตอนการทำงาน
+  const steps = [
+    ['แจ้งซ่อม', j.register_time, j.requester],
+    ['รับงาน', j.assign_time, j.assign_name],
+    ['เริ่มซ่อม', j.start_time, j.assign_name],
+    ['รออะไหล่', j.wait_parts_time, j.assign_name],
+    ['ซ่อมเสร็จ', j.clear_time, j.assign_name],
+    ['ปิดงาน', j.close_time, ''],
+    ['ยกเลิก', j.cancel_time, j.cancel_reason],
+  ].filter(([, t]) => t);
+  const stepsBlock = steps.length
+    ? `<table class="steps"><tr><th style="width:22%">ขั้นตอน</th><th style="width:30%">เวลา</th><th>ผู้ทำ / หมายเหตุ</th></tr>
+       ${steps.map(([s, t, who]) => `<tr><td>${escapeHtml(s)}</td><td>${fmtDateTime(t)}</td><td>${dash(who)}</td></tr>`).join('')}</table>`
+    : `<div class="empty">— ยังไม่มีขั้นตอน —</div>`;
+
+  // รูปภาพประกอบ — ก่อน/แจ้งซ่อม + หลังซ่อม (สูงสุดอย่างละ 6, grid 3 ต่อแถว)
+  const beforeUrls = (Array.isArray(j.photo_urls) ? j.photo_urls : []).slice(0, 6);
+  const afterUrls = [
+    ...(Array.isArray(j.after_photo_urls) ? j.after_photo_urls : []),
+    ...(j.after_image_url ? [j.after_image_url] : []),
+  ].filter(Boolean).slice(0, 6);
+  const photoGrid = (urls, label) => urls.length
+    ? `<div class="ph-label">${escapeHtml(label)}</div>
+       <div class="ph-grid">${urls.map((u) => `<img src="${escapeHtml(absUrl(u))}"/>`).join('')}</div>`
     : '';
-  const afterImg = j.after_image_url
-    ? `<div class="sec"><div class="sec-h">รูปหลังซ่อม</div>
-         <img src="${escapeHtml(j.after_image_url)}" style="max-width:100%;max-height:280px;border:1px solid #ddd;border-radius:6px"/></div>`
+  const photosBlock = (beforeUrls.length || afterUrls.length)
+    ? `<div class="sec-band">📷 รูปภาพประกอบ</div>
+       ${photoGrid(beforeUrls, 'ก่อน/แจ้งซ่อม')}${photoGrid(afterUrls, 'หลังซ่อม')}`
     : '';
+
   return `<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"/>
-<title>${escapeHtml(j.job_number || 'ใบงานซ่อมแอร์')}</title>
+<title>${escapeHtml(j.job_number || 'ใบแจ้งซ่อมแอร์')}</title>
 <style>
-  *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:#1f2937;margin:0;padding:24px;font-size:14px}
-  .head{display:flex;justify-content:space-between;align-items:center;background:#ED7D31;border-radius:10px;padding:12px 18px;margin-bottom:14px;color:#fff}
-  .head .title{font-size:20px;font-weight:700}
-  .head .no{font-family:monospace;font-size:15px;font-weight:700}
-  .head .sub{font-size:12px;opacity:.92}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#fff;color:#ED7D31;font-size:12px;font-weight:700}
-  .sec{margin-bottom:14px} .sec-h{font-size:13px;font-weight:700;color:#374151;border-left:3px solid #ED7D31;padding-left:8px;margin-bottom:6px}
-  table{width:100%;border-collapse:collapse} td{padding:5px 8px;vertical-align:top}
-  .kv td.k{width:32%;color:#6b7280;background:#fdf6f0} .kv td{border:1px solid #f3e6da}
-  .parts th{background:#FBE5D6;color:#b45309;font-size:12px;padding:6px 8px;text-align:left;border:1px solid #f0d5bd}
-  .parts td{border:1px solid #f3e6da}
-  .desc{white-space:pre-wrap;border:1px solid #f3e6da;border-radius:6px;padding:8px;background:#fdfaf7;min-height:38px}
+  *{box-sizing:border-box} body{font-family:'Sarabun','TH Sarabun New',sans-serif;color:#1f2937;margin:0;padding:0;font-size:13px;background:#fff}
+  .top{display:flex;justify-content:space-between;background:${B};color:#fff;padding:10px 16px;border-radius:8px 8px 0 0}
+  .top .l .h1{font-size:16px;font-weight:700} .top .l .h2{font-size:11px;opacity:.9}
+  .top .r{text-align:right} .top .r .h1{font-size:16px;font-weight:700} .top .r .h2{font-size:10.5px;opacity:.9}
+  .subbar{display:flex;justify-content:space-between;align-items:center;background:#f0f9ff;border:1px solid ${LINE};border-top:0;padding:7px 16px;margin-bottom:10px}
+  .jobno{font-family:monospace;font-size:17px;font-weight:700;color:${BD}}
+  .badge{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:${B};color:#fff;font-size:11px;font-weight:700;vertical-align:middle}
+  .printed{font-size:10.5px;color:#6b7280}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .box{border:1px solid ${LINE};border-radius:6px;overflow:hidden}
+  .box .bh{background:${BD};color:#fff;font-size:12.5px;font-weight:700;padding:5px 10px}
+  .box .bc{padding:6px 8px}
+  table{width:100%;border-collapse:collapse}
+  .kv td{padding:4px 7px;border-bottom:1px solid #f0f9ff;vertical-align:top}
+  .kv td.k{width:36%;color:#6b7280;background:#f8fcff} .kv tr:last-child td{border-bottom:0}
+  .parts th,.steps th{background:${BS};color:${BD};font-size:11.5px;padding:5px 7px;text-align:left;border:1px solid ${LINE}}
+  .parts td,.steps td{border:1px solid #e5f2fb;padding:4px 7px}
+  .empty{color:#94a3b8;text-align:center;padding:10px 0;font-size:12px}
+  .sec-band{background:${BD};color:#fff;font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:6px 6px 0 0;margin-top:10px}
+  .ph-label{color:#6b7280;font-size:11.5px;text-align:center;margin:8px 0 4px}
+  .ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border:1px solid ${LINE};border-radius:0 0 6px 6px;padding:8px}
+  .ph-grid img{width:100%;height:150px;object-fit:cover;border:1px solid #e5e7eb;border-radius:4px}
+  .signs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:26px;text-align:center;font-size:12.5px}
+  .signs .nm{font-weight:600;margin-top:34px} .signs .rl{color:#6b7280;font-size:11.5px;margin-top:2px}
+  .dots{border-top:1px dotted #94a3b8;width:70%;margin:0 auto}
 </style></head><body>
-  <div class="head">
-    <div>
-      <div class="title">ใบงานแจ้งซ่อมเครื่องปรับอากาศ — ระบบ Air</div>
-      <div class="sub">${dash(branch && branch.name)} · บริษัท เทคนิคอล วอเตอร์ จำกัด</div>
+  <div class="top">
+    <div class="l">
+      <div class="h1">❄ ${dash(branch && branch.name)}</div>
+      <div class="h2">ทีมช่างแอร์ — บริษัท เทคนิคอล วอเตอร์ จำกัด</div>
     </div>
-    <div style="text-align:right">
-      <div class="no">${escapeHtml(j.job_number || '')}</div>
-      <div class="sub"><span class="badge">${escapeHtml(AC_STATUS_TH[j.status] || j.status || '')}</span></div>
+    <div class="r">
+      <div class="h1">ใบแจ้งซ่อมแอร์ / บันทึกการปฏิบัติงาน</div>
+      <div class="h2">AC Work Order &amp; Maintenance Record</div>
     </div>
   </div>
-
-  <div class="sec"><div class="sec-h">สถานที่ / ผู้แจ้ง</div>
-    <table class="kv">
-      ${row('อาคาร', j.building)}${row('ชั้น', j.floor)}${row('แผนก / ห้อง', j.department)}
-      ${row('ผู้แจ้ง', j.requester)}${row('เบอร์โทร', j.telephone)}
-    </table></div>
-
-  <div class="sec"><div class="sec-h">รายละเอียดอาการ</div><div class="desc">${dash(j.description)}</div></div>
-
-  <div class="sec"><div class="sec-h">ข้อมูลการซ่อม</div>
-    <table class="kv">
-      ${row('ช่างผู้รับงาน', j.assign_name)}${row('ประเภทปัญหา', j.issue_type)}
-      ${j.job_detail ? row('บันทึกเพิ่มเติม', j.job_detail) : ''}
-    </table>
-    ${j.work_desc ? `<div style="margin-top:6px"><div class="sec-h">รายละเอียดการซ่อม</div><div class="desc">${dash(j.work_desc)}</div></div>` : ''}
+  <div class="subbar">
+    <div><span style="font-size:10.5px;color:#6b7280">หมายเลขใบงาน</span><br/>
+      <span class="jobno">${escapeHtml(j.job_number || '')}</span><span class="badge">${escapeHtml(AC_STATUS_TH[j.status] || j.status || '')}</span></div>
+    <div class="printed">พิมพ์เมื่อ: ${fmtDateTime(opts.printedAt || new Date())}</div>
   </div>
 
-  <div class="sec"><div class="sec-h">อะไหล่ที่ต้องใช้ / สั่งของ</div>
-    <table class="parts">
-      ${partsHead}
-      ${partsRows}
-      ${partsTotalRow}
-    </table></div>
+  <div class="cols">
+    <div class="box"><div class="bh">ส่วนที่ 1 · ข้อมูลการแจ้งซ่อม</div><div class="bc">
+      <table class="kv">
+        ${kv('วันเวลาที่แจ้ง', fmtDateTime(j.register_time))}
+        ${kv('ผู้แจ้ง / เบอร์โทร', [j.requester, j.telephone].filter(Boolean).join(' (') + (j.telephone ? ')' : ''))}
+        ${kv('สถานที่', place)}
+        ${kv('เลขเครื่อง (ทะเบียนแอร์)', j.asset_code)}
+        ${kv('รายละเอียดอาการ', j.description)}
+      </table></div></div>
+    <div class="box"><div class="bh">ส่วนที่ 2 · การปฏิบัติงานของช่าง</div><div class="bc">
+      <table class="kv">
+        ${kv('เจ้าหน้าที่', j.assign_name)}
+        ${kv('ประเภทปัญหา', j.issue_type)}
+        ${kv('รายละเอียดที่จะดำเนินการ', j.job_detail)}
+        ${kv('สรุปการแก้ไข', j.work_desc)}
+        ${kv('เวลาเริ่ม / เสร็จ', `${fmtDateTime(j.start_time)} / ${fmtDateTime(j.clear_time)}`)}
+        ${kv('ระยะเวลาแจ้ง - เสร็จ', elapsed)}
+      </table></div></div>
+  </div>
 
-  ${afterImg}
+  <div class="cols">
+    <div class="box"><div class="bh">ส่วนที่ 3 · รายการเบิกอะไหล่</div><div class="bc">${partsBlock}</div></div>
+    <div class="box"><div class="bh">ส่วนที่ 4 · Memo เบิกอะไหล่</div><div class="bc">${memoBlock}</div></div>
+  </div>
 
-  <div class="sec"><div class="sec-h">Timeline</div>
-    <table class="kv">
-      ${tl('แจ้งซ่อม', j.register_time)}${tl('รับงาน', j.assign_time)}${tl('เริ่มซ่อม', j.start_time)}
-      ${tl('รออะไหล่', j.wait_parts_time)}${tl('ซ่อมเสร็จ', j.clear_time)}${tl('ปิดงาน', j.close_time)}
-      ${j.cancel_time ? `<tr><td class="k">ยกเลิก</td><td class="v">${fmtDateTime(j.cancel_time)} ${escapeHtml(j.cancel_reason || '')}</td></tr>` : ''}
-    </table></div>
+  <div class="box"><div class="bh">🗒 สรุปทุกขั้นตอนการทำงาน</div><div class="bc">${stepsBlock}</div></div>
+
+  ${photosBlock}
+
+  <div class="signs">
+    <div><div class="dots"></div><div class="nm">( ${dash(j.requester)} )</div><div class="rl">ผู้แจ้งซ่อม / รับมอบงาน</div></div>
+    <div><div class="dots"></div><div class="nm">( ${dash(j.assign_name)} )</div><div class="rl">เจ้าหน้าที่ผู้ปฏิบัติงาน</div></div>
+  </div>
 </body></html>`;
 }
-
 module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml, buildAcRepairReportHtml };
