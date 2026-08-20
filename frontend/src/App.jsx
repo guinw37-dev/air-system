@@ -21,6 +21,7 @@ import SimpleWoList from './pages/SimpleWoList'
 import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
 import AcRepair from './pages/AcRepair'
+import AcApproval from './pages/AcApproval'
 import Branches from './pages/Branches'
 import Landing from './pages/Landing'
 import SelectBranch from './pages/SelectBranch'
@@ -100,6 +101,7 @@ export default function App() {
         <Route path="/simple-wo/:id" element={<RequireAuth><SimpleWoDetail /></RequireAuth>} />
 
         <Route path="/ac-repair" element={<RequireAuth><AcRepair /></RequireAuth>} />
+        <Route path="/ac-approval" element={<RequireAuth><AcApproval /></RequireAuth>} />
 
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/repair-logs" element={<RequireAuth><RepairLogs /></RequireAuth>} />

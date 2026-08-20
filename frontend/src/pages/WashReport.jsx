@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import { CalendarDays, Sparkles, ClipboardCheck, Target, FileSpreadsheet, FileDown, AlertTriangle, ChevronRight, Wrench, Layers, GripVertical, ChevronDown, ChevronUp, Save, RotateCcw } from 'lucide-react'
 import { WidthProvider, Responsive } from 'react-grid-layout'
@@ -33,9 +34,9 @@ const pctTone = (p) => (p >= 100 ? '#059669' : p >= 60 ? '#0ea5e9' : '#f59e0b')
 
 // default grid (lg: 12 cols, rowHeight 30px)
 const DEFAULT_LAYOUT = [
-  { i: 'daily', x: 0, y: 0, w: 4, h: 9, minW: 3, minH: 4 },
-  { i: 'repair', x: 4, y: 0, w: 4, h: 9, minW: 3, minH: 4 },
-  { i: 'monthly', x: 8, y: 0, w: 4, h: 12, minW: 3, minH: 5 },
+  { i: 'daily', x: 0, y: 0, w: 6, h: 16, minW: 4, minH: 8 },
+  { i: 'repair', x: 6, y: 0, w: 6, h: 7, minW: 3, minH: 4 },
+  { i: 'monthly', x: 6, y: 7, w: 6, h: 12, minW: 3, minH: 5 },
   { i: 'yearly', x: 0, y: 9, w: 6, h: 14, minW: 4, minH: 6 },
   { i: 'weekly', x: 6, y: 9, w: 6, h: 14, minW: 4, minH: 6 },
   { i: 'bytype_year', x: 0, y: 23, w: 12, h: 9, minW: 3, minH: 4 },
@@ -63,6 +64,102 @@ function Card({ title, icon: Icon, children, chrome }) {
         )}
       </div>
       {!collapsed && <div className="p-4 flex-1 overflow-auto">{children}</div>}
+    </div>
+  )
+}
+
+// ── ปฏิทินยอดล้างรายวัน — แต่ละช่อง = ยอดรวม + จุดสีต่อประเภท คลิกเลือกวัน ─────
+const WT_DOT = { major: '#1e3a8a', minor: '#2563eb', fan: '#94a3b8' }
+function DailyCalendar({ month, zone, selDate, onPickDate }) {
+  const [days, setDays] = useState({})   // 'YYYY-MM-DD' → {major,minor,fan,total}
+  useEffect(() => {
+    if (!month) return
+    const from = `${month}-01`
+    const to = dayjs(from).endOf('month').format('YYYY-MM-DD')
+    const params = { from, to }
+    if (zone) params.zone = zone
+    api.get('/dashboard/wash-report/range', { params })
+      .then((r) => setDays(Object.fromEntries((r.data?.daily || []).map((d) => [d.date, d]))))
+      .catch(() => setDays({}))
+  }, [month, zone])
+
+  const first = dayjs(`${month}-01`)
+  const dim = first.daysInMonth()
+  const lead = first.day()               // 0=อาทิตย์
+  const today = dayjs().format('YYYY-MM-DD')
+  const cells = [
+    ...Array.from({ length: lead }, () => null),
+    ...Array.from({ length: dim }, (_, i) => first.date(i + 1).format('YYYY-MM-DD')),
+  ]
+  const monthTotal = Object.values(days).reduce((s, d) => s + (d.total || 0), 0)
+  return (
+    <div>
+      <div className="grid grid-cols-7 text-center text-[11px] text-slate-400 font-medium mb-1">
+        {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d) => <div key={d}>{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((d, i) => {
+          if (!d) return <div key={`b${i}`} />
+          const v = days[d]
+          const isSel = selDate === d
+          const isToday = d === today
+          return (
+            <button key={d} onClick={() => onPickDate(d)}
+              className={`rounded-lg border p-1 min-h-[52px] flex flex-col items-center transition-all text-center
+                ${isSel ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50'
+                  : v?.total ? 'border-sky-100 bg-sky-50/60 hover:bg-sky-50' : 'border-slate-100 bg-white hover:bg-slate-50'}`}>
+              <span className={`text-[10px] leading-3 ${isToday ? 'font-bold text-blue-700' : 'text-slate-400'}`}>{Number(d.slice(8))}</span>
+              {v?.total ? (
+                <>
+                  <span className="text-sm font-bold text-blue-900 leading-4">{v.total}</span>
+                  <span className="flex gap-0.5 mt-0.5">
+                    {['major', 'minor', 'fan'].map((k) => v[k] > 0 && (
+                      <span key={k} className="w-1.5 h-1.5 rounded-full" style={{ background: WT_DOT[k] }} />
+                    ))}
+                  </span>
+                </>
+              ) : <span className="text-[10px] text-slate-300 mt-1">—</span>}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500 flex-wrap">
+        {Object.entries(WT).map(([k, label]) => (
+          <span key={k} className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: WT_DOT[k] }} />{label}</span>
+        ))}
+        <span className="ml-auto">รวมทั้งเดือน <b className="text-blue-900">{monthTotal}</b> เครื่อง</span>
+      </div>
+    </div>
+  )
+}
+
+// ── donut % ต่อชนิดแอร์ (ยอดล้างสะสมปี vs เป้าปี) ─────────────────────────────
+const AC_COLORS = ['#0284c7', '#0f6e56', '#f59e0b', '#6366f1', '#dc2626', '#0d9488', '#a855f7', '#64748b']
+function AcTypeDonut({ label, done, target, color }) {
+  const pct = target > 0 ? Math.round((done / target) * 100) : 0
+  const filled = Math.min(done, target || done)
+  const rest = Math.max(0, (target || done) - filled)
+  const data = [
+    { name: 'ล้างแล้ว', value: filled || 0.0001, color },
+    { name: 'คงเหลือ', value: rest, color: '#e2e8f0' },
+  ]
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: 104, height: 104 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" innerRadius={35} outerRadius={49}
+              startAngle={90} endAngle={-270} paddingAngle={1} stroke="none">
+              {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-base font-bold" style={{ color }}>{pct}%</span>
+        </div>
+      </div>
+      <div className="text-sm font-semibold text-slate-700 -mt-1 text-center">{label}</div>
+      <div className="text-xs text-slate-500 tabular-nums">{done.toLocaleString()} / {target.toLocaleString()}</div>
     </div>
   )
 }
@@ -395,25 +492,33 @@ export default function WashReport() {
     const c = chromeFor(id)
     switch (id) {
       case 'daily': return (
-        <Card title="สรุปงานล้างประจำวัน" icon={Sparkles} chrome={c}>
-          <input type="date" value={selDate || data.date} onChange={(e) => setSelDate(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 w-full mb-3" />
-          <div className="flex items-baseline justify-between mb-3">
-            <div className="flex items-baseline gap-2"><span className="text-slate-500">ยอดล้าง/เป้าหมาย</span>
-              <span className="text-4xl font-bold text-blue-900">{data.daily.total}</span>
-              <span className="text-xl text-slate-400">/ {data.daily.target}</span><span className="text-slate-500">ตัว</span></div>
+        <Card title="ปฏิทินยอดล้างรายวัน" icon={CalendarDays} chrome={c}>
+          <div className="flex items-center gap-2 mb-2">
+            <select value={selMonth} onChange={(e) => setSelMonth(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
+              {monthOptions().map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            </select>
+            <span className="text-xs text-slate-400">คลิกวันเพื่อดูสรุปด้านล่าง</span>
           </div>
-          <div className="space-y-2.5 text-sm">
-            {[['major', data.daily.major, data.daily.target_major], ['minor', data.daily.minor, data.daily.target_minor], ['fan', data.daily.fan, data.daily.target_fan]].map(([k, v, tg]) => {
-              const pct = tg > 0 ? Math.min(100, Math.round((v / tg) * 100)) : 0
-              return (
-                <div key={k}>
-                  <div className="flex items-center justify-between mb-0.5"><span className="text-slate-600">{WT[k]}</span>
-                    <span><b className="text-blue-900">{v}</b><span className="text-slate-400"> / {tg} ตัว</span></span></div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: tg > 0 && v >= tg ? '#059669' : '#2563eb' }} /></div>
-                </div>
-              )
-            })}
+          <DailyCalendar month={selMonth} zone={selZone} selDate={selDate || data.date} onPickDate={setSelDate} />
+          <div className="mt-3 border-t border-slate-100 pt-2">
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-sm text-slate-500">สรุปวันที่ {thaiDate(data.date)}</span>
+              <span><b className="text-2xl text-blue-900">{data.daily.total}</b>
+                <span className="text-slate-400"> / {data.daily.target} ตัว</span></span>
+            </div>
+            <div className="space-y-2 text-sm">
+              {[['major', data.daily.major, data.daily.target_major], ['minor', data.daily.minor, data.daily.target_minor], ['fan', data.daily.fan, data.daily.target_fan]].map(([k, v, tg]) => {
+                const pct = tg > 0 ? Math.min(100, Math.round((v / tg) * 100)) : 0
+                return (
+                  <div key={k}>
+                    <div className="flex items-center justify-between mb-0.5"><span className="text-slate-600">{WT[k]}</span>
+                      <span><b className="text-blue-900">{v}</b><span className="text-slate-400"> / {tg} ตัว</span></span></div>
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: tg > 0 && v >= tg ? '#059669' : '#2563eb' }} /></div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </Card>
       )
@@ -489,7 +594,30 @@ export default function WashReport() {
         </Card>
       )
       case 'bytype_month': return <ByTypeCard title={`แยกประเภทแอร์ — ประจำเดือน ${monthLabel(data.monthly?.month || selMonth)}`} byType={data.byType} period="month" chrome={c} />
-      case 'bytype_year': return <ByTypeCard title={`แยกประเภทแอร์ — สะสมประจำปี ${(data.yearly.year || 0) + 543}`} byType={data.byType} period="year" chrome={c} />
+      case 'bytype_year': {
+        // รวมข้าม work_type → กราฟวงกลมต่อชนิดแอร์ (ยอดล้างสะสมปี vs เป้าปี)
+        const byAc = {}
+        for (const g of (data.byType || [])) for (const r of (g.rows || [])) {
+          const k = r.ac_type || 'ไม่ระบุ'
+          byAc[k] = byAc[k] || { done: 0, target: 0 }
+          byAc[k].done += r.done_year || 0
+          byAc[k].target += r.target_year || 0
+        }
+        const rows = Object.entries(byAc).filter(([, v]) => v.done > 0 || v.target > 0)
+          .sort((a, b) => b[1].target - a[1].target)
+        return (
+          <Card title={`แยกชนิดแอร์ — สะสมประจำปี ${(data.yearly.year || 0) + 543} (กราฟต่อชนิด)`} icon={Layers} chrome={c}>
+            {rows.length === 0 ? <p className="text-sm text-slate-400 py-2">ยังไม่มีข้อมูลแยกชนิด</p> : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {rows.map(([ac, v], i) => (
+                  <AcTypeDonut key={ac} label={ac} done={v.done} target={v.target}
+                    color={AC_COLORS[i % AC_COLORS.length]} />
+                ))}
+              </div>
+            )}
+          </Card>
+        )
+      }
       case 'range': return <RangeSection zone={selZone} chrome={c} />
       case 'coverage': return <CoverageSection month={selMonth} zone={selZone} chrome={c} />
       case 'target': return <TargetSection month={selMonth} zone={selZone} navigate={navigate} chrome={c} />

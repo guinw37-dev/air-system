@@ -93,48 +93,6 @@ router.get('/locations', async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
-// ── GET /parts-summary — aggregate อะไหล่ที่ต้องสั่ง across open jobs (สั่งของ) ──
-// Response shape: { items: [...rows], total_cost }
-//   row: { key, name, qty_list, jobs,        ← existing (backward compatible)
-//          unit_price, qty_total, cost_total } ← pricing
-//   unit_price  = max non-zero price seen for that name (representative)
-//   qty_total   = Σ numeric qty across jobs needing it
-//   cost_total  = Σ (qty × unit_price) across those jobs
-//   total_cost  = Σ cost_total over all rows
-// qty is stored as free text, so it's parsed leniently: the leading numeric run
-// of each value is taken (e.g. "2 ตัว" → 2); non-numeric qty counts as 0 for sums.
-router.get('/parts-summary', async (req, res) => {
-  try {
-    const { rows } = await req.db(`
-      SELECT lower(trim(p->>'name')) AS key,
-             max(p->>'name')         AS name,
-             string_agg(NULLIF(p->>'qty',''), ' + ') AS qty_list,
-             count(*)::int           AS jobs,
-             COALESCE(max(NULLIF(p->>'unit_price','')::numeric), 0) AS unit_price,
-             COALESCE(SUM(
-               COALESCE(NULLIF(substring(p->>'qty' FROM '^\\s*[0-9]+(\\.[0-9]+)?'),'')::numeric, 0)
-             ), 0) AS qty_total,
-             COALESCE(SUM(
-               COALESCE(NULLIF(substring(p->>'qty' FROM '^\\s*[0-9]+(\\.[0-9]+)?'),'')::numeric, 0)
-               * COALESCE(NULLIF(p->>'unit_price','')::numeric, 0)
-             ), 0) AS cost_total
-      FROM ac_repair_jobs j
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(j.parts,'[]'::jsonb)) AS p
-      WHERE j.status NOT IN ('Clear','Close','Cancel') AND trim(p->>'name') <> ''
-      GROUP BY lower(trim(p->>'name'))
-      ORDER BY name`);
-    // numeric columns come back as strings from pg → coerce to JS numbers.
-    const items = rows.map((r) => ({
-      ...r,
-      unit_price: Number(r.unit_price) || 0,
-      qty_total: Number(r.qty_total) || 0,
-      cost_total: Number(r.cost_total) || 0,
-    }));
-    const total_cost = items.reduce((s, r) => s + r.cost_total, 0);
-    res.json({ items, total_cost });
-  } catch (err) { serverError(res, err); }
-});
-
 // ── GET /:id — detail ──────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
