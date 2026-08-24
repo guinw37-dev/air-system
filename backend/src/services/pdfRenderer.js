@@ -52,10 +52,14 @@ async function htmlToPdf(html, { landscape = false } = {}) {
   }
 }
 
-// Render many HTML docs to PDFs in ONE browser (pages concurrently) and merge
-// them into a single PDF Buffer with pdf-lib. Wall-clock ≈ the slowest single
-// doc, not the sum — so a วางบิล bundle of full-photo WO reports stays well under
-// the proxy timeout. Throws PdfUnavailableError if Chrome can't launch.
+// Render many HTML docs to PDFs in ONE browser and merge them into a single
+// PDF Buffer with pdf-lib. Pages are rendered in small CHUNKS, not all at once:
+// a 135-WO วางบิล opened 135 tabs in one Chrome, starving every CDP call until
+// page.pdf()'s IO.read blew the protocolTimeout (prod, 24 Aug 2026). Bounded
+// concurrency keeps each chunk fast and memory flat; wall-clock grows but the
+// proxy imposes no response timeout. Throws PdfUnavailableError if Chrome can't
+// launch.
+const MERGE_CHUNK = 5;
 async function renderAndMerge(htmls, { landscape = false } = {}) {
   const { PDFDocument } = require('pdf-lib');
   let browser;
@@ -63,25 +67,30 @@ async function renderAndMerge(htmls, { landscape = false } = {}) {
     browser = await puppeteer.launch({
       executablePath: findChrome(),
       headless: true,
-      protocolTimeout: 180000,
+      protocolTimeout: 600000,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
   } catch (err) {
     throw new PdfUnavailableError(err.message);
   }
   try {
-    const buffers = await Promise.all((htmls || []).map(async (html) => {
-      const page = await browser.newPage();
-      try {
-        await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
-        return await page.pdf({
-          format: 'A4', landscape, printBackground: true, timeout: 120000,
-          margin: { top: '10mm', right: '10mm', bottom: '12mm', left: '10mm' },
-        });
-      } finally {
-        await page.close();
-      }
-    }));
+    const list = htmls || [];
+    const buffers = [];
+    for (let i = 0; i < list.length; i += MERGE_CHUNK) {
+      const part = await Promise.all(list.slice(i, i + MERGE_CHUNK).map(async (html) => {
+        const page = await browser.newPage();
+        try {
+          await page.setContent(html, { waitUntil: 'load', timeout: 120000 });
+          return await page.pdf({
+            format: 'A4', landscape, printBackground: true, timeout: 120000,
+            margin: { top: '10mm', right: '10mm', bottom: '12mm', left: '10mm' },
+          });
+        } finally {
+          await page.close();
+        }
+      }));
+      buffers.push(...part);
+    }
     const merged = await PDFDocument.create();
     for (const buf of buffers) {
       const doc = await PDFDocument.load(buf);
