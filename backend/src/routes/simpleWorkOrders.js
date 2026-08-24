@@ -859,11 +859,28 @@ router.post('/:id/sign', authMiddleware, async (req, res) => {
   finally { client.release(); }
 });
 
-// ── POST /api/simple-wo/batch-sign — sign many WOs at once (own slot only) ───
+// ── POST /api/simple-wo/batch-sign — sign many WOs at once ───────────────────
+// Own slot by default. The ONE exception: slot 'department' (เจ้าของพื้นที่ —
+// hospital staff with no account) may be batch-signed by any on-site role that
+// can proxy it on a single WO, with a typed name/position — same rule as
+// /:id/sign external signing (พีNut request, 20 Aug 2026). Other extra slots
+// (e.g. checker→team) stay single-WO only.
 router.post('/batch-sign', authMiddleware, async (req, res) => {
-  const slot = slotForRole(req.user.role);
+  const { ids = [], signature_data, signer_name, signer_position, slot: reqSlot } = req.body || {};
+  let slot;
+  if (reqSlot != null && reqSlot !== slotForRole(req.user.role)) {
+    if (reqSlot !== 'department' || !canSignSlot(req.user.role, 'department')) {
+      return res.status(403).json({ error: 'role นี้เซ็นช่องนี้แบบชุดไม่ได้' });
+    }
+    slot = 'department';
+  } else {
+    slot = slotForRole(req.user.role);
+  }
   if (!slot) return res.status(403).json({ error: 'role นี้เซ็นชุดไม่ได้' });
-  const { ids = [], signature_data, signer_name } = req.body || {};
+  const external = EXTERNAL_SLOTS.includes(slot);
+  if (external && !String(signer_name || '').trim()) {
+    return res.status(400).json({ error: 'กรอกชื่อผู้ลงนามก่อน' });
+  }
   const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
@@ -884,7 +901,10 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
     if (ready.length) {
       await client.query(
         `UPDATE simple_work_orders SET ${dataCol} = $1, ${nameCol} = $2, sig_${slot}_position = $3 WHERE id = ANY($4)`,
-        [signature_data, signer_name || '', await myPosition(req), ready]);
+        [signature_data,
+         external ? String(signer_name).trim() : (signer_name || ''),
+         external ? (String(signer_position || '').trim() || null) : await myPosition(req),
+         ready]);
     }
     await client.query('COMMIT');
     res.json({ ok: true, signed: ready.length, skipped, slot });
