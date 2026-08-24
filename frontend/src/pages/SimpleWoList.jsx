@@ -540,6 +540,17 @@ export default function SimpleWoList() {
             <button onClick={clearSelection} className="text-sm text-ink-muted hover:text-ink px-2">
               ยกเลิก
             </button>
+            {/* เจ้าของพื้นที่ = proxy เซ็นแทนคนของ รพ. — ทุก role ที่เห็นแถบนี้เปิดได้
+                (รวม admin ที่วางบิล เช่น บัญชีกลาง "เจ้าของพื้นที่" ของนวมินทร์) */}
+            {requireDeptSign && (
+              <button
+                onClick={() => openSign('department')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 text-sm"
+              >
+                <PenLine className="h-4 w-4" />
+                {`เจ้าของพื้นที่เซ็น (${selected.size})`}
+              </button>
+            )}
             {canBill ? (
               <button
                 onClick={openBillModal}
@@ -550,24 +561,13 @@ export default function SimpleWoList() {
                 {billing ? 'กำลังออกเอกสาร...' : `วางบิล (${selected.size})`}
               </button>
             ) : canSign ? (
-              <>
-                {requireDeptSign && (
-                  <button
-                    onClick={() => openSign('department')}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 text-sm"
-                  >
-                    <PenLine className="h-4 w-4" />
-                    {`เจ้าของพื้นที่เซ็น (${selected.size})`}
-                  </button>
-                )}
-                <button
-                  onClick={() => openSign('own')}
-                  className="btn-primary flex items-center gap-1.5"
-                >
-                  <PenLine className="h-4 w-4" />
-                  {`เซ็นชุด (${selected.size}) — ${SLOT_LABEL[role]}`}
-                </button>
-              </>
+              <button
+                onClick={() => openSign('own')}
+                className="btn-primary flex items-center gap-1.5"
+              >
+                <PenLine className="h-4 w-4" />
+                {`เซ็นชุด (${selected.size}) — ${SLOT_LABEL[role]}`}
+              </button>
             ) : null}
           </div>
         </div>
