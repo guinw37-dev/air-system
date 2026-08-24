@@ -7,6 +7,7 @@ import SignaturePad from '../components/SignaturePad'
 import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useHasZones } from '../lib/zones'
+import { useTenantStore } from '../store/tenant'
 import { waitingBadge } from '../lib/signStage'
 
 const WORK_TYPE_LABEL = {
@@ -52,6 +53,7 @@ export default function SimpleWoList() {
 
   const role = user?.role
   const hasZones = useHasZones()   // โซนมีเฉพาะศรีราชา — สาขาอื่นซ่อน filter สัญญา/โซน
+  const requireDeptSign = useTenantStore((s) => s.requireDeptSign)   // ช่องเจ้าของพื้นที่ (PTN)
   const canSign = !!SLOT_LABEL[role]
   const canBill = role === 'admin' || role === 'super_admin'
 
@@ -69,9 +71,12 @@ export default function SimpleWoList() {
   // Multi-select
   const [selected, setSelected] = useState(() => new Set())
 
-  // Batch sign
+  // Batch sign — signSlot: 'own' (ช่องของ role ตัวเอง) | 'department' (เซ็นแทน
+  // เจ้าของพื้นที่ — คนของ รพ. พิมพ์ชื่อ/ตำแหน่งเอง เหมือนเซ็นทีละใบ)
   const [signing, setSigning] = useState(false)
+  const [signSlot, setSignSlot] = useState('own')
   const [signerName, setSignerName] = useState('')
+  const [signerPosition, setSignerPosition] = useState('')
   const [signLoading, setSignLoading] = useState(false)
 
   // Batch bill (PDF)
@@ -238,21 +243,27 @@ export default function SimpleWoList() {
   const setCoverField = (k, v) => setCover((c) => ({ ...(c || {}), [k]: v }))
 
   // ── Batch sign ─────────────────────────────────────────────────────
-  const openSign = () => {
-    setSignerName(user?.name || '')
+  const openSign = (slot = 'own') => {
+    setSignSlot(slot)
+    // เจ้าของพื้นที่ = คนนอกระบบ — ชื่อต้องพิมพ์เอง ห้าม default เป็นชื่อช่างที่ login
+    setSignerName(slot === 'department' ? '' : (user?.name || ''))
+    setSignerPosition('')
     setSigning(true)
   }
 
   const handleBatchSign = async (dataUrl) => {
+    if (signSlot === 'department' && !signerName.trim()) { alert('กรอกชื่อเจ้าของพื้นที่ก่อน'); return }
     setSignLoading(true)
     try {
       const { data } = await api.post('/simple-wo/batch-sign', {
         ids: [...selected],
         signature_data: dataUrl,
         signer_name: signerName,
+        ...(signSlot === 'department' ? { slot: 'department', signer_position: signerPosition } : {}),
       })
+      const slotLabel = signSlot === 'department' ? 'เจ้าหน้าที่เจ้าของพื้นที่' : SLOT_LABEL[role]
       const skipMsg = data?.skipped ? ` · ข้าม ${data.skipped} ใบ (ยังไม่ถึงคิว/วางบิลแล้ว)` : ''
-      alert(`เซ็นแล้ว ${data?.signed ?? 0} ใบ (${SLOT_LABEL[role]})${skipMsg}`)
+      alert(`เซ็นแล้ว ${data?.signed ?? 0} ใบ (${slotLabel})${skipMsg}`)
       setSigning(false)
       clearSelection()
       load()
@@ -539,13 +550,24 @@ export default function SimpleWoList() {
                 {billing ? 'กำลังออกเอกสาร...' : `วางบิล (${selected.size})`}
               </button>
             ) : canSign ? (
-              <button
-                onClick={openSign}
-                className="btn-primary flex items-center gap-1.5"
-              >
-                <PenLine className="h-4 w-4" />
-                {`เซ็นชุด (${selected.size}) — ${SLOT_LABEL[role]}`}
-              </button>
+              <>
+                {requireDeptSign && (
+                  <button
+                    onClick={() => openSign('department')}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 text-sm"
+                  >
+                    <PenLine className="h-4 w-4" />
+                    {`เจ้าของพื้นที่เซ็น (${selected.size})`}
+                  </button>
+                )}
+                <button
+                  onClick={() => openSign('own')}
+                  className="btn-primary flex items-center gap-1.5"
+                >
+                  <PenLine className="h-4 w-4" />
+                  {`เซ็นชุด (${selected.size}) — ${SLOT_LABEL[role]}`}
+                </button>
+              </>
             ) : null}
           </div>
         </div>
@@ -585,16 +607,32 @@ export default function SimpleWoList() {
 
       {/* Signature modal */}
       {signing && (
-        <Modal title={`เซ็นชุด — ${SLOT_LABEL[role] || ''}`} onClose={() => setSigning(false)}>
+        <Modal title={`เซ็นชุด — ${signSlot === 'department' ? 'เจ้าหน้าที่เจ้าของพื้นที่' : (SLOT_LABEL[role] || '')}`} onClose={() => setSigning(false)}>
+          {signSlot === 'department' && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+              ยื่นแท็บเล็ตให้เจ้าหน้าที่เจ้าของพื้นที่ พิมพ์ชื่อ-ตำแหน่ง แล้วเซ็น — ลงครบทั้ง {selected.size} ใบที่เลือก
+            </p>
+          )}
           <div className="mb-3">
-            <label className="label">ชื่อผู้ลงนาม</label>
+            <label className="label">ชื่อผู้ลงนาม {signSlot === 'department' && <span className="text-red-500">*</span>}</label>
             <input
               className="input"
-              placeholder="ชื่อผู้ลงนาม"
+              placeholder={signSlot === 'department' ? 'ชื่อเจ้าหน้าที่เจ้าของพื้นที่' : 'ชื่อผู้ลงนาม'}
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
             />
           </div>
+          {signSlot === 'department' && (
+            <div className="mb-3">
+              <label className="label">ตำแหน่ง</label>
+              <input
+                className="input"
+                placeholder="ตำแหน่ง (ไม่บังคับ)"
+                value={signerPosition}
+                onChange={(e) => setSignerPosition(e.target.value)}
+              />
+            </div>
+          )}
           <SignaturePad onSave={handleBatchSign} onCancel={() => setSigning(false)} />
           {signLoading && <p className="text-xs text-ink-muted mt-2 text-center">กำลังบันทึก...</p>}
         </Modal>
