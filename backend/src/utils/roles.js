@@ -54,11 +54,16 @@ const EXTERNAL_SLOTS = ['department'];   // เจ้าหน้าที่เ
 // is absent / forgot. Single-WO signing only; batch-sign stays own-slot.
 // Every on-site branch role may open the เจ้าของพื้นที่ pad (PTN, 5 Aug 2026) —
 // it is a proxy for an outside signer, not an approval of their own.
+// admin/super_admin still never sign their OWN approval — but they may open the
+// เจ้าของพื้นที่ pad as a proxy too (นวมินทร์ hands the tablet to hospital staff
+// from a shared admin account, 20 Aug 2026).
 const ROLE_EXTRA_SLOTS = {
   checker:          ['team', 'department'],
   technician:       ['department'],
   approve_building: ['department'],
   approve_engineer: ['department'],
+  admin:            ['department'],
+  super_admin:      ['department'],
 };
 // A role may sign the slot mapped to it (plus any ROLE_EXTRA_SLOTS). admin /
 // super_admin do NOT sign at all (they manage + bill) — signing is reserved for

@@ -21,6 +21,10 @@ const EXTRA_SLOTS_FOR_ROLE = {
   technician: ['department'],
   approve_building: ['department'],
   approve_engineer: ['department'],
+  // admin/super ไม่เซ็นช่องอนุมัติของตัวเอง แต่เปิดแผ่นเซ็นแทนเจ้าของพื้นที่ได้
+  // (นวมินทร์ใช้บัญชีกลาง role admin ยื่นแท็บเล็ตให้เจ้าหน้าที่ รพ.)
+  admin: ['department'],
+  super_admin: ['department'],
 }
 const EXTERNAL_SLOTS = ['department']
 const SIG_DEFS_BASE = [
