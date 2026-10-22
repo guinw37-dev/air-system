@@ -8,6 +8,8 @@
 //
 // Returns a COMPLETE <html> document string. All user-supplied text is escaped.
 
+const { fitOnePageScript } = require('./printFit');
+
 // ---------------------------------------------------------------------------
 // Small helpers (defensive: tolerate null / undefined / wrong shape)
 // ---------------------------------------------------------------------------
@@ -1608,7 +1610,7 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
   .jobno{font-family:monospace;font-size:17px;font-weight:700;color:${BD}}
   .badge{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:${B};color:#fff;font-size:11px;font-weight:700;vertical-align:middle}
   .printed{font-size:10.5px;color:#6b7280}
-  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:10px}
   .box{border:1px solid ${LINE};border-radius:6px;overflow:hidden}
   .box .bh{background:${BD};color:#fff;font-size:12.5px;font-weight:700;padding:5px 10px}
   .box .bc{padding:6px 8px}
@@ -1620,9 +1622,9 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
   .empty{color:#94a3b8;text-align:center;padding:10px 0;font-size:12px}
   .sec-band{background:${BD};color:#fff;font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:6px 6px 0 0;margin-top:10px}
   .ph-label{color:#6b7280;font-size:11.5px;text-align:center;margin:8px 0 4px}
-  .ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border:1px solid ${LINE};border-radius:0 0 6px 6px;padding:8px}
+  .ph-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;border:1px solid ${LINE};border-radius:0 0 6px 6px;padding:8px}
   .ph-grid img{width:100%;height:150px;object-fit:cover;border:1px solid #e5e7eb;border-radius:4px}
-  .signs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:26px;text-align:center;font-size:12.5px}
+  .signs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:26px;text-align:center;font-size:12.5px}
   .signs .nm{font-weight:600;margin-top:34px} .signs .rl{color:#6b7280;font-size:11.5px;margin-top:2px}
   .dots{border-top:1px dotted #94a3b8;width:70%;margin:0 auto}
 </style></head><body>
@@ -1675,6 +1677,7 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
     <div><div class="dots"></div><div class="nm">( ${dash(j.requester)} )</div><div class="rl">ผู้แจ้งซ่อม / รับมอบงาน</div></div>
     <div><div class="dots"></div><div class="nm">( ${dash(j.assign_name)} )</div><div class="rl">เจ้าหน้าที่ผู้ปฏิบัติงาน</div></div>
   </div>
+  ${fitOnePageScript()}
 </body></html>`;
 }
 module.exports = { buildReportHtml, buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml, buildAcRepairReportHtml };

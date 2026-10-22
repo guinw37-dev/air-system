@@ -1,6 +1,8 @@
 // acMemoPdf — HTML สำหรับ MEMO ขออนุมัติจัดซื้ออะไหล่แอร์ (พิมพ์เป็น PDF ผ่าน
 // pdfRenderer). โครงเดียวกับ Memo ฝั่ง repair-system (4 ช่องเซ็น TW/รพ.) แต่
 // หัวเอกสารโทนฟ้า-ขาว + ระบุระบบ Air และเนื้อหาย่อกว่า (Worawit 20 Aug 2026).
+const { fitOnePageScript } = require('./printFit');
+
 const BLUE = '#0284C7';
 const BLUE_SOFT = '#E0F2FE';
 const BLUE_DEEP = '#075985';
@@ -67,7 +69,7 @@ function buildAcMemoHtml(memo, job, branch) {
   .c{text-align:center} .r{text-align:right}
   tr.total td{background:${BLUE_SOFT};font-weight:700;color:${BLUE_DEEP};border-color:${BLUE}}
   .reason{margin:8px 2px;font-size:14px}
-  .sigs{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px;margin-top:22px}
+  .sigs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 26px;margin-top:22px}
   .sig{text-align:center;font-size:13px}
   .sig-t{font-weight:700;margin-bottom:34px}
   .sig-line{border-bottom:1px dotted #555;width:78%;margin:0 auto 6px}
@@ -114,6 +116,7 @@ function buildAcMemoHtml(memo, job, branch) {
     <span>TECHNICAL WATER CO., LTD. | ${esc(branch?.name || '')} | ระบบ Air — งานซ่อมเครื่องปรับอากาศ</span>
     <span>${esc(m.memo_number || '')}</span>
   </div>
+  ${fitOnePageScript()}
 </body></html>`;
 }
 
