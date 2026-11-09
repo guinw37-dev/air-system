@@ -9,6 +9,7 @@ import api, { uploadsBase } from '../api/client'
 import { CONDITION_ISSUE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from '../lib/condition'
 import { refrigerantRefText } from '../lib/refrigerant'
 import { waitingBadge } from '../lib/signStage'
+import { listBackUrl } from '../lib/listNav'
 import { useAuthStore } from '../store/auth'
 
 // Each role signs its own slot (backend enforces it too); admin/super do not sign.
@@ -169,7 +170,7 @@ export default function SimpleWoDetail() {
     setBusy(true)
     try {
       await api.delete(`/simple-wo/${id}`)
-      navigate('/simple-wo')
+      navigate(listBackUrl())
     } catch (err) {
       alert(err.response?.data?.error || 'ลบใบงานไม่สำเร็จ')
       setBusy(false)
@@ -218,7 +219,7 @@ export default function SimpleWoDetail() {
   return (
     <Layout
       title={wo.wo_number || `ใบงาน #${id}`}
-      back="/simple-wo"
+      back={listBackUrl() /* กลับไปรายการพร้อมตัวกรอง + ตำแหน่งเดิม */}
       actions={
         billed ? (
           <button onClick={downloadPdf} disabled={busy} className="p-1 rounded-lg text-ink-muted hover:bg-page">

@@ -9,6 +9,7 @@ const { pool, query } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { allSignedSql, waitSlotSql } = require('../utils/roles');
 const { serverError } = require('../utils/respond');
+const { UNITS_EXPR, DONE_EXPR } = require('../utils/washCount');
 
 // ── per-schema summary. Tolerant: a branch missing a table (mid-migration)
 // yields zeros instead of failing the whole dashboard. ───────────────────────
@@ -185,9 +186,6 @@ router.get('/', authMiddleware, async (req, res) => {
 // branch). Reuses the serviceTargets "done" expression (major = 1 ใบ/เครื่อง;
 // minor/fan = นับแถวใน grid). Tolerant: a half-migrated branch (missing
 // service_targets / wash_units) returns zeros instead of a 500.
-const DONE_EXPR = `SUM(CASE WHEN work_type IN ('minor','fan')
-                            THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
-                            ELSE 1 END)::int`;
 const WASH_TYPES = ['major', 'minor', 'fan'];
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -527,9 +525,6 @@ router.get('/wash-report/excel', authMiddleware, async (req, res) => {
 // สรุปช่วงวันที่กำหนดเอง: ยอดต่อประเภท, กราฟรายวัน, แยก ac_type, สถานที่,
 // สภาพแอร์เสื่อม และรายละเอียดใบงานทุกใบ (cap ORDER_CAP แถว กัน deck บวม)
 const ORDER_CAP = 400;
-const UNITS_EXPR = `CASE WHEN work_type IN ('minor','fan')
-                         THEN GREATEST(jsonb_array_length(COALESCE(grid_rows,'[]'::jsonb)), 1)
-                         ELSE 1 END`;
 
 async function buildWashRangeReport(req, from, to) {
   const db = req.db;

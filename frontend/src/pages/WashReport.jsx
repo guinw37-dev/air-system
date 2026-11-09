@@ -494,6 +494,12 @@ export default function WashReport() {
           </div>
           <DailyCalendar month={selMonth} zone={selZone} selDate={selDate || data.date} onPickDate={setSelDate} />
           <div className="mt-3 border-t border-slate-100 pt-2">
+            {/* ไปที่ใบงานล้างของวันที่เลือก — รายการกรองด้วยนิยามเดียวกับปฏิทิน (วันที่งาน, ไม่รวมใบส่งกลับ, โซนเดียวกัน) */}
+            <button
+              onClick={() => navigate(`/simple-wo?view=all&date=${data.date}${selZone ? `&pts=${selZone}` : ''}`)}
+              className="w-full mb-2 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg px-3 py-1.5 text-left">
+              เปิดใบงานของวันที่ {thaiDate(data.date)} →
+            </button>
             <div className="flex items-baseline justify-between mb-2">
               <span className="text-sm text-slate-500">สรุปวันที่ {thaiDate(data.date)}</span>
               <span><b className="text-2xl text-blue-900">{data.daily.total}</b>

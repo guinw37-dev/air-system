@@ -9,6 +9,21 @@ import { useAuthStore } from '../store/auth'
 import { useHasZones } from '../lib/zones'
 import { useTenantStore } from '../store/tenant'
 import { waitingBadge } from '../lib/signStage'
+import { AC_TYPES, FAN_TYPES } from '../lib/config'
+import { rememberListPosition, restoreListScroll } from '../lib/listNav'
+
+// ตัวกรองประเภทแอร์/พัดลม: ใบที่ไม่ได้ระบุ ac_type รวมไว้ที่ "ไม่ระบุ" — คำเดียวกับ
+// กราฟแยกชนิดแอร์ในรายงานล้าง (dashboard.js ใช้ COALESCE(ac_type,'ไม่ระบุ')) ให้ยอดตรงกัน
+const NO_AC = 'none'
+const acOptionsFor = (wt) => (wt === 'fan' ? FAN_TYPES : wt ? AC_TYPES : [...AC_TYPES, ...FAN_TYPES])
+const YM_RE = /^\d{4}-\d{2}$/
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/
+const monthLabel = (m) => `${m.slice(5)}/${Number(m.slice(0, 4)) + 543}`
+const thaiDate = (d) => `${d.slice(8)}/${d.slice(5, 7)}/${Number(d.slice(0, 4)) + 543}`
+// เดือนให้เลือก: 24 เดือนล่าสุด (ใหม่→เก่า)
+const monthChoices = () => Array.from({ length: 24 }, (_, i) => dayjs().subtract(i, 'month').format('YYYY-MM'))
+// คีย์ตัวกรองใน URL — ย้อนกลับจากหน้าใบงานแล้วได้ตัวกรองเดิม (ไม่เก็บใน state ที่หายตอนออกจากหน้า)
+const FILTER_KEYS = ['st', 'type', 'ac', 'client', 'pts', 'result', 'sort', 'month', 'date']
 
 const WORK_TYPE_LABEL = {
   major: { label: 'ล้างใหญ่',  color: 'badge-primary' },
@@ -46,7 +61,7 @@ const PENDING_LABEL = { team: 'รอช่างแอร์เซ็น', supe
 
 export default function SimpleWoList() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const pending = searchParams.get('pending') || ''   // '' | team | supervisor | building | engineer
   const view = searchParams.get('view') || ''          // '' (default=งานค้าง) | ready (รอวางบิล) | done (เซ็นครบ รวมวางบิลแล้ว) | all
   const { user } = useAuthStore()
@@ -60,13 +75,35 @@ export default function SimpleWoList() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // List filter + sort (client-side)
-  const [fType, setFType] = useState('')     // '' | major | minor | fan
-  const [fClient, setFClient] = useState('') // '' | client_name
-  const [fPts, setFPts] = useState('')       // '' | pts_zone
-  const [fResult, setFResult] = useState('') // '' | ok | not_ok
-  const [fStatus, setFStatus] = useState('') // '' | submitted | checked | approved | rejected
-  const [sortBy, setSortBy] = useState('date_desc') // date_desc|date_asc|wo_asc|wo_desc
+  // List filter + sort — เก็บใน URL (?type=&ac=&month=…) ไม่ใช่ useState: กดเข้าใบงานแล้ว
+  // ย้อนกลับ (ปุ่มเบราว์เซอร์ หรือปุ่มย้อนกลับในหน้าใบงาน) ได้ตัวกรองเดิมครบ
+  const fType = searchParams.get('type') || ''      // '' | major | minor | fan
+  const fAc = searchParams.get('ac') || ''          // '' | FCU… | Exhaust Fan… | none
+  const fClient = searchParams.get('client') || ''  // '' | client_name
+  const fPts = searchParams.get('pts') || ''        // '' | pts_zone
+  const fResult = searchParams.get('result') || ''  // '' | ok | not_ok
+  const fStatus = searchParams.get('st') || ''      // '' | submitted | checked | approved | rejected
+  const sortBy = searchParams.get('sort') || 'date_desc' // date_desc|date_asc|wo_asc|wo_desc
+  const fMonth = YM_RE.test(searchParams.get('month') || '') ? searchParams.get('month') : ''  // เดือนที่ทำใบงาน
+  const fDate = YMD_RE.test(searchParams.get('date') || '') ? searchParams.get('date') : ''    // วันเดียว (ลิงก์จากปฏิทิน)
+  // replace: เปลี่ยนตัวกรองไม่สร้างประวัติใหม่ทุกครั้ง (ปุ่มย้อนกลับไม่ต้องกดไล่ทีละตัวกรอง)
+  const patchParams = (changes) => setSearchParams((prev) => {
+    const p = new URLSearchParams(prev)
+    for (const [k, v] of Object.entries(changes)) { if (v) p.set(k, v); else p.delete(k) }
+    return p
+  }, { replace: true })
+  const setFType = (v) => patchParams({ type: v, ...(fAc && fAc !== NO_AC && !acOptionsFor(v).includes(fAc) ? { ac: '' } : {}) })
+  const setFAc = (v) => patchParams({ ac: v })
+  const setFClient = (v) => patchParams({ client: v })
+  const setFPts = (v) => patchParams({ pts: v })
+  const setFResult = (v) => patchParams({ result: v })
+  const setFStatus = (v) => patchParams({ st: v })
+  const setSortBy = (v) => patchParams({ sort: v === 'date_desc' ? '' : v })
+  const setFMonth = (v) => patchParams({ month: v, date: '' })   // เลือกเดือน = เลิกโหมดวันเดียว
+  // ช่วงวันที่ของงานล้างที่ขอจาก server (กรองที่ server → เดือนเก่าไม่โดน limit 1000 ตัด)
+  const range = fDate ? [fDate, fDate]
+    : fMonth ? [`${fMonth}-01`, dayjs(`${fMonth}-01`).endOf('month').format('YYYY-MM-DD')]
+    : null
 
   // Multi-select
   const [selected, setSelected] = useState(() => new Set())
@@ -88,21 +125,34 @@ export default function SimpleWoList() {
   const [cover, setCover] = useState(null)
 
   const [error, setError] = useState('')
+  const reqSeq = useRef(0)   // เปลี่ยนเดือนเร็ว ๆ: คำตอบเก่าที่มาช้าต้องไม่ทับรายการใหม่
   const load = () => {
+    const seq = ++reqSeq.current
     setLoading(true); setError('')
-    api.get('/simple-wo', { params: { limit: 1000 } })
-      .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
+    const params = { limit: 1000, ...(range ? { wdate_from: range[0], wdate_to: range[1] } : {}) }
+    api.get('/simple-wo', { params })
+      .then((r) => { if (seq === reqSeq.current) setRows(Array.isArray(r.data) ? r.data : []) })
       .catch((e) => {
+        if (seq !== reqSeq.current) return
         setRows([])
         // Don't show an empty "ไม่มีใบงาน" when the request actually FAILED — surface it.
         setError(e.response?.status === 400
           ? 'ยังไม่ได้เลือกสาขา — เข้าผ่านลิงก์สาขา (subdomain) หรือเลือกสาขาก่อน'
           : (e.response?.data?.error || 'โหลดใบงานไม่สำเร็จ — ลองใหม่อีกครั้ง'))
       })
-      .finally(() => setLoading(false))
+      .finally(() => { if (seq === reqSeq.current) setLoading(false) })
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [range?.[0], range?.[1]])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // กลับมาจากหน้าใบงาน → เลื่อนกลับไปตำแหน่งเดิม (ครั้งแรกที่รายการโหลดเสร็จเท่านั้น)
+  const scrollRestored = useRef(false)
+  useEffect(() => {
+    if (loading || scrollRestored.current) return
+    scrollRestored.current = true
+    restoreListScroll()
+  }, [loading])
+  const openWo = (id) => { rememberListPosition(); navigate(`/simple-wo/${id}`) }
 
   // Distinct client names / PTS zones for the filter dropdowns.
   const clientOptions = [...new Set(rows.map((r) => r.client_name).filter(Boolean))].sort()
@@ -131,6 +181,9 @@ export default function SimpleWoList() {
   }
   const visibleRows = rows
     .filter((r) => (!fType || r.work_type === fType)
+      && (!fAc || (r.ac_type || NO_AC) === fAc)
+      // โหมดวันเดียว (มาจากปฏิทิน): ไม่นับใบที่ส่งกลับ — ปฏิทินก็ไม่นับ ยอดจึงตรงกัน
+      && (!fDate || r.status !== 'rejected')
       && (!fClient || r.client_name === fClient)
       && (!fPts || r.pts_zone === fPts)
       && (!fResult || r.result === fResult)
@@ -144,8 +197,12 @@ export default function SimpleWoList() {
       return sortBy === 'date_asc' ? da - db : db - da
     })
 
-  const hasFilter = fType || fClient || fPts || fResult || fStatus
-  const clearFilters = () => { setFType(''); setFClient(''); setFPts(''); setFResult(''); setFStatus('') }
+  const hasFilter = fType || fAc || fClient || fPts || fResult || fStatus || fMonth || fDate
+  // ล้างเฉพาะตัวกรอง — คงมุมมอง ?view= / ?pending= ที่มาจากเมนูไว้
+  const clearFilters = () => patchParams(Object.fromEntries(FILTER_KEYS.filter((k) => k !== 'sort').map((k) => [k, ''])))
+  const acChoices = acOptionsFor(fType)
+  const hasNoAc = rows.some((r) => !r.ac_type)
+  const dayUnits = visibleRows.reduce((s, r) => s + (Number(r.units) || 1), 0)
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -341,6 +398,17 @@ export default function SimpleWoList() {
           )
         })()}
 
+        {/* โหมดวันเดียว — มาจากปฏิทินยอดล้างรายวัน (รายงานล้างแอร์) */}
+        {fDate && (
+          <div className="card flex flex-wrap items-center justify-between gap-3 bg-primary-soft border-primary/30">
+            <span className="text-sm text-primary">
+              <b>ใบงานวันที่ {thaiDate(fDate)}</b> · {visibleRows.length} ใบงาน · {dayUnits} เครื่อง
+              <span className="text-ink-muted"> (ไม่รวมใบที่ส่งกลับ — นับแบบเดียวกับปฏิทินรายงานล้าง)</span>
+            </span>
+            <button onClick={() => patchParams({ date: '' })} className="text-xs text-ink-muted hover:text-primary underline">ดูทุกวัน</button>
+          </div>
+        )}
+
         {/* Filter + sort */}
         <div className="card flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -351,7 +419,16 @@ export default function SimpleWoList() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+            <div>
+              <label className="label">เดือนที่ทำใบงาน</label>
+              <select className="input" value={fDate ? '' : fMonth} onChange={(e) => setFMonth(e.target.value)}>
+                <option value="">{fDate ? `วันที่ ${thaiDate(fDate)}` : 'ทุกเดือน'}</option>
+                {[...new Set([...(fMonth ? [fMonth] : []), ...monthChoices()])].map((m) => (
+                  <option key={m} value={m}>{monthLabel(m)}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="label">สถานะ</label>
               <select className="input" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
@@ -368,6 +445,14 @@ export default function SimpleWoList() {
                 <option value="major">ล้างใหญ่</option>
                 <option value="minor">ล้างย่อย</option>
                 <option value="fan">ล้างพัดลม</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">{fType === 'fan' ? 'ประเภทพัดลม' : fType ? 'ประเภทแอร์' : 'ประเภทแอร์/พัดลม'}</label>
+              <select className="input" value={fAc} onChange={(e) => setFAc(e.target.value)}>
+                <option value="">ทั้งหมด</option>
+                {acChoices.map((t) => <option key={t} value={t}>{t}</option>)}
+                {(hasNoAc || fAc === NO_AC) && <option value={NO_AC}>ไม่ระบุ</option>}
               </select>
             </div>
             <div>
@@ -468,7 +553,7 @@ export default function SimpleWoList() {
                     return (
                       <tr
                         key={wo.id}
-                        onClick={() => navigate(`/simple-wo/${wo.id}`)}
+                        onClick={() => openWo(wo.id)}
                         className={`hover:bg-primary-soft/40 cursor-pointer transition-colors ${checked ? 'bg-primary-soft/30' : ''}`}
                       >
                         {/* whole cell is the tap target (easier to hit than a tiny box) */}

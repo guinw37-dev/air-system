@@ -10,6 +10,8 @@ import { refrigerantRefText } from '../lib/refrigerant'
 import { useAuthStore } from '../store/auth'
 import { useTenantStore } from '../store/tenant'
 import { useHasMinorMeasure, useHasMajorV3 } from '../lib/zones'
+// ประเภทเครื่องปรับอากาศ (ล้างใหญ่/ย่อย) + ประเภทพัดลม — job-level ac_type, prints on the report.
+import { AC_TYPES, FAN_TYPES } from '../lib/config'
 
 
 const WORK_TYPES = [
@@ -23,11 +25,6 @@ const REFRIGERANTS = ['R32', 'R410', 'R22']
 // force_camera: a freshly-captured photo's lastModified is ~now; anything older
 // than this is treated as an old gallery pick and rejected.
 const FRESH_PHOTO_MS = 5 * 60 * 1000
-
-// ประเภทเครื่องปรับอากาศ (ล้างใหญ่/ย่อย) — job-level, prints on the report.
-const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
-// ประเภทพัดลม (พัดลม) — stored in the same ac_type field, job-level.
-const FAN_TYPES = ['Exhaust Fan', 'Exhaust Fan Duct Type']
 
 // จุดถ่ายรูปชุด 08-11-2569 (ลูกค้าสั่ง). ทุกช่องเก็บเป็น 1 แถวใน photo_urls:
 //   { url, point_no, slot, phase, label }
