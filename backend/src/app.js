@@ -86,6 +86,9 @@ app.use('/api/attendance',  requireBranch, require('./routes/attendance'));
 app.use('/api/sign',        require('./routes/sign'));   // PUBLIC — no auth (token-guarded)
 app.use('/api/line',        require('./routes/line'));   // PUBLIC — LINE webhook
 app.use('/api/line-admin',  require('./routes/lineAdmin')); // super-admin LINE config
+// MCP อ่านอย่างเดียว — auth ด้วย Bearer MCP_API_KEY ของตัวเอง (ไม่ใช่ JWT/สาขา), ไม่ตั้ง key = 503.
+// จำกัด 120 ครั้ง/นาที/IP กันยิงเดา key
+app.use('/api/mcp', require('./middleware/rateLimit')({ windowMs: 60000, max: 120 }), require('./routes/mcp'));
 
 // Health check
 app.get('/api/health', (req, res) => {
