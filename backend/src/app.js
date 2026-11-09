@@ -92,6 +92,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'air-system', time: new Date() });
 });
 
+// Deploy marker — commit ที่กำลังรัน (Coolify ส่ง SOURCE_COMMIT ให้ container) + เวลาที่
+// process นี้เริ่ม. ใช้ยืนยันว่า build ใหม่ขึ้นแล้วหลัง Redeploy. ไม่มีข้อมูลลับ.
+const STARTED_AT = new Date().toISOString();
+app.get('/api/version', (req, res) => {
+  res.json({ service: 'air-system', commit: process.env.SOURCE_COMMIT || null, started_at: STARTED_AT });
+});
+
 // Boot-time DB migration — apply public + every branch schema (idempotent) so a
 // deploy never leaves a tenant missing a newly-added column/role. Best-effort:
 // a migration hiccup logs loudly but still lets the API come up.

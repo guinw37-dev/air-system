@@ -14,6 +14,7 @@ const { getSimpleReportData } = require('../services/simpleReportBuilder');
 const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml } = require('../services/reportTemplates');
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 const { serverError } = require('../utils/respond');
+const { UNITS_EXPR, washDateExpr } = require('../utils/washCount');
 
 // Fan out an in-app notification for a simple-wo event. Recipients are branch
 // users (by role and/or a specific id) read from req.db (<schema>.users); rows
@@ -490,18 +491,39 @@ router.post('/', authMiddleware, async (req, res) => {
   } finally { client.release(); }
 });
 
-// ── GET /api/simple-wo — list (filter date range / created_by) ──────────────
-router.get('/', authMiddleware, async (req, res) => {
-  const { date_from, date_to, created_by, limit = 100, offset = 0 } = req.query;
+// WHERE ของรายการใบงาน. wdate_from/wdate_to = "วันที่ของงานล้าง" (work_date ถ้ามี
+// ไม่งั้นวันสร้างใบ) — นิยามเดียวกับปฏิทินยอดล้างรายวัน (utils/washCount). กรองที่ server
+// เพื่อให้เดือนเก่า ๆ ไม่โดน limit ตัดทิ้ง. ค่าวันที่ต้องเป็น YYYY-MM-DD เท่านั้น.
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+function buildListFilter(q) {
   const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
-  if (date_from)  { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
-  if (date_to)    { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
-  if (created_by) { where.push(`s.created_by = $${i++}`); params.push(created_by); }
+  for (const k of ['wdate_from', 'wdate_to']) {
+    if (q[k] != null && q[k] !== '' && !YMD.test(String(q[k]))) {
+      return { error: `${k} ต้องเป็น YYYY-MM-DD` };
+    }
+  }
+  if (q.date_from)  { where.push(`s.created_at >= $${i++}`); params.push(q.date_from); }
+  if (q.date_to)    { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(q.date_to); }
+  if (q.created_by) { where.push(`s.created_by = $${i++}`); params.push(q.created_by); }
+  if (q.wdate_from) { where.push(`${washDateExpr('s')} >= $${i++}::date`); params.push(q.wdate_from); }
+  if (q.wdate_to)   { where.push(`${washDateExpr('s')} <= $${i++}::date`); params.push(q.wdate_to); }
+  return { where, params, next: i };
+}
+
+// ── GET /api/simple-wo — list (filter date range / created_by / wash date) ───
+router.get('/', authMiddleware, async (req, res) => {
+  const { limit = 100, offset = 0 } = req.query;
+  const f = buildListFilter(req.query);
+  if (f.error) return res.status(400).json({ error: f.error });
+  const { where, params } = f; let i = f.next;
   params.push(limit, offset);
   try {
     const { rows } = await req.db(`
       SELECT s.id, s.wo_number, s.created_at, s.work_date, s.tech_name, s.client_name,
              s.pts_zone, s.building, s.asset_code, s.work_type, s.result, s.status, s.created_by,
+             s.ac_type,
+             ${washDateExpr('s')}::text AS wdate,     -- วันที่ของงานล้าง (ตรงกับปฏิทิน)
+             (${UNITS_EXPR})::int AS units,             -- จำนวนเครื่องในใบ (ตรงกับยอดปฏิทิน)
              u.name AS created_by_name,
              ${allSignedSql(signOpts(req), 's')} AS all_signed,
              -- "ค้างรอช่องนี้เซ็น" ต่อช่อง — นิยามเดียวกับการ์ดบนหน้าภาพรวม (waitSlotSql)
@@ -986,4 +1008,5 @@ router.post('/batch-pdf', authMiddleware, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+router._buildListFilter = buildListFilter;   // unit tests
 module.exports = router;

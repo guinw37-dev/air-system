@@ -5,9 +5,8 @@ import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useHasZones } from '../lib/zones'
 import QRCode from 'qrcode'
+import { AC_TYPES, FAN_TYPES } from '../lib/config'
 
-const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
-const FAN_TYPES = ['Exhaust Fan', 'Exhaust Fan Duct Type']
 const PTS_ZONES = ['PTS1', 'PTS2']
 
 const EMPTY_FORM = {

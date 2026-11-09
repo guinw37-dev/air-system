@@ -58,3 +58,8 @@ export const TYPE_LABEL = {
   minor: { label: 'ล้างย่อย',   color: 'bg-indigo-50 text-indigo-600' },
   fan:   { label: 'ล้างพัดลม', color: 'bg-success-soft text-success' },
 }
+
+// ประเภทแอร์ (ล้างใหญ่/ย่อย) และประเภทพัดลม — เก็บในช่อง ac_type ช่องเดียวกัน.
+// ต้องตรงกับ backend AC_OR_FAN_TYPES (routes/simpleWorkOrders.js) — แก้ต้องแก้คู่กัน.
+export const AC_TYPES = ['FCU', 'SPT', 'VRF', 'AHU', 'OAU']
+export const FAN_TYPES = ['Exhaust Fan', 'Exhaust Fan Duct Type']
