@@ -23,6 +23,8 @@ const AC_STATUS = [
   { key: 'ac_register', label: 'แจ้งซ่อม', color: C.slate },
   { key: 'ac_assign',   label: 'รับงาน',   color: C.primary },
   { key: 'ac_work',     label: 'กำลังซ่อม', color: C.sky },
+  { key: 'ac_wait_parts', label: 'รออะไหล่', color: '#f97316' },
+  { key: 'ac_wait_quote', label: 'รอเสนอราคา', color: '#64748b' },
   { key: 'ac_clear',    label: 'ซ่อมเสร็จ', color: C.teal },
   { key: 'ac_close',    label: 'ปิดงาน',   color: C.indigo },
 ];
@@ -412,7 +414,9 @@ function BranchDashboard({ b = {}, navigate }) {
   const acSegments = AC_STATUS.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const woSegments = WO_TYPE.map((s) => ({ label: s.label, value: b[s.key] || 0, color: s.color }));
   const washDone = (b.wo_ready || 0) + (b.wo_billed || 0);          // เซ็นครบ (รอวางบิล + วางบิลแล้ว)
-  const repairPending = (b.ac_register || 0) + (b.ac_assign || 0) + (b.ac_work || 0);
+  // งานซ่อมค้าง = ยังไม่ซ่อมเสร็จ รวมรออะไหล่/รอเสนอราคา (เดิมไม่นับรออะไหล่ → ขาด)
+  const repairPending = (b.ac_register || 0) + (b.ac_assign || 0) + (b.ac_work || 0)
+    + (b.ac_wait_parts || 0) + (b.ac_wait_quote || 0);
 
   return (
     <div className="space-y-5">

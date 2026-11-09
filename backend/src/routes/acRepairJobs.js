@@ -2,7 +2,10 @@
 // Standalone: no link to repair-system (bridge removed 20 Aug 2026) — jobs are
 // opened by the TW team here and live entirely in this schema.
 //
-// Flow: Register → (Work On ⇄ Wait Parts) → Clear (= ปิดงาน) | Cancel
+// Flow: Register → (Work On ⇄ Wait Parts ⇄ Wait Quote) → Clear (= ปิดงาน) | Cancel
+// Wait Quote = รอเสนอราคาซ่อม (PDF ปรับ dashboard 9 พ.ย. 69) — สถานะคู่ขนานกับรออะไหล่.
+// ถ้าเพิ่มสถานะอีก: grep 'Wait Parts' ทุกไฟล์ (dashboard.js, washUnits.js,
+// reportTemplates.js, AcRepair.jsx, AcApproval.jsx, Dashboard.jsx) แล้วเติมให้ครบ.
 const express = require('express');
 const router = express.Router();
 const path = require('path');
@@ -12,6 +15,7 @@ const { serverError } = require('../utils/respond');
 const { insertJob } = require('../services/acRepairCreate');
 const { htmlToPdf, PdfUnavailableError } = require('../services/pdfRenderer');
 const { buildAcRepairReportHtml } = require('../services/reportTemplates');
+const { isSignatureImage } = require('../utils/signature');
 
 const canUse = requireRole(
   'technician', 'checker', 'approve_building', 'approve_engineer', 'admin', 'super_admin'
@@ -34,12 +38,45 @@ function savePhoto(slug, base64, filename) {
 // Status transition table. 'Assign' remains only as a legacy from-state so any
 // job still sitting in it (pre-simplification) can move forward; nothing
 // transitions INTO Assign or Close any more.
+const OPEN = ['Register', 'Assign', 'Work On', 'Wait Parts', 'Wait Quote'];   // ยังไม่ปิด = งานค้าง
 const TRANSITIONS = {
-  start:      { from: ['Register', 'Assign', 'Wait Parts'],           to: 'Work On'    },
-  wait_parts: { from: ['Register', 'Assign', 'Work On'],              to: 'Wait Parts' },
-  clear:      { from: ['Register', 'Assign', 'Work On', 'Wait Parts'], to: 'Clear'     },
-  cancel:     { from: ['Register', 'Assign', 'Work On', 'Wait Parts'], to: 'Cancel'    },
+  start:      { from: OPEN.filter((s) => s !== 'Work On'),    to: 'Work On'    },
+  wait_parts: { from: OPEN.filter((s) => s !== 'Wait Parts'), to: 'Wait Parts' },
+  wait_quote: { from: OPEN.filter((s) => s !== 'Wait Quote'), to: 'Wait Quote' },
+  clear:      { from: OPEN,                                   to: 'Clear'      },
+  cancel:     { from: OPEN,                                   to: 'Cancel'     },
 };
+
+// ── ลายเซ็นออนไลน์ในใบแจ้งซ่อม (ไม่บังคับ — ปริ้นไปเซ็นสดได้เหมือนเดิม) ─────────
+// requester = ผู้แจ้ง (เจ้าหน้าที่ รพ. ไม่มีบัญชี) เซ็นบนเครื่องของช่าง + พิมพ์ชื่อ/ตำแหน่ง
+//             → role ไหนที่ใช้หน้านี้ได้ก็เปิดให้เซ็นได้ (แบบช่องเจ้าของพื้นที่ในใบงานล้าง)
+// tech      = ช่างผู้ปฏิบัติงาน เซ็นในนามบัญชีที่ login (ชื่อจากบัญชี ไม่รับจาก body)
+const SIGN_SLOTS = ['requester', 'tech'];
+const TECH_SIGN_ROLES = ['technician', 'checker'];
+function checkAcSign(body, role) {
+  const { slot, signature_data, signer_name, signer_position } = body || {};
+  if (!SIGN_SLOTS.includes(slot)) return { status: 400, error: 'ช่องเซ็นไม่ถูกต้อง' };
+  if (slot === 'tech' && !TECH_SIGN_ROLES.includes(role)) {
+    return { status: 403, error: 'ช่องช่างผู้ปฏิบัติงาน เซ็นได้เฉพาะช่าง/หัวหน้าช่างแอร์' };
+  }
+  if (!isSignatureImage(signature_data)) {
+    return { status: 400, error: 'ลายเซ็นต้องเป็นรูปจากช่องเซ็น (PNG/JPEG) ขนาดไม่เกิน ~300 KB' };
+  }
+  if (slot === 'requester') {
+    const name = String(signer_name || '').trim();
+    if (!name) return { status: 400, error: 'กรอกชื่อผู้แจ้งก่อนเซ็น' };
+    if (name.length > 150) return { status: 400, error: 'ชื่อยาวเกิน 150 ตัวอักษร' };
+    const pos = String(signer_position || '').trim().slice(0, 150);
+    return { slot, signature: signature_data, name, position: pos || null };
+  }
+  return { slot, signature: signature_data };
+}
+
+// รายการไม่ส่งรูปลายเซ็น (ใบละหลายสิบ KB × ทุกใบ) — ส่งแค่ธงว่าเซ็นแล้ว; รูปอยู่ใน GET /:id
+function listRow(r) {
+  const { sig_requester, sig_tech, ...rest } = r;
+  return { ...rest, requester_signed: !!sig_requester, tech_signed: !!sig_tech };
+}
 
 router.use(authMiddleware, canUse);
 
@@ -49,7 +86,7 @@ router.get('/', async (req, res) => {
   let where = '';
   const params = [];
   if (status === 'active') {
-    // งานค้าง = ยังไม่ซ่อมเสร็จ; Clear(ซ่อมเสร็จ)/Close/Cancel ไม่นับเป็นงานค้าง
+    // งานค้าง = ยังไม่ซ่อมเสร็จ; Clear(ซ่อมเสร็จ)/Close/Cancel ไม่นับเป็นงานค้าง (รอเสนอราคา = ค้าง)
     where = `WHERE j.status NOT IN ('Clear','Close','Cancel')`;
   } else if (status && status !== 'all') {
     params.push(status);
@@ -64,7 +101,7 @@ router.get('/', async (req, res) => {
          ORDER BY j.register_time DESC`,
       params
     );
-    res.json(rows);
+    res.json(rows.map(listRow));
   } catch (err) { serverError(res, err); }
 });
 
@@ -204,7 +241,7 @@ router.get('/:id/pdf', async (req, res) => {
 router.put('/:id/status', async (req, res) => {
   const { action, work_desc, afterImageBase64, afterImageName, cancel_reason } = req.body;
   const tx = TRANSITIONS[action];
-  if (!tx) return res.status(400).json({ error: 'action ไม่ถูกต้อง (start|wait_parts|clear|cancel)' });
+  if (!tx) return res.status(400).json({ error: 'action ไม่ถูกต้อง (start|wait_parts|wait_quote|clear|cancel)' });
   try {
     const { rows: cur } = await req.db(
       'SELECT * FROM ac_repair_jobs WHERE id = $1', [req.params.id]
@@ -225,6 +262,11 @@ router.put('/:id/status', async (req, res) => {
     }
     if (action === 'wait_parts') {
       add('wait_parts_time', new Date());
+    }
+    if (action === 'wait_quote') {
+      // เวลาเข้าสถานะล่าสุด + หมายเหตุ (เช่น เสนอราคาเปลี่ยนถาดน้ำทิ้ง) — ไม่มียอดเงิน/ไฟล์ตามที่ป้อมเคาะ
+      add('wait_quote_time', new Date());
+      add('wait_quote_note', String(req.body.wait_quote_note || '').trim().slice(0, 500) || null);
     }
     if (action === 'clear') {
       add('work_desc', work_desc || null);
@@ -250,4 +292,37 @@ router.put('/:id/status', async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── POST /:id/sign — เซ็นออนไลน์ 1 ช่อง (requester | tech) ─────────────────────
+// เซ็นซ้ำ = ทับของเดิม (เซ็นผิดเซ็นใหม่ได้) ยกเว้นใบที่ยกเลิกแล้ว. ล็อกแถวใน transaction
+// เดียวกับการตรวจสถานะ ไม่ให้ยกเลิกแทรกกลางทาง.
+router.post('/:id/sign', async (req, res) => {
+  const v = checkAcSign(req.body, req.user && req.user.role);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  const client = await req.tx();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT status FROM ac_repair_jobs WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'ไม่พบใบงาน' }); }
+    if (rows[0].status === 'Cancel') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'ใบงานถูกยกเลิกแล้ว — เซ็นไม่ได้' });
+    }
+    const upd = v.slot === 'requester'
+      ? await client.query(
+        `UPDATE ac_repair_jobs SET sig_requester = $1, sig_requester_name = $2,
+                sig_requester_position = $3, sig_requester_at = NOW()
+          WHERE id = $4 RETURNING *`, [v.signature, v.name, v.position, req.params.id])
+      : await client.query(
+        `UPDATE ac_repair_jobs SET sig_tech = $1, sig_tech_name = $2, sig_tech_at = NOW()
+          WHERE id = $3 RETURNING *`, [v.signature, (req.user && req.user.name) || '', req.params.id]);
+    await client.query('COMMIT');
+    res.json(upd.rows[0]);
+  } catch (err) { await client.query('ROLLBACK').catch(() => {}); serverError(res, err); }
+  finally { client.release(); }
+});
+
+router._TRANSITIONS = TRANSITIONS;   // unit tests
+router._checkAcSign = checkAcSign;
+router._listRow = listRow;
 module.exports = router;

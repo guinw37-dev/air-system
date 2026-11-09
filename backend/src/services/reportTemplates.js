@@ -1502,8 +1502,18 @@ function buildReportHtml(data, type) {
 // ── ใบงานซ่อมแอร์ (AC repair job) — single-page printable ────────────────────
 const AC_STATUS_TH = {
   Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม', 'Wait Parts': 'รออะไหล่',
-  Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
+  'Wait Quote': 'รอเสนอราคาซ่อม', Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
 };
+// รูปลายเซ็นใบซ่อม: รับเฉพาะ data:image (route ตรวจตอนบันทึกแล้ว — ตรวจซ้ำตอน render
+// กันค่าที่มาทางอื่น เพราะ Chromium ฝั่งเซิร์ฟเวอร์จะดึงทุก URL ใน <img src>)
+const AC_SIG_RE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/;
+function acSignCell(sig, name, position, at, roleLabel) {
+  const img = sig && AC_SIG_RE.test(sig)
+    ? `<div class="sgw"><img src="${escapeHtml(sig)}" alt="ลายเซ็น"></div>` : '';
+  const sub = [position, at ? fmtDateTime(at) : ''].filter(Boolean).map(escapeHtml).join(' · ');
+  return `<div>${img}<div class="dots"></div><div class="nm">( ${dash(name)} )</div>`
+    + `<div class="rl">${escapeHtml(roleLabel)}</div>${sub ? `<div class="rl">${sub}</div>` : ''}</div>`;
+}
 function fmtDateTime(v) {
   if (!v) return '—';
   const d = v instanceof Date ? v : new Date(v);
@@ -1575,6 +1585,7 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
     ['รับงาน', j.assign_time, j.assign_name],
     ['เริ่มซ่อม', j.start_time, j.assign_name],
     ['รออะไหล่', j.wait_parts_time, j.assign_name],
+    ['รอเสนอราคาซ่อม', j.wait_quote_time, j.wait_quote_note || j.assign_name],
     ['ซ่อมเสร็จ', j.clear_time, j.assign_name],
     ['ปิดงาน', j.close_time, ''],
     ['ยกเลิก', j.cancel_time, j.cancel_reason],
@@ -1627,6 +1638,8 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
   .signs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:26px;text-align:center;font-size:12.5px}
   .signs .nm{font-weight:600;margin-top:34px} .signs .rl{color:#6b7280;font-size:11.5px;margin-top:2px}
   .dots{border-top:1px dotted #94a3b8;width:70%;margin:0 auto}
+  .sgw{height:44px;margin-top:-30px;display:flex;align-items:flex-end;justify-content:center}
+  .sgw img{max-height:44px;max-width:70%;object-fit:contain}
 </style></head><body>
   <div class="top">
     <div class="l">
@@ -1674,8 +1687,10 @@ function buildAcRepairReportHtml(job, branch, opts = {}) {
   ${photosBlock}
 
   <div class="signs">
-    <div><div class="dots"></div><div class="nm">( ${dash(j.requester)} )</div><div class="rl">ผู้แจ้งซ่อม / รับมอบงาน</div></div>
-    <div><div class="dots"></div><div class="nm">( ${dash(j.assign_name)} )</div><div class="rl">เจ้าหน้าที่ผู้ปฏิบัติงาน</div></div>
+    ${acSignCell(j.sig_requester, j.sig_requester ? j.sig_requester_name : j.requester,
+      j.sig_requester ? j.sig_requester_position : '', j.sig_requester ? j.sig_requester_at : null, 'ผู้แจ้งซ่อม / รับมอบงาน')}
+    ${acSignCell(j.sig_tech, j.sig_tech ? j.sig_tech_name : j.assign_name,
+      '', j.sig_tech ? j.sig_tech_at : null, 'เจ้าหน้าที่ผู้ปฏิบัติงาน')}
   </div>
   ${fitOnePageScript()}
 </body></html>`;

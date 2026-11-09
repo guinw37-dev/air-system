@@ -18,6 +18,9 @@ const AC_SQL = `
     COALESCE(SUM((status='Register')::int),0) AS ac_register,
     COALESCE(SUM((status='Assign')::int),0)   AS ac_assign,
     COALESCE(SUM((status='Work On')::int),0)  AS ac_work,
+    -- รออะไหล่/รอเสนอราคา = ยังค้าง (เดิมไม่มีถัง Wait Parts → การ์ดงานซ่อมค้างนับขาด)
+    COALESCE(SUM((status='Wait Parts')::int),0) AS ac_wait_parts,
+    COALESCE(SUM((status='Wait Quote')::int),0) AS ac_wait_quote,
     COALESCE(SUM((status='Clear')::int),0)    AS ac_clear,
     COALESCE(SUM((status='Close')::int),0)    AS ac_close,
     COALESCE(SUM((status='Cancel')::int),0)   AS ac_cancel
@@ -65,7 +68,8 @@ const woSql = (b) => {
 
 async function summarizeBranch(branch) {
   const schema = branch.schema_name || branch.slug;
-  const z = { ac_register:0, ac_assign:0, ac_work:0, ac_clear:0, ac_close:0, ac_cancel:0,
+  const z = { ac_register:0, ac_assign:0, ac_work:0, ac_wait_parts:0, ac_wait_quote:0,
+              ac_clear:0, ac_close:0, ac_cancel:0,
               wo_pending:0, wo_wait_supervisor:0, wo_wait_buildeng:0,
               wo_wait_building:0, wo_wait_department:0, wo_wait_engineer:0, wo_done_full:0,
               wo_ready:0, wo_billed:0, wo_major:0, wo_minor:0, wo_fan:0 };
@@ -81,7 +85,8 @@ async function summarizeBranch(branch) {
     Object.assign(out, mapInts(wo.rows[0]));
   } catch (e) { out.error = true; }
   // derived
-  out.ac_active = out.ac_register + out.ac_assign + out.ac_work + out.ac_clear;
+  out.ac_active = out.ac_register + out.ac_assign + out.ac_work + out.ac_wait_parts
+                + out.ac_wait_quote + out.ac_clear;
   out.wo_active = out.wo_pending + out.wo_ready;   // งานล้างค้าง (ยังไม่วางบิล)
   return out;
 }
@@ -89,7 +94,8 @@ const mapInts = (row) => Object.fromEntries(Object.entries(row || {}).map(([k, v
 
 // Sum the numeric fields of many branch summaries into one total.
 function totalOf(branches) {
-  const keys = ['ac_register','ac_assign','ac_work','ac_clear','ac_close','ac_cancel',
+  const keys = ['ac_register','ac_assign','ac_work','ac_wait_parts','ac_wait_quote',
+                'ac_clear','ac_close','ac_cancel',
                 'ac_active','wo_pending','wo_ready','wo_billed'];
   const t = Object.fromEntries(keys.map((k) => [k, 0]));
   for (const b of branches) for (const k of keys) t[k] += b[k] || 0;
@@ -243,7 +249,7 @@ async function buildWashReport(req) {
     const repRows = await safeRows(db,
       `SELECT COUNT(*) FILTER (WHERE status <> 'Cancel')::int AS total,
               COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int AS done,
-              COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On','Wait Parts'))::int AS pending
+              COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On','Wait Parts','Wait Quote'))::int AS pending
          FROM ac_repair_jobs
         WHERE to_char(register_time,'YYYY-MM') = $1`, [month]);
     const r0 = (repRows && repRows[0]) || {};
