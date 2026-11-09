@@ -6,11 +6,13 @@ import Layout from '../components/Layout';
 // Memo (แนบใบงาน) และออกใบ Report ส่งมอบเมื่อปิดงานแล้ว
 const STATUS_LABEL = {
   Register: 'แจ้งซ่อม', Assign: 'รับงาน', 'Work On': 'กำลังซ่อม',
-  'Wait Parts': 'รออะไหล่', Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
+  'Wait Parts': 'รออะไหล่', 'Wait Quote': 'รอเสนอราคาซ่อม',
+  Clear: 'ซ่อมเสร็จ', Close: 'ปิดงาน', Cancel: 'ยกเลิก',
 };
 const STATUS_COLOR = {
   Register: 'bg-gray-100 text-gray-700', 'Work On': 'bg-yellow-100 text-yellow-800',
-  'Wait Parts': 'bg-orange-100 text-orange-800', Clear: 'bg-green-100 text-green-800',
+  'Wait Parts': 'bg-orange-100 text-orange-800', 'Wait Quote': 'bg-slate-200 text-slate-800',
+  Clear: 'bg-green-100 text-green-800',
   Close: 'bg-green-100 text-green-800', Cancel: 'bg-red-100 text-red-700',
   Assign: 'bg-blue-100 text-blue-800',
 };

@@ -425,7 +425,18 @@ CREATE TABLE IF NOT EXISTS ac_repair_jobs (
   wait_parts_time   TIMESTAMPTZ,
   clear_time        TIMESTAMPTZ,
   close_time        TIMESTAMPTZ,
-  created_by        INT
+  created_by        INT,
+  -- รอเสนอราคาซ่อม (Wait Quote) — เวลาเข้าสถานะล่าสุด + หมายเหตุ
+  wait_quote_time   TIMESTAMPTZ,
+  wait_quote_note   TEXT,
+  -- ลายเซ็นออนไลน์ (ไม่บังคับ): ผู้แจ้ง = คน รพ. พิมพ์ชื่อเอง · ช่าง = ชื่อจากบัญชี
+  sig_requester          TEXT,
+  sig_requester_name     VARCHAR(150),
+  sig_requester_position VARCHAR(150),
+  sig_requester_at       TIMESTAMPTZ,
+  sig_tech               TEXT,
+  sig_tech_name          VARCHAR(150),
+  sig_tech_at            TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_acr_status        ON ac_repair_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_acr_register_time ON ac_repair_jobs(register_time);

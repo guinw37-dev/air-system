@@ -3,15 +3,18 @@ import api from '../api/client';
 import { useAuthStore } from '../store/auth';
 import Layout from '../components/Layout';
 import { compressImage } from '../lib/image';
+import SignaturePad from '../components/SignaturePad';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-// Workflow ย่อ (20 Aug 2026): แจ้งซ่อม → กำลังซ่อม ⇄ รออะไหล่ → ซ่อมเสร็จ (=ปิดงาน).
+// Workflow ย่อ (20 Aug 2026): แจ้งซ่อม → กำลังซ่อม ⇄ รออะไหล่ ⇄ รอเสนอราคาซ่อม → ซ่อมเสร็จ (=ปิดงาน).
 // Assign/Close คงไว้แค่ label สำหรับใบเก่า — ไม่อยู่ใน flow ใหม่แล้ว.
+// เพิ่มสถานะ: ต้องเติมคู่ backend TRANSITIONS (routes/acRepairJobs.js) + ไฟล์ที่ list ไว้ในหัวไฟล์นั้น
 const STATUS_LABEL = {
   Register:     'แจ้งซ่อม',
   Assign:       'รับงาน',
   'Work On':    'กำลังซ่อม',
   'Wait Parts': 'รออะไหล่',
+  'Wait Quote': 'รอเสนอราคาซ่อม',
   Clear:        'ซ่อมเสร็จ',
   Close:        'ปิดงาน',
   Cancel:       'ยกเลิก',
@@ -21,13 +24,15 @@ const STATUS_COLOR = {
   Assign:       'bg-blue-100 text-blue-800 border-blue-300',
   'Work On':    'bg-yellow-100 text-yellow-800 border-yellow-300',
   'Wait Parts': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Wait Quote': 'bg-slate-200 text-slate-800 border-slate-400',
   Clear:        'bg-green-100 text-green-800 border-green-300',
   Close:        'bg-green-100 text-green-800 border-green-300',
   Cancel:       'bg-red-100 text-red-700 border-red-300',
 };
-const ALL_STATUSES = ['Register', 'Work On', 'Wait Parts', 'Clear', 'Cancel'];
+const ALL_STATUSES = ['Register', 'Work On', 'Wait Parts', 'Wait Quote', 'Clear', 'Cancel'];
 // งานค้าง = ยังไม่ซ่อมเสร็จ. Clear(ซ่อมเสร็จ=ปิดงาน)/Cancel ไม่นับค้าง
-const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On', 'Wait Parts'];
+const ACTIVE_STATUSES = ['Register', 'Assign', 'Work On', 'Wait Parts', 'Wait Quote'];
+const TECH_SIGN_ROLES = ['technician', 'checker'];   // = backend TECH_SIGN_ROLES
 const TERMINAL_STATUSES = ['Clear', 'Close', 'Cancel'];
 
 function StatusBadge({ status }) {
@@ -589,15 +594,27 @@ function MemoListModal({ onOpenMemo, onClose }) {
 }
 
 // ── Detail modal ─────────────────────────────────────────────────────────────
-function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
+function DetailModal({ job: initialJob, role, onClose, onRefresh, onChanged }) {
   const [job, setJob] = useState(initialJob);
   const [editing, setEditing] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [showMemo, setShowMemo] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [quoting, setQuoting] = useState(false);     // ฟอร์มหมายเหตุ "รอเสนอราคาซ่อม"
+  const [quoteNote, setQuoteNote] = useState('');
+  const [signSlot, setSignSlot] = useState(null);    // 'requester' | 'tech' | null
+  const [signName, setSignName] = useState(initialJob.requester || '');
+  const [signPos, setSignPos] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+
+  // รายการไม่ส่งรูปลายเซ็นมา (ไฟล์ใหญ่) → โหลดใบเต็มตอนเปิด
+  useEffect(() => {
+    let live = true;
+    api.get(`/ac-repair-jobs/${initialJob.id}`).then((r) => { if (live) setJob(r.data); }).catch(() => {});
+    return () => { live = false; };
+  }, [initialJob.id]);
 
   async function transition(action, body = {}) {
     setBusy(true); setMsg('');
@@ -605,7 +622,22 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
       const r = await api.put(`/ac-repair-jobs/${job.id}/status`, { action, ...body });
       setJob(r.data);
       onRefresh();
-      setShowClear(false); setCancelling(false);
+      setShowClear(false); setCancelling(false); setQuoting(false);
+    } catch (e) { setMsg(e.response?.data?.error || e.message); }
+    finally { setBusy(false); }
+  }
+
+  // เซ็นออนไลน์ — ไม่ปิดหน้าต่าง (ผู้แจ้งเซ็นแล้วช่างเซ็นต่อได้ทันที)
+  async function sign(dataUrl) {
+    if (signSlot === 'requester' && !signName.trim()) { setMsg('กรอกชื่อผู้แจ้งก่อนเซ็น'); return; }
+    setBusy(true); setMsg('');
+    try {
+      const r = await api.post(`/ac-repair-jobs/${job.id}/sign`, {
+        slot: signSlot, signature_data: dataUrl, signer_name: signName, signer_position: signPos,
+      });
+      setJob(r.data);
+      setSignSlot(null);
+      if (onChanged) onChanged();
     } catch (e) { setMsg(e.response?.data?.error || e.message); }
     finally { setBusy(false); }
   }
@@ -766,11 +798,79 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
               {job.assign_time   && <p>👷 รับงาน — {fmt(job.assign_time)}</p>}
               {job.start_time    && <p>🔧 เริ่มซ่อม — {fmt(job.start_time)}</p>}
               {job.wait_parts_time && <p>📦 รออะไหล่ — {fmt(job.wait_parts_time)}</p>}
+              {job.wait_quote_time && <p>💬 รอเสนอราคาซ่อม — {fmt(job.wait_quote_time)} {job.wait_quote_note ? `(${job.wait_quote_note})` : ''}</p>}
               {job.clear_time    && <p>✅ ซ่อมเสร็จ (ปิดงาน) — {fmt(job.clear_time)}</p>}
               {job.close_time    && <p>🏁 ปิดงาน — {fmt(job.close_time)}</p>}
               {job.cancel_time   && <p>❌ ยกเลิก — {fmt(job.cancel_time)} {job.cancel_reason ? `(${job.cancel_reason})` : ''}</p>}
             </div>
           </section>
+
+          {/* ลายเซ็นออนไลน์ — ไม่บังคับ (ปริ้นไปเซ็นสดได้เหมือนเดิม) */}
+          {job.status !== 'Cancel' && (
+            <section>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">ลายเซ็น <span className="normal-case font-normal">(ไม่บังคับ — ปริ้นไปเซ็นสดได้)</span></h3>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { slot: 'requester', label: 'ผู้แจ้งซ่อม / รับมอบงาน', img: job.sig_requester, name: job.sig_requester_name,
+                    sub: [job.sig_requester_position, job.sig_requester_at && fmt(job.sig_requester_at)], can: true, cta: 'ให้ผู้แจ้งเซ็น' },
+                  { slot: 'tech', label: 'เจ้าหน้าที่ผู้ปฏิบัติงาน', img: job.sig_tech, name: job.sig_tech_name,
+                    sub: [job.sig_tech_at && fmt(job.sig_tech_at)], can: TECH_SIGN_ROLES.includes(role), cta: 'เซ็นในนามฉัน' },
+                ].map((s) => (
+                  <div key={s.slot} className="border rounded-xl p-2 text-center">
+                    <div className="h-16 flex items-center justify-center">
+                      {s.img ? <img src={s.img} alt={`ลายเซ็น${s.label}`} className="max-h-16 max-w-full" />
+                        : <span className="text-xs text-gray-400">ยังไม่เซ็น</span>}
+                    </div>
+                    {s.img && <p className="text-xs font-medium mt-1">{s.name}</p>}
+                    {s.img && <p className="text-[11px] text-gray-500">{s.sub.filter(Boolean).join(' · ')}</p>}
+                    <p className="text-[11px] text-gray-500">{s.label}</p>
+                    {s.can && !signSlot && (
+                      <button onClick={() => { setSignSlot(s.slot); setMsg(''); }} className="mt-1 text-xs text-sky-700 hover:underline">
+                        ✍ {s.img ? 'เซ็นใหม่' : s.cta}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {signSlot && (
+                <div className="mt-3 border border-sky-200 bg-sky-50/50 rounded-xl p-3 space-y-2">
+                  <p className="text-sm font-medium text-sky-800">
+                    {signSlot === 'requester' ? 'ผู้แจ้งเซ็นรับมอบงาน' : 'ช่างผู้ปฏิบัติงานเซ็น'}
+                  </p>
+                  {signSlot === 'requester' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="border rounded-lg px-3 py-2 text-sm" placeholder="ชื่อผู้แจ้ง (จำเป็น)" maxLength={150}
+                        value={signName} onChange={(e) => setSignName(e.target.value)} />
+                      <input className="border rounded-lg px-3 py-2 text-sm" placeholder="ตำแหน่ง (ถ้ามี)" maxLength={150}
+                        value={signPos} onChange={(e) => setSignPos(e.target.value)} />
+                    </div>
+                  )}
+                  <SignaturePad onSave={sign} onCancel={() => setSignSlot(null)} />
+                  {busy && <p className="text-xs text-gray-500">กำลังบันทึกลายเซ็น…</p>}
+                </div>
+              )}
+            </section>
+          )}
+
+          {quoting && (
+            <section className="border-t pt-4">
+              <p className="text-sm font-medium text-slate-700 mb-2">ตั้งสถานะ "รอเสนอราคาซ่อม"</p>
+              <input
+                className="w-full border rounded-lg px-3 py-2 text-sm mb-3"
+                placeholder="หมายเหตุ เช่น เสนอราคาเปลี่ยนถาดน้ำทิ้ง (ไม่บังคับ)"
+                maxLength={500}
+                value={quoteNote}
+                onChange={(e) => setQuoteNote(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setQuoting(false)} className="flex-1 px-3 py-2 border rounded-lg text-sm">ยกเลิก</button>
+                <button disabled={busy} onClick={() => transition('wait_quote', { wait_quote_note: quoteNote })}
+                  className="flex-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-sm disabled:opacity-50">
+                  {busy ? 'กำลังบันทึก…' : 'ยืนยัน รอเสนอราคา'}
+                </button>
+              </div>
+            </section>
+          )}
 
           {cancelling && (
             <section className="border-t pt-4">
@@ -794,7 +894,7 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
           {msg && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
         </div>
 
-        {!TERMINAL_STATUSES.includes(job.status) && !cancelling && (
+        {!TERMINAL_STATUSES.includes(job.status) && !cancelling && !quoting && (
           <div className="px-6 py-4 border-t flex flex-wrap gap-2">
             <button onClick={() => setEditing(true)} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
               แก้ไขรายละเอียด
@@ -809,6 +909,12 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh }) {
               <button disabled={busy} onClick={() => transition('wait_parts')}
                 className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-50">
                 {busy ? '…' : '📦 รออะไหล่'}
+              </button>
+            )}
+            {job.status !== 'Wait Quote' && (
+              <button disabled={busy} onClick={() => { setQuoting(true); setQuoteNote(''); }}
+                className="px-3 py-1.5 bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-sm hover:bg-slate-300 disabled:opacity-50">
+                💬 รอเสนอราคาซ่อม
               </button>
             )}
             <button onClick={() => setShowClear(true)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
@@ -895,12 +1001,13 @@ export default function AcRepair() {
       </div>
 
       {/* Stats bar — การ์ดสีตามสถานะ */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {ALL_STATUSES.map((s) => {
           const tone = {
             Register:     { num: 'text-slate-700', dot: 'bg-slate-400', bg: 'bg-white' },
             'Work On':    { num: 'text-yellow-600', dot: 'bg-yellow-500', bg: 'bg-white' },
             'Wait Parts': { num: 'text-orange-600', dot: 'bg-orange-500', bg: 'bg-white' },
+            'Wait Quote': { num: 'text-slate-600', dot: 'bg-slate-500', bg: 'bg-white' },
             Clear:        { num: 'text-green-600', dot: 'bg-green-500', bg: 'bg-white' },
             Cancel:       { num: 'text-red-500', dot: 'bg-red-400', bg: 'bg-white' },
           }[s] || { num: 'text-gray-800', dot: 'bg-gray-300', bg: 'bg-white' };
@@ -962,6 +1069,7 @@ export default function AcRepair() {
                 job.status === 'Assign'       ? 'bg-blue-500' :
                 job.status === 'Work On'      ? 'bg-yellow-500' :
                 job.status === 'Wait Parts'   ? 'bg-orange-500' :
+                job.status === 'Wait Quote'   ? 'bg-slate-500' :
                 job.status === 'Clear'        ? 'bg-green-500' :
                 job.status === 'Close'        ? 'bg-green-500' : 'bg-red-400'
               }`} />
@@ -987,6 +1095,12 @@ export default function AcRepair() {
                 {['Register', 'Assign'].includes(job.status) && <span className="text-yellow-600 font-medium">เริ่มซ่อม →</span>}
                 {job.status === 'Work On'                    && <span className="text-green-600 font-medium">ซ่อมเสร็จ →</span>}
                 {job.status === 'Wait Parts'                 && <span className="text-orange-600 font-medium">รออะไหล่ ⏳</span>}
+                {job.status === 'Wait Quote'                 && <span className="text-slate-600 font-medium">รอเสนอราคา ⏳</span>}
+                {(job.requester_signed || job.tech_signed) && (
+                  <div className="text-[11px] text-emerald-600 mt-1" title="เซ็นออนไลน์แล้ว">
+                    ✍ {[job.requester_signed && 'ผู้แจ้ง', job.tech_signed && 'ช่าง'].filter(Boolean).join(' + ')}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -1007,6 +1121,7 @@ export default function AcRepair() {
           job={selected}
           role={role}
           onClose={() => setSelected(null)}
+          onChanged={load}
           onRefresh={() => { load(); setSelected(null); }}
         />
       )}
