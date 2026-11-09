@@ -222,6 +222,59 @@ router.delete('/:id', authMiddleware, canEdit, async (req, res) => {
   } catch (err) { serverError(res, err); }
 });
 
+// ── POST /bulk — ตั้งเป้าหมายล้างวันถัดไป: หลายเครื่อง × ประเภทเดียว × วันเดียว ─────
+// มาจากหน้าเป้าหมายล้าง (แท็บ "เป้าหมายวันถัดไป") — เขียนลงตารางเดียวกับปฏิทินล้างแอร์ จึงเห็น
+// ในปฏิทิน/แจ้ง LINE/ปิดนัดอัตโนมัติเมื่อสร้างใบงาน เหมือนนัดที่เพิ่มทีละเครื่อง.
+// รับเฉพาะเครื่องที่มีในทะเบียน (active) · เครื่องที่มีนัดประเภทนี้วันนั้นอยู่แล้วข้าม (ไม่ซ้ำ).
+const BULK_MAX = 200;
+function checkBulk(b) {
+  const { planned_date, work_type, asset_codes, note } = b || {};
+  if (!isDate(planned_date)) return { error: 'planned_date ต้องเป็น YYYY-MM-DD' };
+  if (!WORK_TYPES.includes(work_type)) return { error: 'work_type ไม่ถูกต้อง' };
+  if (!Array.isArray(asset_codes)) return { error: 'ต้องส่งรายการเครื่อง (asset_codes)' };
+  const codes = [...new Set(asset_codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean))];
+  if (!codes.length) return { error: 'เลือกเครื่องอย่างน้อย 1 เครื่อง' };
+  if (codes.length > BULK_MAX) return { error: `ตั้งได้ครั้งละไม่เกิน ${BULK_MAX} เครื่อง` };
+  if (codes.some((c) => c.length > 60)) return { error: 'รหัสเครื่องยาวเกิน 60 ตัวอักษร' };
+  return { date: planned_date, wt: work_type, codes, note: note ? String(note).slice(0, 500) : null };
+}
+
+router.post('/bulk', authMiddleware, canEdit, async (req, res) => {
+  const v = checkBulk(req.body);
+  if (v.error) return res.status(400).json({ error: v.error });
+  const client = await req.tx();
+  try {
+    await client.query('BEGIN');
+    // กดพร้อมกัน 2 คน (หรือกดซ้ำเร็ว ๆ) ห้ามได้นัดซ้ำ — ตารางไม่มี unique key จึงล็อกช่วงตรวจ+เพิ่ม
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('wash_schedule_bulk'))`);
+    const { rows: known } = await client.query(
+      `SELECT asset_code FROM wash_units WHERE active = true AND asset_code = ANY($1::text[])`, [v.codes]);
+    const knownSet = new Set(known.map((r) => r.asset_code));
+    const unknown = v.codes.filter((c) => !knownSet.has(c));
+    const { rows: dup } = await client.query(
+      `SELECT DISTINCT asset_code FROM wash_schedule
+        WHERE work_type = $1::text AND planned_date = $2::date AND status <> 'skipped'
+          AND asset_code = ANY($3::text[])`, [v.wt, v.date, [...knownSet]]);
+    const dupSet = new Set(dup.map((r) => r.asset_code));
+    const toAdd = [...knownSet].filter((c) => !dupSet.has(c));
+    if (toAdd.length) {
+      const vals = [];
+      const ph = toAdd.map((c, j) => {
+        vals.push(c);
+        return `($${j + 1}, $${toAdd.length + 1}::text, $${toAdd.length + 2}::date, 'planned', $${toAdd.length + 3}::text, $${toAdd.length + 4}::int)`;
+      }).join(',');
+      vals.push(v.wt, v.date, v.note, req.user?.id || null);
+      await client.query(
+        `INSERT INTO wash_schedule (asset_code, work_type, planned_date, status, note, created_by) VALUES ${ph}`, vals);
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ created: toAdd.length, created_codes: toAdd, skipped_existing: [...dupSet], unknown });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    serverError(res, err);
+  } finally { client.release(); }
+});
+
 // ── POST /line-test — ส่งแจ้งเตือน LINE ของสาขานี้ทันที (ทดสอบ) ────────────────
 const { pool } = require('../db');
 const { runDigestForBranch } = require('../jobs/lineDailyDigest');
@@ -237,4 +290,5 @@ router.post('/line-test', authMiddleware, canEdit, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+router._checkBulk = checkBulk;   // unit tests
 module.exports = router;

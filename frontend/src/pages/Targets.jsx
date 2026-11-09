@@ -2,6 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import { useHasZones } from '../lib/zones';
+import { useSearchParams } from 'react-router-dom';
+import NextDayTargets from '../components/NextDayTargets';
+
+// แท็บย่อยของหน้าเป้าหมายล้าง — เก็บใน ?tab= เพื่อลิงก์/ย้อนกลับมาแท็บเดิมได้
+function TargetTabs({ tab, onTab }) {
+  return (
+    <div className="flex gap-2">
+      {[['month', 'เป้าหมายต่อเดือน'], ['next', 'เป้าหมายวันถัดไป']].map(([k, label]) => (
+        <button key={k} onClick={() => onTab(k)}
+          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${tab === k ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 border hover:border-blue-400'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const WT = [
   { key: '',      label: 'รวมทุกประเภท' },
@@ -19,6 +35,9 @@ export default function Targets() {
   // สาขาที่ไม่มีโซน (ทุกที่ยกเว้นศรีราชา): ซ่อน UI โซน + เก็บ zone เป็น 'ALL' sentinel
   // (service_targets.zone NOT NULL + เป็น key ของ upsert — ค่าคงที่ตัวเดียวพอ)
   const hasZones = useHasZones();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'next' ? 'next' : 'month';
+  const setTab = (k) => setSearchParams(k === 'next' ? { tab: 'next' } : {}, { replace: true });
   const [rows, setRows] = useState([]);
   const [units, setUnits] = useState([]);     // ทะเบียน → distinct location/ac_type
   const [loading, setLoading] = useState(true);
@@ -79,9 +98,25 @@ export default function Targets() {
       || (WT_ORDER[a.work_type || ''] ?? 9) - (WT_ORDER[b.work_type || ''] ?? 9)
       || String(a.location || '').localeCompare(String(b.location || '')));
 
+  if (tab === 'next') {
+    return (
+      <Layout>
+        <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
+          <TargetTabs tab={tab} onTab={setTab} />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">เป้าหมายล้างวันถัดไป</h1>
+            <p className="text-sm text-gray-500 mt-0.5">ติ๊กเครื่องที่ยังไม่ล้าง ตั้งเป็นเป้าของวันที่เลือก — ขึ้นในปฏิทินล้างแอร์ให้ช่างเห็นทันที</p>
+          </div>
+          <NextDayTargets />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
+        <TargetTabs tab={tab} onTab={setTab} />
         <div>
           <h1 className="text-xl font-bold text-gray-900">เป้าหมายล้างต่อเดือน</h1>
           <p className="text-sm text-gray-500 mt-0.5">ตั้งเป้าแยก ลูกค้า + เดือน + สถานที่ + ตระกูลแอร์ + ประเภทล้าง</p>
