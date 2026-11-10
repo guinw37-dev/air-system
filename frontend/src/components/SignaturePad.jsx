@@ -1,23 +1,29 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useLayoutEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { SIG_W, SIG_H, LINE_W, padBitmapSize, toCanvasPoint } from '../lib/signaturePad'
 
 export default function SignaturePad({ onSave, onCancel }) {
   const canvasRef = useRef(null)
   const drawing = useRef(false)
   const [isEmpty, setIsEmpty] = useState(true)
 
-  useEffect(() => {
+  // useLayoutEffect: ตั้งขนาด bitmap ก่อนจอวาดครั้งแรก
+  useLayoutEffect(() => {
     const canvas = canvasRef.current
+    // bitmap ตามขนาดที่เห็นจริง × ความละเอียดจอ → เส้นคม (รายละเอียดใน lib/signaturePad.js)
+    const [w, h] = padBitmapSize(canvas.getBoundingClientRect().width, window.devicePixelRatio)
+    canvas.width = w
+    canvas.height = h
     const ctx = canvas.getContext('2d')
     ctx.strokeStyle = '#1e293b'
-    ctx.lineWidth = 2.5
+    ctx.lineWidth = LINE_W * (w / SIG_W)
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
+    // พิกเซลจอ → พิกเซล bitmap (กล่องโชว์ไม่เท่ากับ bitmap — ต้องคูณอัตราส่วน)
     const getPos = (e) => {
-      const rect = canvas.getBoundingClientRect()
       const src = e.touches ? e.touches[0] : e
-      return [src.clientX - rect.left, src.clientY - rect.top]
+      return toCanvasPoint(src.clientX, src.clientY, canvas.getBoundingClientRect(), canvas.width, canvas.height)
     }
 
     const start = (e) => {
@@ -67,8 +73,15 @@ export default function SignaturePad({ onSave, onCancel }) {
 
   const save = () => {
     if (isEmpty) return
-    const dataUrl = canvasRef.current.toDataURL('image/png')
-    onSave(dataUrl)
+    // ส่งออกเป็น PNG 320×160 เสมอ (เท่าเดิม) ไม่ว่าจอจะใหญ่แค่ไหน — รูปเล็ก
+    // และไม่มีทางเกินเพดาน 400000 ตัวอักษรของ backend
+    const out = document.createElement('canvas')
+    out.width = SIG_W
+    out.height = SIG_H
+    const octx = out.getContext('2d')
+    octx.imageSmoothingQuality = 'high'
+    octx.drawImage(canvasRef.current, 0, 0, SIG_W, SIG_H)
+    onSave(out.toDataURL('image/png'))
   }
 
   return (
@@ -76,8 +89,6 @@ export default function SignaturePad({ onSave, onCancel }) {
       <div className="relative border-2 border-dashed border-gray-300 rounded-xl bg-white">
         <canvas
           ref={canvasRef}
-          width={320}
-          height={160}
           className="w-full touch-none rounded-xl"
           style={{ aspectRatio: '2/1' }}
         />
