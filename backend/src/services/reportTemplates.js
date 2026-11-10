@@ -9,6 +9,7 @@
 // Returns a COMPLETE <html> document string. All user-supplied text is escaped.
 
 const { fitOnePageScript } = require('./printFit');
+const { isSignatureImage } = require('../utils/signature');
 
 // ---------------------------------------------------------------------------
 // Small helpers (defensive: tolerate null / undefined / wrong shape)
@@ -439,8 +440,10 @@ function ownerSignatureBox(d, sigs) {
 }
 
 // Render one signature box (img + role + name + position + date). Graceful when missing.
+// รูปลายเซ็น: ใส่ <img> เฉพาะ data:image png/jpeg — route ตรวจตอนบันทึกแล้ว แต่ตรวจซ้ำตอน
+// render กันค่าเก่า/ค่าที่มาทางอื่น เพราะ Chromium ฝั่งเซิร์ฟเวอร์จะดึงทุก URL ใน <img src>.
 function signatureBox(roleLabel, sig) {
-  const inner = sig && sig.signature_data
+  const inner = sig && isSignatureImage(sig.signature_data)
     ? `<img src="${escapeHtml(sig.signature_data)}" alt="sign">`
     : '';
   const nm = sig && sig.signer_name ? dash(sig.signer_name) : '<span class="muted">ลงชื่อ ____________</span>';

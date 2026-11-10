@@ -15,6 +15,11 @@ const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml }
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 const { serverError } = require('../utils/respond');
 const { UNITS_EXPR, washDateExpr } = require('../utils/washCount');
+const { isSignatureImage } = require('../utils/signature');
+
+// ลายเซ็นต้องเป็นรูปจาก SignaturePad (data:image/png|jpeg;base64) เท่านั้น — ค่าอื่น
+// (http://…, file://…) จะไปอยู่ใน <img src> ของ PDF แล้ว Chromium ฝั่งเซิร์ฟเวอร์ไปดึงให้.
+const SIG_BAD = 'ลายเซ็นต้องเป็นรูปจากช่องเซ็น (PNG/JPEG) ขนาดไม่เกิน ~300 KB';
 
 // Fan out an in-app notification for a simple-wo event. Recipients are branch
 // users (by role and/or a specific id) read from req.db (<schema>.users); rows
@@ -88,6 +93,16 @@ function resolveSigs(role, b, cur = {}, myPosition = null) {
     }
   }
   return out;
+}
+
+// The slot whose signature resolveSigs would write as a non-image, else null. Only
+// values that CHANGE are judged: the form posts every slot back exactly as loaded,
+// so a value already stored must not block editing the rest of the ใบงาน.
+function badSigSlot(sig, cur = {}) {
+  return SIG_SLOTS.find((slot) => {
+    const v = sig[`sig_${slot}`];
+    return v && v !== cur[`sig_${slot}`] && !isSignatureImage(v);
+  }) || null;
 }
 
 // ตำแหน่งของผู้เรียก (users.position ใน schema สาขา) — best-effort.
@@ -405,6 +420,7 @@ router.post('/', authMiddleware, async (req, res) => {
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
   const sig = resolveSigs(req.user.role, b, {}, await myPosition(req));
+  if (badSigSlot(sig)) return res.status(400).json({ error: SIG_BAD });
   const client = await req.tx();
   try {
     // Two concurrent creates can derive the same wo_number; on a unique-constraint
@@ -720,6 +736,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
     // Only the user's own signature slot may be (re)written; others keep their value.
     const sig = resolveSigs(req.user.role, b, rows[0], await myPosition(req));
+    if (badSigSlot(sig, rows[0])) return res.status(400).json({ error: SIG_BAD });
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
@@ -832,6 +849,7 @@ router.post('/:id/transition', authMiddleware, async (req, res) => {
 router.post('/:id/sign', authMiddleware, async (req, res) => {
   const { signature_data, signer_name, signer_position, slot: reqSlot } = req.body || {};
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
+  if (!isSignatureImage(signature_data)) return res.status(400).json({ error: SIG_BAD });
   // Requested slot must be one this role may sign (own slot or ROLE_EXTRA_SLOTS,
   // e.g. checker → team); no slot in the body falls back to the role's own slot.
   // Whitelisted via canSignSlot before interpolation into the sig_<slot> columns.
@@ -906,6 +924,7 @@ router.post('/batch-sign', authMiddleware, async (req, res) => {
   const cleanIds = (Array.isArray(ids) ? ids : []).map(Number).filter(Boolean);
   if (!cleanIds.length) return res.status(400).json({ error: 'ไม่ได้เลือกใบงาน' });
   if (!signature_data) return res.status(400).json({ error: 'ไม่มีลายเซ็น' });
+  if (!isSignatureImage(signature_data)) return res.status(400).json({ error: SIG_BAD });
   const dataCol = `sig_${slot}`;
   const nameCol = `sig_${slot}_name`;
   // Lock the selected rows, evaluate the chain, then update — all in one tx so a
