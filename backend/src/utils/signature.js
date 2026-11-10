@@ -8,4 +8,7 @@ function isSignatureImage(s) {
   return typeof s === 'string' && s.length <= SIG_MAX_CHARS && SIG_RE.test(s);
 }
 
-module.exports = { isSignatureImage, SIG_MAX_CHARS };
+// ข้อความ 400 เดียวกันทุก route ที่รับลายเซ็น
+const SIG_BAD = 'ลายเซ็นต้องเป็นรูปจากช่องเซ็น (PNG/JPEG) ขนาดไม่เกิน ~300 KB';
+
+module.exports = { isSignatureImage, SIG_MAX_CHARS, SIG_BAD };

@@ -11,6 +11,7 @@ const { requireWoRole } = require('../middleware/woAccess');
 const { checkTransition, HTTP_FOR_CODE, logTransition, isEditable } = require('../services/woStateMachine');
 const { notifyTransition } = require('../services/notify');
 const { serverError } = require('../utils/respond');
+const { isSignatureImage, SIG_BAD } = require('../utils/signature');
 
 // Schema-per-tenant: work_orders + children live in the request's branch schema,
 // reached via req.db (reads) / req.tx (transactions). No client_id columns.
@@ -561,6 +562,9 @@ router.post('/:id/signatures', authMiddleware, async (req, res) => {
   const { role, signature_data, signer_name } = req.body;
   const valid = ['area_owner', 'central_admin', 'approver'];
   if (!role || !signature_data) return res.status(400).json({ error: 'role and signature_data required' });
+  // Only a SignaturePad image: it is rendered into <img src> of the server-side PDF,
+  // where a URL would make Chromium fetch it (SSRF).
+  if (!isSignatureImage(signature_data)) return res.status(400).json({ error: SIG_BAD });
   if (!valid.includes(role)) return res.status(400).json({ error: `role must be one of: ${valid.join(', ')}` });
   const allowedSigners = {
     area_owner:    ['technician', 'checker'],
