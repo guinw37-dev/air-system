@@ -15,11 +15,9 @@ const { buildSimpleReportHtml, buildSimpleBatchHtml, buildSimpleBatchCoverHtml }
 const { htmlToPdf, renderAndMerge, PdfUnavailableError } = require('../services/pdfRenderer');
 const { serverError } = require('../utils/respond');
 const { UNITS_EXPR, washDateExpr } = require('../utils/washCount');
-const { isSignatureImage } = require('../utils/signature');
-
 // ลายเซ็นต้องเป็นรูปจาก SignaturePad (data:image/png|jpeg;base64) เท่านั้น — ค่าอื่น
 // (http://…, file://…) จะไปอยู่ใน <img src> ของ PDF แล้ว Chromium ฝั่งเซิร์ฟเวอร์ไปดึงให้.
-const SIG_BAD = 'ลายเซ็นต้องเป็นรูปจากช่องเซ็น (PNG/JPEG) ขนาดไม่เกิน ~300 KB';
+const { isSignatureImage, SIG_BAD } = require('../utils/signature');
 
 // Fan out an in-app notification for a simple-wo event. Recipients are branch
 // users (by role and/or a specific id) read from req.db (<schema>.users); rows

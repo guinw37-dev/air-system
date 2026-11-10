@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { pool, query, txClient } = require('../db');
 const { slugToSchema } = require('../utils/schema');
 const rateLimit = require('../middleware/rateLimit');
+const { isSignatureImage, SIG_BAD } = require('../utils/signature');
 
 // PUBLIC area_owner signing — NO Authorization header. The bearer of the link
 // can view minimal WO info and sign once. Schema-per-tenant: the token carries a
@@ -90,6 +91,10 @@ router.post('/:token', rateLimit({ windowMs: 60000, max: 5 }), async (req, res) 
   if (!signer_name?.trim() || !signature_data) {
     return res.status(400).json({ error: 'กรุณากรอกชื่อและลงลายเซ็น' });
   }
+  // Only a SignaturePad image — the value ends up in <img src> of the server-rendered
+  // PDF, so a URL here would make Chromium fetch it (SSRF). Checked before the token,
+  // so a rejected signature never uses up the one-time link.
+  if (!isSignatureImage(signature_data)) return res.status(400).json({ error: SIG_BAD });
   let woId, branch;
   try { ({ woId, branch } = decodeToken(req.params.token)); }
   catch (err) { return res.status(err.status || 500).json({ error: err.message }); }
