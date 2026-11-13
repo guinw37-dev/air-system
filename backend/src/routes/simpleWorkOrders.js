@@ -62,10 +62,24 @@ const POSITION_SLOTS = ['team', 'supervisor', 'building', 'engineer', 'departmen
 // "เซ็นครบ" rule for the branch this request runs in (PTN also needs department).
 const signOpts = (req) => ({ requireDepartment: !!(req.branch && req.branch.require_department_sign) });
 
-function resolveSigs(role, b, cur = {}, myPosition = null) {
+// Returns { sig, blocked }. `sig` = the sig_* columns to write. `blocked` =
+// { slot, waitFor } when a NEW signature arrives before a slot it waits on is signed
+// — the caller refuses the whole request (409) so the user sees it; it must never
+// save the ใบงาน minus that signature (it used to, silently).
+// The step chain counts the signatures resolved earlier in THIS body too: the form
+// lets a หัวหน้าช่าง sign ช่างแอร์ and then their own slot on one page, which is the
+// same as two /sign calls. Only RESOLVED values count — a slot this role can't sign
+// keeps `cur` — so a forged slot in the body never unlocks the next one.
+// SIG_SLOTS lists the prerequisites (team, supervisor) before the slots that wait on them.
+// `me` = { position, name } of the caller: a blank ชื่อผู้ลงนาม on a signature made
+// now falls back to the caller's name (as /:id/sign does) — except EXTERNAL slots,
+// whose signer is someone else.
+function resolveSigs(role, b, cur = {}, me = {}) {
   const out = {};
+  let blocked = null;
   for (const slot of SIG_SLOTS) {
     const hasPos = POSITION_SLOTS.includes(slot);
+    const external = EXTERNAL_SLOTS.includes(slot);
     const keep = () => {
       out[`sig_${slot}`] = cur[`sig_${slot}`] || null;
       out[`sig_${slot}_name`] = cur[`sig_${slot}_name`] || null;
@@ -74,23 +88,35 @@ function resolveSigs(role, b, cur = {}, myPosition = null) {
     if (!canSignSlot(role, slot)) { keep(); continue; }       // not this role's slot
     const adding = !!b[`sig_${slot}`] && !cur[`sig_${slot}`]; // a NEW signature in this slot
     // Enforce the step chain on the form path too (same as /sign): a brand-new
-    // signature is only accepted once every earlier slot is already signed.
-    if (adding && blockingSlot(slot, cur)) { keep(); continue; }
+    // signature is only accepted once every earlier slot is signed (stored or in this body).
+    const waitFor = adding ? blockingSlot(slot, { ...cur, ...out }) : null;
+    if (waitFor) { blocked = blocked || { slot, waitFor }; keep(); continue; }
+    const signingNow = !!b[`sig_${slot}`] && b[`sig_${slot}`] !== cur[`sig_${slot}`];
     out[`sig_${slot}`] = b[`sig_${slot}`] || null;
-    out[`sig_${slot}_name`] = b[`sig_${slot}_name`] || null;
+    out[`sig_${slot}_name`] = b[`sig_${slot}_name`]
+      || (signingNow && !external ? (me.name || null) : null);
     if (hasPos) {
       // Past the canSignSlot guard = the signer signs a slot they own (own slot
       // or ROLE_EXTRA_SLOTS, e.g. checker → team) → snapshot their position.
       // admin/super never reach here (canSignSlot false) → name-join fallback.
       // EXTERNAL slots are a proxy for someone with no account — take the typed
       // position from the body; snapshotting the operator's would be plain wrong.
-      const posted = EXTERNAL_SLOTS.includes(slot) ? (b[`sig_${slot}_position`] || null) : (myPosition || null);
+      const posted = external ? (b[`sig_${slot}_position`] || null) : (me.position || null);
       out[`sig_${slot}_position`] = b[`sig_${slot}`]
         ? posted
         : (cur[`sig_${slot}_position`] || null);
     }
   }
-  return out;
+  return { sig: out, blocked };
+}
+
+// 409 body for resolveSigs().blocked — names both slots so the user knows what to do.
+const blockedMsg = ({ slot, waitFor }) =>
+  `ยังไม่ได้บันทึก — ช่อง "${SLOT_TH[slot]}" ต้องรอ "${SLOT_TH[waitFor]}" เซ็นก่อน (ลบลายเซ็นช่องนี้ออก หรือให้ "${SLOT_TH[waitFor]}" เซ็นก่อน)`;
+
+// ผู้ลงนาม (ตำแหน่ง + ชื่อ) ของผู้เรียก — ใช้กับ resolveSigs
+async function signerOf(req) {
+  return { position: await myPosition(req), name: (req.user && req.user.name) || null };
 }
 
 // The slot whose signature resolveSigs would write as a non-image, else null. Only
@@ -417,8 +443,9 @@ router.post('/', authMiddleware, async (req, res) => {
   const b = req.body || {};
   const verr = validateBody(b);
   if (verr) return res.status(400).json({ error: verr });
-  const sig = resolveSigs(req.user.role, b, {}, await myPosition(req));
+  const { sig, blocked } = resolveSigs(req.user.role, b, {}, await signerOf(req));
   if (badSigSlot(sig)) return res.status(400).json({ error: SIG_BAD });
+  if (blocked) return res.status(409).json({ error: blockedMsg(blocked) });
   const client = await req.tx();
   try {
     // Two concurrent creates can derive the same wo_number; on a unique-constraint
@@ -733,8 +760,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(409).json({ error: 'ใบงานอนุมัติแล้ว (ล็อก) — ส่งกลับก่อนจึงแก้ได้' });
     }
     // Only the user's own signature slot may be (re)written; others keep their value.
-    const sig = resolveSigs(req.user.role, b, rows[0], await myPosition(req));
+    const { sig, blocked } = resolveSigs(req.user.role, b, rows[0], await signerOf(req));
     if (badSigSlot(sig, rows[0])) return res.status(400).json({ error: SIG_BAD });
+    if (blocked) return res.status(409).json({ error: blockedMsg(blocked) });
     const { rows: upd } = await req.db(`
       UPDATE simple_work_orders SET
         tech_name=$2, work_date=$3, client_name=$4, building=$5, floor=$6, room=$7,
