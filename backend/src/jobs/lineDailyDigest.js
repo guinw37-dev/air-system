@@ -2,6 +2,7 @@
 // ตั้ง env: LINE_CHANNEL_ACCESS_TOKEN. ตั้ง line_group_id ต่อสาขาในตาราง clients.
 const { pool, query } = require('../db');
 const { allSignedSql } = require('../utils/roles');
+const { DONE_EXPR } = require('../utils/washCount');
 
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const TH_DOW = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
@@ -38,8 +39,10 @@ async function buildText(branch) {
       WHERE s.planned_date = CURRENT_DATE AND s.status IN ('planned','done')
       GROUP BY z ORDER BY z`);
 
+  // นับเป็น "เครื่อง" ตามนิยามกลาง (ล้างย่อย/พัดลม = จำนวนแถวในตาราง) เหมือนปฏิทิน/รายงานล้าง
+  // — COUNT(*) นับเป็นใบงาน ทำให้ "เสร็จ N ตัว" ต่ำกว่าจริงเมื่อมีใบล้างย่อย/พัดลม
   const yest = await safe(
-    `SELECT work_type, COUNT(*)::int n FROM simple_work_orders
+    `SELECT work_type, ${DONE_EXPR} AS n FROM simple_work_orders
       WHERE deleted_at IS NULL AND ${ALL_SIGNED}
         AND COALESCE(work_date, created_at::date) = CURRENT_DATE - 1
       GROUP BY work_type`);
@@ -133,3 +136,4 @@ function startLineDigestScheduler() {
 }
 
 module.exports = { runDigest, runDigestForBranch, startLineDigestScheduler, getLineToken, getDigestTime };
+module.exports._buildText = buildText;   // unit tests
