@@ -11,16 +11,18 @@
 // global/public-only queries (auth super-admins, registry) keep working.
 const pool = require('./pool');
 const { slugToSchema } = require('../utils/schema');
+const { releaseClean, resetOnRelease } = require('./cleanRelease');
 
 // One-shot query inside a branch schema. Checks out a client, pins search_path,
-// runs, and always releases.
+// runs, and always releases — with the search_path reset, so the pooled
+// connection never carries this branch into the next (public) checkout.
 async function query(schema, sql, params) {
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${slugToSchema(schema)}", public`);
     return await client.query(sql, params);
   } finally {
-    client.release();
+    await releaseClean(client);
   }
 }
 
@@ -36,7 +38,7 @@ async function txClient(schema) {
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${slugToSchema(schema)}", public`);
-    return client;
+    return resetOnRelease(client);   // caller's client.release() resets the search_path first
   } catch (err) {
     client.release();
     throw err;
