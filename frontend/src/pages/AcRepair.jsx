@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import api from '../api/client';
+import api, { uploadsBase } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import Layout from '../components/Layout';
 import { compressImage } from '../lib/image';
+import { photoSrc } from '../lib/photoSrc';
 import SignaturePad from '../components/SignaturePad';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -702,8 +703,8 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh, onChanged }) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปแจ้งซ่อม</h3>
               <div className="flex flex-wrap gap-2">
                 {job.photo_urls.map((u, i) => (
-                  <a key={i} href={u} target="_blank" rel="noreferrer">
-                    <img src={u} alt={`แจ้งซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
+                  <a key={i} href={photoSrc(u, uploadsBase)} target="_blank" rel="noreferrer">
+                    <img src={photoSrc(u, uploadsBase)} alt={`แจ้งซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
                   </a>
                 ))}
               </div>
@@ -782,8 +783,8 @@ function DetailModal({ job: initialJob, role, onClose, onRefresh, onChanged }) {
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">รูปหลังซ่อม</h3>
                 <div className="flex flex-wrap gap-2">
                   {afters.map((u, i) => (
-                    <a key={i} href={u} target="_blank" rel="noreferrer">
-                      <img src={u} alt={`หลังซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
+                    <a key={i} href={photoSrc(u, uploadsBase)} target="_blank" rel="noreferrer">
+                      <img src={photoSrc(u, uploadsBase)} alt={`หลังซ่อม ${i + 1}`} className="h-28 rounded-xl border object-cover" />
                     </a>
                   ))}
                 </div>

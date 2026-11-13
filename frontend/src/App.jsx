@@ -17,6 +17,7 @@ import SignPage from './pages/SignPage'
 import Notifications from './pages/Notifications'
 import UnitDetail from './pages/UnitDetail'
 import Deductions from './pages/Deductions'
+import { DEDUCTIONS_ROLES } from './lib/pageRoles'
 import SimpleWoList from './pages/SimpleWoList'
 import SimpleWoForm from './pages/SimpleWoForm'
 import SimpleWoDetail from './pages/SimpleWoDetail'
@@ -134,7 +135,7 @@ export default function App() {
         } />
         <Route path="/units/:id" element={<RequireAuth><UnitDetail /></RequireAuth>} />
         <Route path="/deductions" element={
-          <RequireAuth><RequireRole roles={['admin', 'approver', 'approve_building', 'approve_engineer', 'checker']}><Deductions /></RequireRole></RequireAuth>
+          <RequireAuth><RequireRole roles={DEDUCTIONS_ROLES}><Deductions /></RequireRole></RequireAuth>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

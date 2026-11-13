@@ -437,7 +437,8 @@ router.get('/export-all', authMiddleware, async (req, res) => {
         FROM wash_units`);
     const w = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='approved')::int billed,
         COUNT(*) FILTER (WHERE ${ALL_SIGNED})::int signed FROM simple_work_orders WHERE deleted_at IS NULL`);
-    const r = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='Close')::int closed,
+    // ปิดงาน = Clear + Close (Clear คือปิดงานใน flow ปัจจุบัน — นิยามเดียวกับ dashboard.js)
+    const r = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status IN ('Clear','Close'))::int closed,
         COUNT(*) FILTER (WHERE status IN ('Register','Assign','Work On','Wait Parts','Wait Quote'))::int open FROM ac_repair_jobs`);
     const sch = await one(`SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE status='planned')::int planned,
         COUNT(*) FILTER (WHERE status='done')::int done FROM wash_schedule`);
