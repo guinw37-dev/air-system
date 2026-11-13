@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const pool = require('./pool');
+const { releaseClean } = require('./cleanRelease');
 const { slugToSchema } = require('../utils/schema');
 const { REMAP_CASE_SQL } = require('../utils/roles');
 
@@ -344,7 +345,7 @@ async function provisionBranchSchema(schemaName) {
       'admin','approve_engineer','approve_building','checker','technician','approver'))`);
     return schema;
   } finally {
-    c.release();
+    await releaseClean(c);   // runs at boot + on branch creation: don't leave this branch pinned on a pooled client
   }
 }
 
