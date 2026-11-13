@@ -183,15 +183,21 @@ router.post('/', authMiddleware, canEdit, async (req, res) => {
 });
 
 // ── PUT /:id — update ───────────────────────────────────────────────────────
+// เขียนเฉพาะคอลัมน์ที่ "ส่งมาใน body" — ฟอร์มแก้ไขเครื่องไม่มีช่องล้างใหญ่/ล้างย่อยล่าสุด
+// ถ้าเขียนทุกคอลัมน์ last_major_at/last_minor_at จะถูกล้างเป็น NULL แล้วแผนอัตโนมัติ
+// (wash-schedule/generate) จัดเครื่องนั้นเป็นค้างล้าง. ส่งคีย์มาแต่ค่าว่าง = ตั้งใจล้างค่า.
 router.put('/:id', authMiddleware, canEdit, async (req, res) => {
-  const r = rowFromInput(req.body || {});
+  const b = req.body || {};
+  const r = rowFromInput(b);
   if (!r.asset_code) return res.status(400).json({ error: 'ต้องระบุรหัสแอร์ (asset_code)' });
-  const sets = COLS.map((c, idx) => `${c} = $${idx + 1}`).join(', ');
-  const values = COLS.map((c) => r[c]);
+  // ชื่อคอลัมน์มาจาก COLS (whitelist) เท่านั้น — asset_code อยู่เสมอ (เช็คข้างบนแล้ว)
+  const cols = COLS.filter((c) => Object.prototype.hasOwnProperty.call(b, c));
+  const sets = cols.map((c, idx) => `${c} = $${idx + 1}`).join(', ');
+  const values = cols.map((c) => r[c]);
   values.push(req.params.id);
   try {
     const { rows } = await req.db(
-      `UPDATE wash_units SET ${sets}, updated_at = NOW() WHERE id = $${COLS.length + 1} RETURNING *`,
+      `UPDATE wash_units SET ${sets}, updated_at = NOW() WHERE id = $${cols.length + 1} RETURNING *`,
       values
     );
     if (!rows.length) return res.status(404).json({ error: 'ไม่พบเครื่อง' });
@@ -261,11 +267,18 @@ router.post('/import', authMiddleware, canEdit, upload.single('file'), async (re
   }
 
   const result = { created: 0, updated: 0, skipped: 0, errors: [] };
-  const updateSet = COLS.filter((c) => c !== 'asset_code')
-    .map((c) => `${c} = EXCLUDED.${c}`).join(', ');
+  // รหัสแอร์ที่มีอยู่แล้ว: ทับเฉพาะคอลัมน์ที่ "ไฟล์มีหัวคอลัมน์" — ไฟล์ที่ไม่มีคอลัมน์
+  // ล้างใหญ่ล่าสุด/หมายเหตุ ฯลฯ ต้องไม่ล้างค่าเดิมเป็น NULL. คอลัมน์ที่มีในไฟล์แต่ช่องว่าง
+  // = ล้างค่า/ค่าเริ่มต้นเหมือนเดิม (export-edit เขียน '' แทนค่าว่าง → แก้แล้วนำเข้าซ้ำได้).
+  // เครื่องใหม่ (INSERT) ยังได้ค่าเริ่มต้นทุกคอลัมน์เหมือนเดิม.
+  const fileHeaders = new Set();
+  for (const raw of json) for (const h of Object.keys(raw)) fileHeaders.add(normKey(h));
+  const fileCols = COLS.filter((c) => c !== 'asset_code'
+    && (HEADER_MAP[c] || []).some((cand) => fileHeaders.has(normKey(cand))));
+  const updateSet = [...fileCols.map((c) => `${c} = EXCLUDED.${c}`), 'updated_at = NOW()'].join(', ');
   const placeholders = COLS.map((_, idx) => `$${idx + 1}`).join(',');
   const sql = `INSERT INTO wash_units (${COLS.join(',')}) VALUES (${placeholders})
-    ON CONFLICT (asset_code) DO UPDATE SET ${updateSet}, updated_at = NOW()
+    ON CONFLICT (asset_code) DO UPDATE SET ${updateSet}
     RETURNING (xmax = 0) AS inserted`;
 
   const client = await req.tx();

@@ -448,8 +448,11 @@ export default function SimpleWoForm() {
 
   const removeGallery = (i) => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))
 
+  // ชื่อผู้ลงนามว่าง → เติมชื่อคนล็อกอิน (เหมือนหน้าใบงาน) แก้ทับได้ — ยกเว้นเจ้าของพื้นที่
+  // (คนของ รพ. ไม่มีบัญชี ต้องพิมพ์ชื่อเขาเอง ห้ามใส่ชื่อคนถือเครื่อง)
   const saveSig = (role, dataUrl) => {
-    setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], data: dataUrl } }))
+    setSignatures((prev) => ({ ...prev, [role]: { ...prev[role], data: dataUrl,
+      name: prev[role].name || (role === 'department' ? '' : (user?.name || '')) } }))
     setSigPad(null)
   }
 
