@@ -17,6 +17,8 @@
  * - branch input is validated (slug pattern) and looked up in public.clients
  *   (active) before its schema is used; slugToSchema whitelists it again.
  * - PII kept out: no requester name/phone, no signature images, no photos.
+ *   Free text a technician types (may hold a name/phone) leaves only through
+ *   wo_text_flags, and only entries flagged as suspect words, cut at 200 chars.
  * - Row caps on every list; rate limited per IP at the mount point (app.js).
  *
  * The RPC core is exported as buildMcp(deps) so tests drive it with a fake db
@@ -25,6 +27,8 @@
 const crypto = require('crypto');
 const { UNITS_EXPR, washDateExpr } = require('../utils/washCount');
 const { notWashedQuery, NW_TYPES } = require('../services/notWashed');
+const { collectWoTexts, findSuspectWords, woDocSql } = require('../utils/woTexts');
+const { fetchTemplateItems } = require('../utils/templateItems');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'air-system', version: '1.0.0' };
@@ -71,6 +75,20 @@ const TOOLS = [
         ac_type: { type: 'string', description: 'FCU/SPT/VRF/AHU/OAU/Exhaust Fan/Exhaust Fan Duct Type หรือ none = ไม่ระบุ' },
         status: { type: 'string', enum: WO_STATUSES, description: 'submitted=รอเซ็น approved=วางบิลแล้ว rejected=ส่งกลับ' },
         zone: { type: 'string', enum: ZONES },
+        limit: { type: 'integer', minimum: 1, maximum: 100 },
+      },
+      required: ['branch', 'month'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'wo_text_flags',
+    description: 'ข้อความที่ช่างพิมพ์เองในใบงานล้างของเดือน (ข้อแนะนำ / หมายเหตุ / ความเห็นทีมช่าง / สภาพแอร์ / ชำรุดเนื่องจาก) ที่มีคำต้องสงสัย (หยาบ/ไม่สุภาพ) — คืนเฉพาะข้อความที่ถูกทำเครื่องหมาย (ตัดเหลือ 200 ตัวอักษร, สูงสุด 100 รายการ) + จำนวนใบ/ข้อความที่ตรวจ. คำต้องสงสัยคือป้ายให้คนตรวจ ไม่ใช่คำตัดสิน; ไฟล์เต็มดาวน์โหลดได้จากหน้าใบงาน (แท็บ ความเห็นช่าง)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: branchArg,
+        month: { type: 'string', description: 'YYYY-MM (วันที่ของงานล้าง = work_date หรือวันสร้างใบ)' },
         limit: { type: 'integer', minimum: 1, maximum: 100 },
       },
       required: ['branch', 'month'],
@@ -214,6 +232,39 @@ function buildMcp(deps) {
           ORDER BY ${washDateExpr()} DESC, wo_number DESC LIMIT ${limit}`, params);
       return { branch: b.slug, month: a.month, total_orders: cnt.rows[0].n, total_machines: cnt.rows[0].machines,
         returned: rows.length, orders: rows };
+    },
+
+    // ข้อความอิสระที่ช่างพิมพ์อาจมีชื่อ/เบอร์โทรได้ จึงคืนเฉพาะข้อความที่ถูกทำเครื่องหมาย
+    // (ตัด 200 ตัวอักษร) — ไม่มีทางดึงข้อความทั้งเดือนออกทาง MCP; ไฟล์เต็มอยู่หลัง login ในหน้าใบงาน
+    async wo_text_flags(a) {
+      const b = await branchOf(a.branch);
+      need(YM.test(String(a.month || '')), 'month ต้องเป็น YYYY-MM');
+      const limit = clampInt(a.limit, 1, 100, 50);
+      const SCAN_CAP = 5000;
+      const { rows } = await deps.ro(b.schema,
+        `SELECT ${woDocSql('s')} AS wo, ${washDateExpr('s')}::text AS wash_date
+           FROM simple_work_orders s
+          WHERE s.deleted_at IS NULL AND to_char(${washDateExpr('s')}, 'YYYY-MM') = $1
+          ORDER BY ${washDateExpr('s')} DESC, s.wo_number DESC LIMIT ${SCAN_CAP}`, [a.month]);
+      const items = await fetchTemplateItems((sql, p) => deps.ro(b.schema, sql, p), 'major', b.slug);
+      const idx = new Map(items.map((it, n) => [String(it.id), n]));
+      const itemLabel = (id) => (idx.has(String(id)) ? items[idx.get(String(id))].item_label : `รายการ #${id}`);
+      const itemOrder = (id) => (idx.has(String(id)) ? idx.get(String(id)) : Infinity);
+      let scannedTexts = 0; const flagged = [];
+      for (const r of rows) {
+        const wo = r.wo || {};
+        for (const { field, text } of collectWoTexts(wo, { itemLabel, itemOrder })) {
+          scannedTexts += 1;
+          const words = findSuspectWords(text);
+          if (!words.length) continue;
+          flagged.push({ wo_number: wo.wo_number, wash_date: r.wash_date, work_type: wo.work_type || 'major',
+            tech_name: wo.tech_name || null, field, words,
+            text: text.length > 200 ? `${text.slice(0, 200)}…` : text });
+        }
+      }
+      return { branch: b.slug, month: a.month, scanned_orders: rows.length, scan_capped: rows.length >= SCAN_CAP,
+        scanned_texts: scannedTexts, flagged_total: flagged.length,
+        returned: Math.min(limit, flagged.length), items: flagged.slice(0, limit) };
     },
 
     async ac_repair_status(a) {
