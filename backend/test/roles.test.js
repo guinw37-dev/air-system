@@ -128,16 +128,23 @@ t('requiredSlots / allSignedSql mirror each other', () => {
   assert.ok(on.startsWith('(s.sig_team IS NOT NULL'));
 });
 
-t('department is an EXTERNAL slot every on-site role may witness', () => {
+t('department is an EXTERNAL slot every on-site role (and admin, as proxy) may witness', () => {
   assert.deepStrictEqual(EXTERNAL_SLOTS, ['department']);
   // ไม่มี role ไหน "เป็นเจ้าของ" ช่องนี้ — เซ็นแทนคนของ รพ. เท่านั้น
   assert.ok(!Object.values(ROLE_SLOT).includes('department'));
   for (const r of ['technician', 'checker', 'approve_building', 'approve_engineer']) {
     assert.ok(canSignSlot(r, 'department'), `${r} should be able to witness`);
   }
-  // admin/super ยังไม่เซ็นอะไรทั้งนั้น
-  assert.ok(!canSignSlot('admin', 'department'));
-  assert.ok(!canSignSlot('super_admin', 'department'));
+  // admin/super เปิดแพดเจ้าของพื้นที่แทนคนของ รพ. ได้ (นวมินทร์ยื่นแท็บเล็ตจากบัญชี
+  // admin กลาง — 97f0d4f, 20 ส.ค. 2026) ...
+  assert.ok(canSignSlot('admin', 'department'));
+  assert.ok(canSignSlot('super_admin', 'department'));
+  // ... แต่ยังไม่เซ็นช่องอนุมัติของทีมเองช่องไหนเลย
+  for (const r of ['admin', 'super_admin']) {
+    for (const s of ['team', 'supervisor', 'building', 'engineer']) {
+      assert.ok(!canSignSlot(r, s), `${r} must not sign ${s}`);
+    }
+  }
   // ไม่ทำให้ role ข้ามไปเซ็นช่องของคนอื่นได้
   assert.ok(!canSignSlot('technician', 'building'));
   assert.ok(!canSignSlot('approve_building', 'engineer'));
