@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Download, Camera, Trash2, FileText, PenLine, Printer } from 'lucide-react'
+import { Plus, Download, Camera, Trash2, FileText, PenLine, Printer, FileSpreadsheet } from 'lucide-react'
 import dayjs from 'dayjs'
 import Layout from '../components/Layout'
 import SignaturePad from '../components/SignaturePad'
@@ -57,7 +57,11 @@ const SLOT_LABEL = { technician: 'ช่างแอร์', checker: 'หัว
 
 // ?pending=<stage> quick views (from the ใบงาน sidebar group) — filter to ใบงาน
 // waiting at a given signing step.
-const PENDING_LABEL = { team: 'รอช่างแอร์เซ็น', supervisor: 'รอหัวหน้าช่างเซ็น', building: 'รอช่างอาคารเซ็น', department: 'รอเจ้าของพื้นที่เซ็น', engineer: 'รอวิศวกรรมเซ็น', building_engineer: 'รออาคาร/วิศวกรรมเซ็น' }
+// ดาวน์โหลด Excel ใบงาน: ทุก role ยกเว้นช่างแอร์ — ต้องตรงกับ EXPORT_ROLES ใน
+// backend/src/routes/simpleWorkOrders.js (server ตอบ 403 ให้ role อื่นอยู่แล้ว)
+const EXPORT_ROLES = ['super_admin', 'admin', 'approve_engineer', 'approve_building', 'checker', 'approver']
+
+const PENDING_LABEL = { team:'รอช่างแอร์เซ็น', supervisor: 'รอหัวหน้าช่างเซ็น', building: 'รอช่างอาคารเซ็น', department: 'รอเจ้าของพื้นที่เซ็น', engineer: 'รอวิศวกรรมเซ็น', building_engineer: 'รออาคาร/วิศวกรรมเซ็น' }
 
 export default function SimpleWoList() {
   const navigate = useNavigate()
@@ -203,6 +207,28 @@ export default function SimpleWoList() {
   const acChoices = acOptionsFor(fType)
   const hasNoAc = rows.some((r) => !r.ac_type)
   const dayUnits = visibleRows.reduce((s, r) => s + (Number(r.units) || 1), 0)
+
+  // ── ดาวน์โหลด Excel ตามที่กรองบนจอ (ติ๊กเลือกไว้ = เฉพาะใบที่ติ๊กซึ่งยังอยู่ในจอ), เรียงตามตาราง.
+  // ไฟล์มีแท็บ "ความเห็นช่าง" = ทุกข้อความที่ช่างพิมพ์ + ทำเครื่องหมายคำต้องสงสัย
+  const canExport = EXPORT_ROLES.includes(role)
+  const exportRows = selected.size ? visibleRows.filter((r) => selected.has(r.id)) : visibleRows
+  const [exporting, setExporting] = useState(false)
+  const exportExcel = async () => {
+    if (!exportRows.length) return
+    setExporting(true)
+    try {
+      const res = await api.post('/simple-wo/export/excel', { ids: exportRows.map((r) => r.id) }, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `ใบงาน-${dayjs().format('YYYYMMDD-HHmm')}.xlsx`; a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      // responseType blob → ข้อความ error จาก server มาเป็น Blob ต้องอ่านเป็น JSON เอง
+      let msg = 'ดาวน์โหลด Excel ไม่สำเร็จ'
+      try { const j = JSON.parse(await err.response.data.text()); if (j && j.error) msg = j.error } catch { /* ไม่ใช่ JSON */ }
+      alert(msg)
+    } finally { setExporting(false) }
+  }
 
   const remove = async (e, id) => {
     e.stopPropagation() // don't trigger row navigate
@@ -489,7 +515,21 @@ export default function SimpleWoList() {
               </select>
             </div>
           </div>
-          <p className="text-xs text-ink-muted">แสดง {visibleRows.length} จาก {rows.length} ใบงาน</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-ink-muted">แสดง {visibleRows.length} จาก {rows.length} ใบงาน</p>
+            {canExport && (
+              <button
+                onClick={exportExcel}
+                disabled={exporting || loading || !exportRows.length}
+                title="มีแท็บ 'ความเห็นช่าง' รวมทุกข้อความที่ช่างพิมพ์ พร้อมทำเครื่องหมายคำต้องสงสัย"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                {exporting ? 'กำลังสร้างไฟล์…'
+                  : `ดาวน์โหลด Excel (${selected.size ? 'ที่เลือก ' : ''}${exportRows.length} ใบ)`}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Table */}

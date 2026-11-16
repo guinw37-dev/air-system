@@ -18,6 +18,7 @@ const { UNITS_EXPR, washDateExpr } = require('../utils/washCount');
 // ลายเซ็นต้องเป็นรูปจาก SignaturePad (data:image/png|jpeg;base64) เท่านั้น — ค่าอื่น
 // (http://…, file://…) จะไปอยู่ใน <img src> ของ PDF แล้ว Chromium ฝั่งเซิร์ฟเวอร์ไปดึงให้.
 const { isSignatureImage, SIG_BAD } = require('../utils/signature');
+const { collectWoTexts, findSuspectWords, woDocSql } = require('../utils/woTexts');
 
 // Fan out an in-app notification for a simple-wo event. Recipients are branch
 // users (by role and/or a specific id) read from req.db (<schema>.users); rows
@@ -205,7 +206,7 @@ router.delete('/clients/:id', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── GET /api/simple-wo/export/excel — branch's WOs (filter date range) ──────
+// ── Excel ใบงาน (GET/POST /export/excel ด้านล่าง) — ป้ายค่า + คอลัมน์ค่าตรวจเช็ค ──────
 const RESULT_LABEL = { ok: 'เรียบร้อย', not_ok: 'ไม่เรียบร้อย' };
 const WT_LABEL = { major: 'ล้างใหญ่', minor: 'ล้างย่อย', fan: 'พัดลม' };
 const AC_KIND_LABEL = { water: 'แอร์น้ำ', refrigerant: 'แอร์น้ำยา', other: 'อื่น ๆ' };
@@ -284,131 +285,218 @@ function relevantKeys(valueType) {
   }
 }
 
+// ใครดาวน์โหลด Excel ใบงานได้: ทุก role ยกเว้นช่างแอร์ (ป้อมเลือก 16 พ.ย. 69) — ไฟล์มี
+// ทุกใบที่ขอ + ข้อความที่ช่างพิมพ์ ส่วนช่างเห็นในจอเฉพาะใบของตัวเอง. allow-list ตรง ๆ:
+// role ที่เพิ่มทีหลังต้องตั้งใจใส่เอง ไม่ได้สิทธิ์โดยปริยาย (frontend ซ่อนปุ่มด้วยรายการเดียวกัน).
+const EXPORT_ROLES = ['super_admin', 'admin', 'approve_engineer', 'approve_building', 'checker', 'approver'];
+const canExport = (req) => EXPORT_ROLES.includes(req.user && req.user.role);
+const EXPORT_DENIED = 'role นี้ดาวน์โหลด Excel ใบงานไม่ได้';
+const EXPORT_MAX_IDS = 5000;
+const WO_EXPORT_SELECT = `SELECT ${woDocSql('s')} AS wo, u.name AS created_by_name
+      FROM simple_work_orders s LEFT JOIN users u ON s.created_by = u.id`;
+const exportRowsOf = (result) => result.rows.map((x) => ({ ...x.wo, created_by_name: x.created_by_name }));
+const fmtDate = (d) => (d ? dayjs(d).format('DD/MM/YYYY') : '');
+const cellText = (t) => (t.length > 32000 ? `${t.slice(0, 32000)}…` : t);   // Excel รับ ≤ 32767 ตัวอักษร/ช่อง
+
+// แท็บ "ความเห็นช่าง": ทุกข้อความที่ช่างพิมพ์เอง 1 แถวต่อ 1 ข้อความ, แถวที่มีคำต้องสงสัย
+// (utils/woTexts) ขึ้นก่อน — ไว้ตรวจคำหยาบ/คำไม่สมควรก่อนใบงานไปถึงลูกค้า.
+const TEXT_HDR = ['⚠ คำต้องสงสัย', 'เลขใบงาน', 'วันที่ปฏิบัติงาน', 'ช่าง (ชื่อในใบ)', 'บัญชีที่สร้างใบ',
+  'ประเภทงาน', 'ลูกค้า/สถานที่', 'เลขเครื่อง', 'ช่องที่พิมพ์', 'ข้อความ'];
+function woTextSheet(rows, items) {
+  const idx = new Map(items.map((it, n) => [String(it.id), n]));
+  const itemLabel = (id) => (idx.has(String(id))
+    ? `${String(idx.get(String(id)) + 1).padStart(2, '0')}. ${items[idx.get(String(id))].item_label}`
+    : `รายการ #${id}`);
+  const itemOrder = (id) => (idx.has(String(id)) ? idx.get(String(id)) : Infinity);
+  const out = [];
+  for (const r of rows) {
+    for (const { field, text } of collectWoTexts(r, { itemLabel, itemOrder })) {
+      const words = findSuspectWords(text);
+      out.push({ flagged: words.length > 0, row: {
+        '⚠ คำต้องสงสัย': words.join(', '),
+        'เลขใบงาน': r.wo_number,
+        'วันที่ปฏิบัติงาน': fmtDate(r.work_date || r.created_at),
+        'ช่าง (ชื่อในใบ)': r.tech_name || '',
+        'บัญชีที่สร้างใบ': r.created_by_name || '',
+        'ประเภทงาน': WT_LABEL[r.work_type || 'major'] || r.work_type,
+        'ลูกค้า/สถานที่': r.location || r.client_name || '',
+        'เลขเครื่อง': r.asset_code || '',
+        'ช่องที่พิมพ์': field,
+        'ข้อความ': cellText(text),
+      } });
+    }
+  }
+  out.sort((a, b) => Number(b.flagged) - Number(a.flagged));   // stable: ภายในกลุ่มคงลำดับใบงานเดิม
+  const data = out.length ? out.map((x) => x.row)
+    : [{ 'ข้อความ': 'ไม่มีข้อความที่ช่างพิมพ์ในใบงานชุดนี้' }];
+  const ws = XLSX.utils.json_to_sheet(data, { header: TEXT_HDR });
+  ws['!cols'] = [16, 18, 13, 20, 20, 10, 28, 16, 36, 70].map((wch) => ({ wch }));
+  ws['!autofilter'] = { ref: ws['!ref'] };
+  return { ws, flagged: out.filter((x) => x.flagged).length, total: out.length };
+}
+
+// Workbook ใบงาน: ความเห็นช่าง + ล้างใหญ่ (1 แถว/ใบ + ค่าตรวจเช็ค) + ล้างย่อย/พัดลม (1 แถว/เครื่อง).
+// rows = แถวจาก WO_EXPORT_SELECT ตามลำดับที่ต้องการในไฟล์.
+async function buildWoWorkbook(req, rows) {
+  // คอลัมน์ต้องตรงกับ checklist ที่สาขานี้เห็นจริง (ศรีราชามีแถวของตัวเอง)
+  const items = await fetchTemplateItems(req.db, 'major', req.branch && req.branch.slug);
+
+  const itemCols = [];
+  items.forEach((it, idx) => {
+    const nn = String(idx + 1).padStart(2, '0');
+    for (const key of [...relevantKeys(it.value_type), 'หมายเหตุ']) {
+      itemCols.push({ id: it.id, key, header: `${nn}. ${it.item_label} · ${key}` });
+    }
+  });
+
+  const data = rows.filter((r) => !r.work_type || r.work_type === 'major').map((r) => {
+    const tc = r.team_comment || {};
+    const ac = r.ac_info || {};
+    const cv = r.checklist_values || {};
+    const row = {
+      'เลขใบงาน': r.wo_number,
+      'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
+      'ช่าง': r.tech_name || r.created_by_name || '',
+      'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+      'ลูกค้า': r.client_name || '',
+      'อาคาร': r.building || '',
+      'ชั้น': r.floor || '',
+      'ห้อง': r.room || '',
+      'เลขเครื่อง': r.asset_code || '',
+      'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
+      'ระบบไฟ': r.power_system || '',
+      'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
+      'เวลาเริ่ม': r.start_time || '',
+      'เวลาเสร็จ': r.end_time || '',
+      'แอร์: รายละเอียด': ac.detail || '',
+      'แอร์: ตำแหน่ง': ac.location || '',
+      'แอร์: ชนิด': AC_KIND_LABEL[ac.kind] || ac.kind || '',
+      'แอร์: ยี่ห้อ': ac.brand || '',
+      'แอร์: รุ่น': ac.model || '',
+      'แอร์: ขนาดทำความเย็น': ac.cooling_size || '',
+      'สภาพ: แอร์เสื่อม': tc.ac_degraded ? '1' : '',
+      'สภาพ: แอร์เก่า 5-7 ปี': tc.ac_old_5_7yr ? '1' : '',
+      'สภาพ: ภายนอกเสื่อม': tc.external_degraded ? '1' : '',
+      'สภาพ: ภายนอก รายละเอียด': tc.external_detail || '',
+      'สภาพ: ภายในเสื่อม': tc.internal_degraded ? '1' : '',
+      'สภาพ: ภายใน รายละเอียด': tc.internal_detail || '',
+      'เซ็น: ช่างแอร์': r.sig_team_name || '',
+      'เซ็น: หัวหน้าช่างแอร์': r.sig_supervisor_name || '',
+      'เซ็น: เจ้าหน้าที่ช่างอาคาร': r.sig_building_name || '',
+      'เซ็น: เจ้าหน้าวิศวกรรม': r.sig_engineer_name || '',
+      // ช่องที่ 5 มีเฉพาะสาขาที่เปิดกติกา (PTN) — สาขาอื่นคอลัมน์เดิมไม่เปลี่ยน
+      ...(signOpts(req).requireDepartment
+        ? { 'เซ็น: เจ้าหน้าที่เจ้าของพื้นที่': r.sig_department_name || '' } : {}),
+    };
+    for (const c of itemCols) {
+      row[c.header] = atomicValue(cv[c.id] || cv[String(c.id)], c.key);
+    }
+    return row;
+  });
+
+  const baseHeader = data.length ? Object.keys(data[0]).filter((k) => !itemCols.some((c) => c.header === k)) : [];
+  const header = [...baseHeader, ...itemCols.map((c) => c.header)];
+  const wb = XLSX.utils.book_new();
+  const texts = woTextSheet(rows, items);
+  XLSX.utils.book_append_sheet(wb, texts.ws, 'ความเห็นช่าง');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data, { header }), 'ล้างใหญ่');
+
+  const GRID_COLS_X = {
+    minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
+    fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใช้งานได้ปกติ'],
+  };
+  const gridSheetFor = (wt, cols, sheetName) => {
+    const fan = wt === 'fan';
+    const typeLabel = fan ? 'ประเภทพัดลม' : 'ประเภทแอร์';  // both ล้างย่อย & พัดลม carry สถานที่ + ห้อง/เลขเครื่อง
+    // ค่าวัดหลังล้าง (ศรีราชา) — add the columns only when some row carries data,
+    // so branches without the feature keep their sheet unchanged.
+    const hasMeasure = !fan && rows.some((r) => r.work_type === wt
+      && (Array.isArray(r.grid_rows) ? r.grid_rows : []).some((g) => g.air_speed || g.temp_after));
+    const out = [];
+    for (const r of rows) {
+      if (r.work_type !== wt) continue;
+      const grows = Array.isArray(r.grid_rows) ? r.grid_rows : [];
+      grows.forEach((g, idx) => {
+        const row = {
+          'เลขใบงาน': r.wo_number,
+          'วันที่': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
+          'ลูกค้า': r.client_name || '',
+          'สถานที่': r.location || r.client_name || '',
+          [typeLabel]: r.ac_type || '',
+          'อาคาร': r.building || '',
+          'ชั้น': r.floor || '',
+          'ช่าง': r.tech_name || r.created_by_name || '',
+          'ลำดับ': idx + 1,
+          'ห้อง/แผนก': g.room || r.room || '',
+          'เลขเครื่อง': g.machine_no || g.name || '',
+        };
+        cols.forEach((c, ci) => { row[c] = (g.checks || [])[ci] ? '1' : '-'; });
+        if (hasMeasure) {
+          row['ความเร็วลม (ft/m)'] = g.air_speed || '';
+          row['อุณหภูมิหลังล้าง (°C)'] = g.temp_after || '';
+        }
+        if (fan) row['ชำรุดเนื่องจาก'] = g.broken || '';
+        row['ข้อแนะนำ'] = r.recommendation || '';
+        out.push(row);
+      });
+    }
+    if (!out.length) return;
+    const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'สถานที่', typeLabel, 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
+      'ห้อง/แผนก', 'เลขเครื่อง',
+      ...cols, ...(hasMeasure ? ['ความเร็วลม (ft/m)', 'อุณหภูมิหลังล้าง (°C)'] : []),
+      ...(fan ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out, { header: hdr }), sheetName);
+  };
+  gridSheetFor('minor', GRID_COLS_X.minor, 'ล้างย่อย');
+  gridSheetFor('fan', GRID_COLS_X.fan, 'พัดลม');
+
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
+function sendWorkbook(res, buf) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
+  res.end(buf);
+}
+
+// ── GET /api/simple-wo/export/excel?date_from&date_to — ทุกใบในช่วงวันสร้างใบ ──────
 router.get('/export/excel', authMiddleware, async (req, res) => {
+  if (!canExport(req)) return res.status(403).json({ error: EXPORT_DENIED });
   const { date_from, date_to } = req.query;
   const where = ['s.deleted_at IS NULL']; const params = []; let i = 1;
   if (date_from) { where.push(`s.created_at >= $${i++}`); params.push(date_from); }
   if (date_to)   { where.push(`s.created_at < ($${i++}::date + 1)`); params.push(date_to); }
   try {
-    const { rows } = await req.db(`
-      SELECT s.*, u.name AS created_by_name FROM simple_work_orders s
-      LEFT JOIN users u ON s.created_by = u.id
-      WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC
-    `, params);
-    // คอลัมน์ต้องตรงกับ checklist ที่สาขานี้เห็นจริง (ศรีราชามีแถวของตัวเอง)
-    const items = await fetchTemplateItems(req.db, 'major', req.branch && req.branch.slug);
+    const rows = exportRowsOf(await req.db(`${WO_EXPORT_SELECT}
+      WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC`, params));
+    sendWorkbook(res, await buildWoWorkbook(req, rows));
+  } catch (err) { serverError(res, err); }
+});
 
-    const itemCols = [];
-    items.forEach((it, idx) => {
-      const nn = String(idx + 1).padStart(2, '0');
-      for (const key of [...relevantKeys(it.value_type), 'หมายเหตุ']) {
-        itemCols.push({ id: it.id, key, header: `${nn}. ${it.item_label} · ${key}` });
-      }
-    });
-
-    const data = rows.filter((r) => !r.work_type || r.work_type === 'major').map((r) => {
-      const tc = r.team_comment || {};
-      const ac = r.ac_info || {};
-      const cv = r.checklist_values || {};
-      const row = {
-        'เลขใบงาน': r.wo_number,
-        'วันที่สร้าง': dayjs(r.created_at).format('DD/MM/YYYY HH:mm'),
-        'ช่าง': r.tech_name || r.created_by_name || '',
-        'วันที่ปฏิบัติงาน': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
-        'ลูกค้า': r.client_name || '',
-        'อาคาร': r.building || '',
-        'ชั้น': r.floor || '',
-        'ห้อง': r.room || '',
-        'เลขเครื่อง': r.asset_code || '',
-        'ประเภทงาน': WT_LABEL[r.work_type] || r.work_type || '',
-        'ระบบไฟ': r.power_system || '',
-        'ผลงาน': RESULT_LABEL[r.result] || r.result || '',
-        'เวลาเริ่ม': r.start_time || '',
-        'เวลาเสร็จ': r.end_time || '',
-        'แอร์: รายละเอียด': ac.detail || '',
-        'แอร์: ตำแหน่ง': ac.location || '',
-        'แอร์: ชนิด': AC_KIND_LABEL[ac.kind] || ac.kind || '',
-        'แอร์: ยี่ห้อ': ac.brand || '',
-        'แอร์: รุ่น': ac.model || '',
-        'แอร์: ขนาดทำความเย็น': ac.cooling_size || '',
-        'สภาพ: แอร์เสื่อม': tc.ac_degraded ? '1' : '',
-        'สภาพ: แอร์เก่า 5-7 ปี': tc.ac_old_5_7yr ? '1' : '',
-        'สภาพ: ภายนอกเสื่อม': tc.external_degraded ? '1' : '',
-        'สภาพ: ภายนอก รายละเอียด': tc.external_detail || '',
-        'สภาพ: ภายในเสื่อม': tc.internal_degraded ? '1' : '',
-        'สภาพ: ภายใน รายละเอียด': tc.internal_detail || '',
-        'เซ็น: ช่างแอร์': r.sig_team_name || '',
-        'เซ็น: หัวหน้าช่างแอร์': r.sig_supervisor_name || '',
-        'เซ็น: เจ้าหน้าที่ช่างอาคาร': r.sig_building_name || '',
-        'เซ็น: เจ้าหน้าวิศวกรรม': r.sig_engineer_name || '',
-        // ช่องที่ 5 มีเฉพาะสาขาที่เปิดกติกา (PTN) — สาขาอื่นคอลัมน์เดิมไม่เปลี่ยน
-        ...(signOpts(req).requireDepartment
-          ? { 'เซ็น: เจ้าหน้าที่เจ้าของพื้นที่': r.sig_department_name || '' } : {}),
-      };
-      for (const c of itemCols) {
-        row[c.header] = atomicValue(cv[c.id] || cv[String(c.id)], c.key);
-      }
-      return row;
-    });
-
-    const baseHeader = data.length ? Object.keys(data[0]).filter((k) => !itemCols.some((c) => c.header === k)) : [];
-    const header = [...baseHeader, ...itemCols.map((c) => c.header)];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data, { header }), 'ล้างใหญ่');
-
-    const GRID_COLS_X = {
-      minor: ['ตรวจเช็คระบบการทำงาน', 'ล้างหัวจ่าย', 'ล้างช่องรีเทิร์น', 'ล้างฟิลเตอร์'],
-      fan: ['ล้างหน้ากาก/มอเตอร์/ใบพัด', 'ใช้งานได้ปกติ'],
-    };
-    const gridSheetFor = (wt, cols, sheetName) => {
-      const fan = wt === 'fan';
-      const typeLabel = fan ? 'ประเภทพัดลม' : 'ประเภทแอร์';  // both ล้างย่อย & พัดลม carry สถานที่ + ห้อง/เลขเครื่อง
-      // ค่าวัดหลังล้าง (ศรีราชา) — add the columns only when some row carries data,
-      // so branches without the feature keep their sheet unchanged.
-      const hasMeasure = !fan && rows.some((r) => r.work_type === wt
-        && (Array.isArray(r.grid_rows) ? r.grid_rows : []).some((g) => g.air_speed || g.temp_after));
-      const out = [];
-      for (const r of rows) {
-        if (r.work_type !== wt) continue;
-        const grows = Array.isArray(r.grid_rows) ? r.grid_rows : [];
-        grows.forEach((g, idx) => {
-          const row = {
-            'เลขใบงาน': r.wo_number,
-            'วันที่': r.work_date ? dayjs(r.work_date).format('DD/MM/YYYY') : '',
-            'ลูกค้า': r.client_name || '',
-            'สถานที่': r.location || r.client_name || '',
-            [typeLabel]: r.ac_type || '',
-            'อาคาร': r.building || '',
-            'ชั้น': r.floor || '',
-            'ช่าง': r.tech_name || r.created_by_name || '',
-            'ลำดับ': idx + 1,
-            'ห้อง/แผนก': g.room || r.room || '',
-            'เลขเครื่อง': g.machine_no || g.name || '',
-          };
-          cols.forEach((c, ci) => { row[c] = (g.checks || [])[ci] ? '1' : '-'; });
-          if (hasMeasure) {
-            row['ความเร็วลม (ft/m)'] = g.air_speed || '';
-            row['อุณหภูมิหลังล้าง (°C)'] = g.temp_after || '';
-          }
-          if (fan) row['ชำรุดเนื่องจาก'] = g.broken || '';
-          row['ข้อแนะนำ'] = r.recommendation || '';
-          out.push(row);
-        });
-      }
-      if (!out.length) return;
-      const hdr = ['เลขใบงาน', 'วันที่', 'ลูกค้า', 'สถานที่', typeLabel, 'อาคาร', 'ชั้น', 'ช่าง', 'ลำดับ',
-        'ห้อง/แผนก', 'เลขเครื่อง',
-        ...cols, ...(hasMeasure ? ['ความเร็วลม (ft/m)', 'อุณหภูมิหลังล้าง (°C)'] : []),
-        ...(fan ? ['ชำรุดเนื่องจาก'] : []), 'ข้อแนะนำ'];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out, { header: hdr }), sheetName);
-    };
-    gridSheetFor('minor', GRID_COLS_X.minor, 'ล้างย่อย');
-    gridSheetFor('fan', GRID_COLS_X.fan, 'พัดลม');
-
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="simple-workorders-${dayjs().format('YYYYMMDD')}.xlsx"`);
-    res.end(buf);
+// ── POST /api/simple-wo/export/excel { ids } — ใบตามที่กรอง/ติ๊กบนหน้ารายการ เรียงตาม ids ──
+router.post('/export/excel', authMiddleware, async (req, res) => {
+  if (!canExport(req)) return res.status(403).json({ error: EXPORT_DENIED });
+  const raw = req.body && req.body.ids;
+  if (!Array.isArray(raw) || !raw.length) {
+    return res.status(400).json({ error: 'ต้องส่ง ids ของใบงานอย่างน้อย 1 ใบ' });
+  }
+  if (raw.length > EXPORT_MAX_IDS) {
+    return res.status(400).json({ error: `ดาวน์โหลดได้ครั้งละไม่เกิน ${EXPORT_MAX_IDS} ใบ` });
+  }
+  const seen = new Set();
+  for (const v of raw) {
+    const n = typeof v === 'number' ? v : (typeof v === 'string' && /^\d{1,10}$/.test(v) ? Number(v) : NaN);
+    if (!Number.isInteger(n) || n < 1 || n > 2147483647) {
+      return res.status(400).json({ error: 'ids ต้องเป็นเลข id ของใบงาน' });
+    }
+    seen.add(n);
+  }
+  const ids = [...seen];
+  try {
+    const rows = exportRowsOf(await req.db(`${WO_EXPORT_SELECT}
+      WHERE s.deleted_at IS NULL AND s.id = ANY($1::int[])
+      ORDER BY array_position($1::int[], s.id)`, [ids]));
+    sendWorkbook(res, await buildWoWorkbook(req, rows));
   } catch (err) { serverError(res, err); }
 });
 

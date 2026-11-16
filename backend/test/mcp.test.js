@@ -45,11 +45,11 @@ t('initialize advertises tools and echoes the client protocol version', async ()
   assert.strictEqual(r.result.serverInfo.name, 'air-system');
 });
 
-t('tools/list = exactly the 5 read-only tools, strict schemas', async () => {
+t('tools/list = exactly the 6 read-only tools, strict schemas', async () => {
   const h = buildMcp(fakeDeps());
   const r = await h({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   assert.deepStrictEqual(r.result.tools.map((x) => x.name).sort(),
-    ['ac_repair_status', 'list_branches', 'wash_daily', 'wash_plan', 'wo_search']);
+    ['ac_repair_status', 'list_branches', 'wash_daily', 'wash_plan', 'wo_search', 'wo_text_flags']);
   for (const tool of TOOLS) assert.strictEqual(tool.inputSchema.additionalProperties, false, tool.name);
   assert.ok(!TOOLS.some((x) => /create|update|delete|set|write|sign|approve/i.test(x.name)), 'no write-sounding tool');
 });
@@ -171,7 +171,7 @@ t('auth: missing / wrong / non-Bearer token → 401; right key → 200', async (
     assert.strictEqual((await post(base, body, KEY)).status, 401);
     const ok = await post(base, body, `Bearer ${KEY}`);
     assert.strictEqual(ok.status, 200);
-    assert.strictEqual((await ok.json()).result.tools.length, 5);
+    assert.strictEqual((await ok.json()).result.tools.length, 6);
   });
 });
 
