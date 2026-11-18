@@ -1243,8 +1243,16 @@ function gridLetterhead(fan) {
     </div>`;
 }
 
-// Per-machine photo block for ล้างย่อย: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
+// Per-machine photo block for ล้างย่อย/พัดลม: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
 // Renders only the rows that actually carry photos; returns '' if none do.
+//
+// ขนาดรูปปรับตามที่ว่างของหน้า: แต่ละบล็อกเครื่องเป็น flex item ของ .major-c
+// (flex column, min-height 258mm, ช่องเซ็น margin-top:auto) → กรอบรูปโตเข้าไปใน
+// ที่ว่างเหนือช่องเซ็น — เครื่องน้อย = รูปใหญ่ (สูงสุดเป็นจัตุรัสเท่าความกว้างช่อง
+// ตัดขอบได้ไม่เกิน ~25% ทั้งรูปตั้ง/นอน), ที่ว่างไม่พอ = 78px เท่าเดิม. flex-grow
+// ใช้แค่ที่ว่างที่เหลือ จึงไม่ดันเนื้อหาไปหน้าใหม่มากกว่าเดิม.
+const GRID_PHOTO_MIN_H = 78;
+const GRID_CONTENT_W = 688; // .page 210mm − padding 2×14mm = 182mm ≈ 688px @96dpi
 function gridPhotoSection(rows, title = 'รูปถ่ายงานล้างย่อย') {
   // รูปที่ 4 (วัดลม/อุณหภูมิ — ศรีราชา) เพิ่มเฉพาะเมื่อมีบางแถวถ่ายไว้จริง
   const anyMeasure = (rows || []).some((r) => r.photos && r.photos.measure);
@@ -1252,19 +1260,24 @@ function gridPhotoSection(rows, title = 'รูปถ่ายงานล้า
     ...(anyMeasure ? [['measure', 'วัดลม/อุณหภูมิหลังล้าง']] : [])];
   const withPhotos = (rows || []).filter((r) => r.photos && PHASES.some(([k]) => r.photos[k]));
   if (!withPhotos.length) return '';
+  const GAP = 5;
+  const maxH = Math.floor((GRID_CONTENT_W - GAP * (PHASES.length - 1)) / PHASES.length);
+  const frame = 'position:absolute;top:0;left:0;width:100%;height:100%;box-sizing:border-box;border-radius:3px;';
   const cell = (src, label) => `
-    <div style="flex:1;text-align:center">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;text-align:center">
       <div style="font-size:6.5pt;color:#5a6e73;margin-bottom:2px">${label}</div>
-      ${src
-        ? `<img src="${src}" style="width:100%;height:78px;object-fit:cover;border:1px solid #cdd9da;border-radius:3px"/>`
-        : `<div style="width:100%;height:78px;border:1px dashed #cdd9da;border-radius:3px;display:flex;align-items:center;justify-content:center;color:#aab6b8;font-size:6.5pt">—</div>`}
+      <div style="flex:1 1 auto;position:relative;min-height:${GRID_PHOTO_MIN_H}px;max-height:${maxH}px">${src
+        ? `<img src="${src}" style="${frame}object-fit:cover;border:1px solid #cdd9da"/>`
+        : `<div style="${frame}border:1px dashed #cdd9da;display:flex;align-items:center;justify-content:center;color:#aab6b8;font-size:6.5pt">—</div>`}</div>
     </div>`;
+  // max-height ของบล็อก = กรอบรูปเต็มที่ + หัวชื่อเครื่อง + ป้ายใต้หัว (~2 บรรทัด 7pt)
+  // กันบล็อกยืดเกินรูป (ไม่งั้นที่ว่างเกินไปโผล่เป็นช่องห่างระหว่างเครื่อง)
   const blocks = withPhotos.map((r, i) => {
     const id = [r.room, (r.machine_no || r.name)].filter(Boolean).join(' · ') || `เครื่องที่ ${i + 1}`;
     return `
-      <div style="margin-bottom:7px;break-inside:avoid">
+      <div class="grid-photo-block" style="margin-bottom:7px;break-inside:avoid;flex:1 1 auto;display:flex;flex-direction:column;max-height:${maxH + 28}px">
         <div style="font-size:7pt;font-weight:700;color:var(--navy);margin-bottom:2px">${escapeHtml(id)}</div>
-        <div style="display:flex;gap:5px">${PHASES.map(([k, lbl]) => cell(r.photos[k], lbl)).join('')}</div>
+        <div style="flex:1 1 auto;display:flex;gap:${GAP}px">${PHASES.map(([k, lbl]) => cell(r.photos[k], lbl)).join('')}</div>
       </div>`;
   }).join('');
   const secbar = `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:10px 0 6px;border-radius:2px">${title}</div>`;
