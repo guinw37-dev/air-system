@@ -92,6 +92,71 @@ assert((html.match(/class="grid-photo-block"/g) || []).length === 2, 'only rows 
 assert(html.includes('R1 · EF-1') && html.includes('R3 · EF-3') && !html.includes('R2 · EF-2'), 'block titles');
 ok('grid photos: one growable block per machine that has photos');
 
+// ── จัดหน้าใบพัดลม/ล้างย่อยที่ยาวเกินหน้าเดียว ─────────────────────────
+// เดิมทั้งหน้าเป็น flex → Chrome ตัดหน้าแล้ว: ช่องเซ็นหลุดไปอยู่หน้าโดด ๆ (5–6 เครื่อง),
+// หน้าแรกว่างทั้งหน้า (พัดลม 9 / ล้างย่อย 7 เครื่อง), หน้าว่างต่อท้าย (14 เครื่อง).
+// ตอนนี้ block เป็นค่าตั้งต้น + มัดกลุ่มกันหลุด; flex (.fit1) เฉพาะใบที่วัดแล้วจบหน้าเดียว.
+// ผลจริงใน PDF วัดนอกชุดนี้ (Chrome render 68 แบบ); ตรงนี้ล็อกโครงที่ทำให้ได้ผลนั้น.
+const keeps = (h) => h.split('<div class="grid-keep">').slice(1);
+html = fanPhotoHtml([
+  { room: 'R1', machine_no: 'EF-1', checks: [true, true], photos: ph3 },
+  { room: 'R2', machine_no: 'EF-2', checks: [true, true], photos: ph3 },
+  { room: 'R3', machine_no: 'EF-3', checks: [true, true], photos: ph3 },
+]);
+assert(html.includes('<div class="major-c grid-c">'), 'grid page container is .major-c.grid-c');
+assert(/\.major-c\.grid-c \{ display: block; min-height: 0; \}/.test(html), 'default layout = block (paginates reliably)');
+assert(/\.major-c\.grid-c\.fit1 \{ display: flex; min-height: 258mm; \}/.test(html), '.fit1 restores the one-page flex layout');
+assert(/\.major-c\.grid-c \.grid-keep \{ break-inside: avoid; \}/.test(html), 'keep groups never split across pages');
+assert(/\.major-c\.grid-c\.fit1 \.grid-keep \{ display: contents; \}/.test(html), 'in .fit1 keep groups vanish → same flex items as before');
+assert(/\.page:has\(> \.major-c\.grid-c\) \{ padding-bottom: 0; \}/.test(html), 'no trailing padding page on grid WOs');
+let k = keeps(html);
+assert(k.length === 2, '3 machines → 2 keep groups (head + tail)');
+assert(k[0].indexOf('รูปถ่ายงานล้างพัดลม') >= 0 && k[0].indexOf('R1 · EF-1') > k[0].indexOf('รูปถ่ายงานล้างพัดลม')
+  && k[0].indexOf('R2 · EF-2') > k[0].indexOf('R1 · EF-1') && k[0].indexOf('ลงชื่อช่างแอร์') === -1,
+  'photo heading travels with the first machine; middle machines sit between the groups');
+assert(k[1].indexOf('R3 · EF-3') >= 0 && k[1].indexOf('ลงชื่อช่างแอร์') > k[1].indexOf('R3 · EF-3')
+  && k[1].indexOf('R2 · EF-2') === -1, 'last machine travels with the signatures');
+ok('grid paging: block by default, heading+first and last+signatures kept together');
+
+html = fanPhotoHtml([{ room: 'R1', machine_no: 'EF-1', checks: [true, true], photos: ph3 }]);
+k = keeps(html);
+assert(k.length === 1 && k[0].indexOf('รูปถ่ายงานล้างพัดลม') >= 0
+  && k[0].indexOf('R1 · EF-1') > k[0].indexOf('รูปถ่ายงานล้างพัดลม')
+  && k[0].indexOf('ลงชื่อช่างแอร์') > k[0].indexOf('R1 · EF-1'), '1 machine → heading + block + signatures in one group');
+html = fanPhotoHtml([{ room: 'R1', machine_no: 'EF-1', checks: [true, true] }]);
+k = keeps(html);
+assert(k.length === 1 && k[0].indexOf('ลงชื่อช่างแอร์') >= 0 && !html.includes('รูปถ่ายงานล้างพัดลม'), 'no photos → signatures alone, no heading');
+ok('grid paging: 1 machine / no photos group correctly');
+
+// script ที่เปิด .fit1: รันกับ DOM จำลอง — ≤258mm = หน้าเดียว (flex), เกิน = block; วัดซ้ำหลังฟอนต์โหลด
+const scriptBody = (html.match(/<script>(\(function \(\) \{[\s\S]*?\}\)\(\);)<\/script>/) || [])[1];
+assert(scriptBody && scriptBody.includes('document.fonts.ready'), 'fit script present in the grid page');
+const runFit = (heights) => {
+  const cls = new Set();
+  let i = 0;
+  let onFonts = null;
+  const box = { classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) },
+    getBoundingClientRect: () => ({ height: heights[Math.min(i++, heights.length - 1)] }) };
+  const doc = { currentScript: { parentNode: box }, fonts: { ready: { then: (f) => { onFonts = f; } } } };
+  new Function('document', scriptBody)(doc); // eslint-disable-line no-new-func
+  const first = cls.has('fit1');
+  if (onFonts) onFonts();
+  return [first, cls.has('fit1')];
+};
+const MM = 96 / 25.4;
+assert(JSON.stringify(runFit([200 * MM])) === '[true,true]', 'short page → fit1');
+assert(JSON.stringify(runFit([258 * MM])) === '[true,true]', 'exactly 258mm → fit1');
+assert(JSON.stringify(runFit([259 * MM])) === '[false,false]', 'taller than 258mm → block');
+assert(JSON.stringify(runFit([250 * MM, 262 * MM])) === '[true,false]', 'fonts load taller → re-measure drops fit1');
+assert(JSON.stringify(runFit([262 * MM, 250 * MM])) === '[false,true]', 'fonts load shorter → re-measure enables fit1');
+ok('grid fit script: fit1 only when the page fits 258mm, re-checked after fonts load');
+
+// รายงานอื่นที่ใช้ .major-c (ล้างใหญ่) ไม่ได้รับโครงใหม่
+html = buildSimpleReportHtml(baseData({ wo: { work_type: 'major' } }));
+assert(html.includes('<div class="major-c">'), 'major report still renders the shared .major-c container');
+assert(!html.includes('class="major-c grid-c"') && !html.includes("classList.add('fit1')"), 'major report keeps its own layout');
+ok('grid paging: other .major-c reports untouched');
+
 // ── ln_vi (Compressor): 1 เฟส vs 3 เฟส ──────────────────────────
 const lnvi = (ps, v) => baseData({ unit: { inspections: [{ category: 'refrigerant', item_label: 'Compressor', value_type: 'ln_vi', power_system: ps, ...v }] } });
 html = buildSimpleReportHtml(lnvi('220', { val_ln_after: '220', val_l_after: '6.1' }));

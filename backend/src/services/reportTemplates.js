@@ -371,6 +371,16 @@ function styleBlock(brand) {
     .major-c .sign-box .nm { font-size: 7.5pt; }
     .major-c .sign-box .pos { font-size: 6.5pt; }
     .major-c .sign-box .dt { font-size: 6.5pt; }
+    /* ใบล้างย่อย/พัดลม (.grid-c): block ตัดหน้าได้เสถียร; .fit1 (จบหน้าเดียว,
+       เปิดโดย GRID_FIT_SCRIPT) = flex แบบเดิม — ดูคอมเมนต์ที่ GRID_FIT_SCRIPT */
+    .major-c.grid-c { display: block; min-height: 0; }
+    .major-c.grid-c .grid-keep { break-inside: avoid; }
+    .major-c.grid-c .sign-row { margin-top: 14px; }
+    .major-c.grid-c.fit1 { display: flex; min-height: 258mm; }
+    .major-c.grid-c.fit1 .grid-keep { display: contents; }
+    .major-c.grid-c.fit1 .sign-row { margin-top: auto; }
+    /* ใบ simple ไม่มี QR → ขอบล่าง 18mm ของ .page ไม่มีอะไรใช้ แต่ล้นเป็นหน้าว่างต่อท้ายได้ */
+    .page:has(> .major-c.grid-c) { padding-bottom: 0; }
 
     /* page-2 by-point photo pairing */
     .pair-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
@@ -1243,23 +1253,24 @@ function gridLetterhead(fan) {
     </div>`;
 }
 
-// Per-machine photo block for ล้างย่อย/พัดลม: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
-// Renders only the rows that actually carry photos; returns '' if none do.
+// Per-machine photo blocks for ล้างย่อย/พัดลม: 3 รูป (ก่อน/หลัง/ขณะปฏิบัติงาน) per row.
+// Returns { secbar, blocks[] } for the rows that actually carry photos
+// (secbar '' + no blocks when none do) — simpleGridPage groups them for paging.
 //
-// ขนาดรูปปรับตามที่ว่างของหน้า: แต่ละบล็อกเครื่องเป็น flex item ของ .major-c
-// (flex column, min-height 258mm, ช่องเซ็น margin-top:auto) → กรอบรูปโตเข้าไปใน
-// ที่ว่างเหนือช่องเซ็น — เครื่องน้อย = รูปใหญ่ (สูงสุดเป็นจัตุรัสเท่าความกว้างช่อง
-// ตัดขอบได้ไม่เกิน ~25% ทั้งรูปตั้ง/นอน), ที่ว่างไม่พอ = 78px เท่าเดิม. flex-grow
-// ใช้แค่ที่ว่างที่เหลือ จึงไม่ดันเนื้อหาไปหน้าใหม่มากกว่าเดิม.
+// ขนาดรูปปรับตามที่ว่างของหน้า (เฉพาะใบที่จบในหน้าเดียว = .grid-c.fit1, ดู
+// GRID_FIT_SCRIPT): แต่ละบล็อกเป็น flex item ของ .major-c (min-height 258mm,
+// ช่องเซ็น margin-top:auto) → กรอบรูปโตเข้าไปในที่ว่างเหนือช่องเซ็น — เครื่องน้อย =
+// รูปใหญ่ (สูงสุดเป็นจัตุรัสเท่าความกว้างช่อง ตัดขอบได้ไม่เกิน ~25%), ที่ว่างไม่พอ =
+// 78px. ใบที่ยาวเกินหน้าเดียวจัดแบบ block ธรรมดา → กรอบ 78px.
 const GRID_PHOTO_MIN_H = 78;
 const GRID_CONTENT_W = 688; // .page 210mm − padding 2×14mm = 182mm ≈ 688px @96dpi
-function gridPhotoSection(rows, title = 'รูปถ่ายงานล้างย่อย') {
+function gridPhotoParts(rows, title = 'รูปถ่ายงานล้างย่อย') {
   // รูปที่ 4 (วัดลม/อุณหภูมิ — ศรีราชา) เพิ่มเฉพาะเมื่อมีบางแถวถ่ายไว้จริง
   const anyMeasure = (rows || []).some((r) => r.photos && r.photos.measure);
   const PHASES = [['before', 'ก่อนล้าง'], ['after', 'หลังล้าง'], ['during', 'ขณะปฏิบัติงาน'],
     ...(anyMeasure ? [['measure', 'วัดลม/อุณหภูมิหลังล้าง']] : [])];
   const withPhotos = (rows || []).filter((r) => r.photos && PHASES.some(([k]) => r.photos[k]));
-  if (!withPhotos.length) return '';
+  if (!withPhotos.length) return { secbar: '', blocks: [] };
   const GAP = 5;
   const maxH = Math.floor((GRID_CONTENT_W - GAP * (PHASES.length - 1)) / PHASES.length);
   const frame = 'position:absolute;top:0;left:0;width:100%;height:100%;box-sizing:border-box;border-radius:3px;';
@@ -1279,10 +1290,32 @@ function gridPhotoSection(rows, title = 'รูปถ่ายงานล้า
         <div style="font-size:7pt;font-weight:700;color:var(--navy);margin-bottom:2px">${escapeHtml(id)}</div>
         <div style="flex:1 1 auto;display:flex;gap:${GAP}px">${PHASES.map(([k, lbl]) => cell(r.photos[k], lbl)).join('')}</div>
       </div>`;
-  }).join('');
+  });
   const secbar = `<div style="background:var(--navy);color:#fff;font-weight:700;font-size:8pt;padding:3px 9px;margin:10px 0 6px;border-radius:2px">${title}</div>`;
-  return secbar + blocks;
+  return { secbar, blocks };
 }
+
+// ใบล้างย่อย/พัดลมจัดหน้า 2 แบบ (.major-c.grid-c):
+//  - ค่าตั้งต้น = block ธรรมดา: Chrome ตัดหน้าแบบ block ได้เสถียร. ใบ flex ที่ยาว
+//    เกินหน้าเดียวเคยได้หน้าแรกว่างทั้งหน้า (เช่น พัดลม 9 เครื่อง, ล้างย่อย 7 เครื่อง)
+//    และช่องเซ็นหลุดไปอยู่หน้าโดด ๆ (5–6 เครื่อง). .grid-keep (break-inside:avoid)
+//    มัดหัว "รูปถ่ายงาน…" กับเครื่องแรก และเครื่องสุดท้ายกับช่องเซ็น ไว้ในหน้าเดียวกัน.
+//  - .fit1 = ทั้งหน้าจบในแผ่นเดียว → flex แบบเดิม (รูปโตเข้าไปในที่ว่าง, ช่องเซ็น
+//    ชิดล่าง) — หน้าเดียวไม่มีการตัดหน้า จึงไม่โดนปัญหาข้างบน. script นี้วัดความสูง
+//    จริงแบบ block (หลังฟอนต์โหลดเสร็จ — puppeteer page.pdf รอ document.fonts.ready
+//    ก่อนพิมพ์) แล้วเปิด .fit1 เมื่อสูงไม่เกิน min-height 258mm ของ .major-c
+//    (ความสูงเดียวกับที่หน้าเดียวแบบเดิมใช้อยู่แล้ว). script ไม่รัน = block (ปลอดภัย).
+const GRID_FIT_SCRIPT = `<script>(function () {
+    var box = document.currentScript && document.currentScript.parentNode;
+    if (!box || !box.classList) return;
+    var limit = 258 * 96 / 25.4;
+    var fit = function () {
+      box.classList.remove('fit1');
+      if (box.getBoundingClientRect().height <= limit) box.classList.add('fit1');
+    };
+    fit();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  })();</scr` + `ipt>`;
 
 // ล้างย่อย / พัดลม → multi-unit checkbox grid page (one A4, no photo pages).
 function simpleGridPage(data, includePhotos = true) {
@@ -1333,22 +1366,31 @@ function simpleGridPage(data, includePhotos = true) {
     </div>`;
 
   // ล้างย่อย: 3 รูปต่อเครื่อง (ก่อน/หลัง/ขณะปฏิบัติงาน). ข้ามถ้าไม่มีรูปเลย.
-  const photoSection = includePhotos ? gridPhotoSection(rows, fan ? 'รูปถ่ายงานล้างพัดลม' : 'รูปถ่ายงานล้างย่อย') : '';
-
-  const inner = `<div class="major-c">
-    ${gridLetterhead(fan)}
-    ${meta}
-    ${secbar('สำหรับพนักงานผู้ให้บริการ')}
-    <table class="lmt" style="table-layout:fixed">${head}<tbody>${body}</tbody></table>
-    <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
-    ${photoSection}
-    <div class="sign-row">
+  const photos = includePhotos
+    ? gridPhotoParts(rows, fan ? 'รูปถ่ายงานล้างพัดลม' : 'รูปถ่ายงานล้างย่อย')
+    : { secbar: '', blocks: [] };
+  const blocks = photos.blocks;
+  const signRow = `<div class="sign-row">
       ${signatureBox('ลงชื่อช่างแอร์', sigs.team)}
       ${signatureBox('ลงชื่อหัวหน้าช่างแอร์', sigs.supervisor)}
       ${signatureBox('ลงชื่อเจ้าหน้าที่ช่างอาคาร', sigs.building)}
       ${ownerSignatureBox(d, sigs)}
       ${signatureBox('ลงชื่อเจ้าหน้าวิศวกรรม', sigs.engineer)}
-    </div>
+    </div>`;
+  // หัวรูปไปกับเครื่องแรก, เครื่องสุดท้ายไปกับช่องเซ็น (เครื่องเดียว = มัดรวมทั้งสามอย่าง)
+  const keep = (html) => `<div class="grid-keep">${html}</div>`;
+  const photoAndSign = blocks.length > 1
+    ? keep(photos.secbar + blocks[0]) + blocks.slice(1, -1).join('') + keep(blocks[blocks.length - 1] + signRow)
+    : keep(photos.secbar + (blocks[0] || '') + signRow);
+
+  const inner = `<div class="major-c grid-c">
+    ${gridLetterhead(fan)}
+    ${meta}
+    ${secbar('สำหรับพนักงานผู้ให้บริการ')}
+    <table class="lmt" style="table-layout:fixed">${head}<tbody>${body}</tbody></table>
+    <div style="margin-top:8px"><span style="color:#5a6e73;font-weight:700">ข้อแนะนำ:</span> ${dash(d.recommendation) === '—' ? '<span class="muted">—</span>' : escapeHtml(d.recommendation)}</div>
+    ${photoAndSign}
+    ${GRID_FIT_SCRIPT}
   </div>`;
   return [page(d, inner)];
 }
