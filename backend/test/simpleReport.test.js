@@ -61,6 +61,37 @@ assert(html.includes('ล้างพัดลมดูดอากาศ'), 'fa
 assert(html.includes('รูปถ่ายงานล้างพัดลม'), 'fan per-machine photo section');
 ok('grid fan: room/machine_no + สถานที่ + ประเภทพัดลม + ชำรุด + photos');
 
+// ── รูปถ่ายใบงานพัดลม/ล้างย่อย: กรอบรูปโตเข้าไปในที่ว่างของหน้า ─────────
+// (เดิม height:78px ตายตัว → ใบเครื่องเดียวรูปเล็กมาก เหลือที่ว่างครึ่งหน้า)
+// วัดผลจริงใน PDF ทำนอกชุดนี้ (Chrome render); ตรงนี้ล็อกโครง CSS ที่ทำให้โตได้.
+const fanPhotoHtml = (rows) => buildSimpleReportHtml(baseData({ wo: { work_type: 'fan' }, gridRows: rows }));
+const ph3 = { before: 'data:image/png;base64,B', after: 'data:image/png;base64,A', during: 'data:image/png;base64,D' };
+html = fanPhotoHtml([{ room: 'R1', machine_no: 'EF-1', checks: [true, true], photos: ph3 }]);
+assert(!/<img [^>]*height:78px/.test(html), 'grid photo is no longer a fixed 78px strip');
+assert((html.match(/min-height:78px;max-height:226px/g) || []).length === 3,
+  '3-photo row: each frame grows from 78px up to a square (226px = cell width)');
+assert((html.match(/class="grid-photo-block"[^>]*flex:1 1 auto/g) || []).length === 1,
+  'each machine block is a flex item that can take the free space above the signatures');
+assert((html.match(/object-fit:cover/g) || []).length >= 3, 'photos still fill their frame (cover)');
+ok('grid photos: frame grows into free page space (min 78px, max square)');
+
+// 4th photo (วัดลม) → narrower cells → smaller square cap; empty phase keeps a placeholder frame
+html = fanPhotoHtml([{ room: 'R1', machine_no: 'EF-1', checks: [true, true],
+  photos: { before: 'data:image/png;base64,B', measure: 'data:image/png;base64,M' } }]);
+assert((html.match(/min-height:78px;max-height:168px/g) || []).length === 4, '4-photo row caps at 168px');
+assert(html.includes('วัดลม/อุณหภูมิหลังล้าง') && html.includes('border:1px dashed'), 'missing phase → dashed placeholder');
+ok('grid photos: 4-photo rows cap at the narrower cell width; missing phase keeps placeholder');
+
+// หลายเครื่อง: ทุกบล็อกโตได้เท่ากัน (ที่ว่างหารกัน) — แถวที่ไม่มีรูปไม่มีบล็อก
+html = fanPhotoHtml([
+  { room: 'R1', machine_no: 'EF-1', checks: [true, true], photos: ph3 },
+  { room: 'R2', machine_no: 'EF-2', checks: [true, true] },
+  { room: 'R3', machine_no: 'EF-3', checks: [true, true], photos: ph3 },
+]);
+assert((html.match(/class="grid-photo-block"/g) || []).length === 2, 'only rows with photos get a block');
+assert(html.includes('R1 · EF-1') && html.includes('R3 · EF-3') && !html.includes('R2 · EF-2'), 'block titles');
+ok('grid photos: one growable block per machine that has photos');
+
 // ── ln_vi (Compressor): 1 เฟส vs 3 เฟส ──────────────────────────
 const lnvi = (ps, v) => baseData({ unit: { inspections: [{ category: 'refrigerant', item_label: 'Compressor', value_type: 'ln_vi', power_system: ps, ...v }] } });
 html = buildSimpleReportHtml(lnvi('220', { val_ln_after: '220', val_l_after: '6.1' }));
