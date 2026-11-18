@@ -17,7 +17,8 @@
     "migrate:wo-approve-legacy": "node src/db/migrate_wo_approve_legacy.js",
     "migrate:seed-hospitals": "node src/db/migrate_seed_hospitals.js",
     "add-branch": "node src/db/add_branch.js",
-    "test": "node test/run-all.js"
+    "test": "node test/run-all.js",
+    "check:grid-pdf": "node scripts/check-grid-pdf.js"
   },
   "keywords": [],
   "author": "",
