@@ -7,10 +7,16 @@ const { authMiddleware } = require('../middleware/auth');
 const rateLimit = require('../middleware/rateLimit');
 const { serverError } = require('../utils/respond');
 
+// Which users table this request authenticates against. Apex (no branch) names
+// public.users explicitly instead of trusting the connection's search_path, so a
+// branch-local account can never be read as a global one.
+const usersTable = (req) => (req.branch ? 'users' : 'public.users');
+
 // POST /api/auth/login
 // Per-branch auth (fully decoupled): on a branch subdomain (req.branch set) the
 // user is authenticated against THAT branch's own users table (req.db →
-// <schema>.users). On apex the user is a global super-admin from public.users.
+// <schema>.users). On apex only a Super Dev (role super_admin) from public.users
+// may sign in; every other role signs in on its own branch.
 // A branch's users and another branch's users never interconnect.
 // Throttle login to blunt brute-force / credential stuffing (audit H-2): 10
 // attempts / IP / minute. Successful logins are rare, so this never bites users.
@@ -22,7 +28,7 @@ router.post('/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) 
   try {
     const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
     const { rows } = await runner(
-      'SELECT * FROM users WHERE username = $1 AND active = true',
+      `SELECT * FROM ${usersTable(req)} WHERE username = $1 AND active = true`,
       [username]
     );
     if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
@@ -30,6 +36,10 @@ router.post('/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) 
     const user = rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    // Apex is Super Dev only. Same answer as a wrong password, and checked after
+    // it, so the response does not tell which accounts exist.
+    if (!req.branch && user.role !== 'super_admin')
+      return res.status(401).json({ error: 'Invalid credentials' });
 
     const isSuper = !req.branch;                       // apex login = super-admin
     const branchSlug = req.branch ? req.branch.slug : null;
@@ -50,7 +60,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
     const { rows } = await runner(
-      'SELECT id, name, username, role, phone FROM users WHERE id = $1',
+      `SELECT id, name, username, role, phone FROM ${usersTable(req)} WHERE id = $1`,
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
@@ -69,7 +79,7 @@ router.get('/prefs/:key', authMiddleware, async (req, res) => {
   if (!PREF_KEY_OK.test(req.params.key)) return res.status(400).json({ error: 'key ไม่ถูกต้อง' });
   try {
     const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
-    const { rows } = await runner('SELECT ui_prefs -> $1 AS value FROM users WHERE id = $2', [req.params.key, req.user.id]);
+    const { rows } = await runner(`SELECT ui_prefs -> $1 AS value FROM ${usersTable(req)} WHERE id = $2`, [req.params.key, req.user.id]);
     res.json({ value: rows[0]?.value ?? null });
   } catch (err) { serverError(res, err); }
 });
@@ -80,7 +90,7 @@ router.put('/prefs/:key', authMiddleware, async (req, res) => {
   try {
     const runner = req.branch ? req.db : ((sql, p) => pool.query(sql, p));
     await runner(
-      `UPDATE users SET ui_prefs = jsonb_set(COALESCE(ui_prefs,'{}'::jsonb), ARRAY[$1], $2::jsonb, true) WHERE id = $3`,
+      `UPDATE ${usersTable(req)} SET ui_prefs = jsonb_set(COALESCE(ui_prefs,'{}'::jsonb), ARRAY[$1], $2::jsonb, true) WHERE id = $3`,
       [req.params.key, JSON.stringify(req.body.value ?? null), req.user.id]);
     res.json({ ok: true });
   } catch (err) { serverError(res, err); }
