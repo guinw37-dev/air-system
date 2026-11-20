@@ -15,7 +15,8 @@ const usersTable = (req) => (req.branch ? 'users' : 'public.users');
 // POST /api/auth/login
 // Per-branch auth (fully decoupled): on a branch subdomain (req.branch set) the
 // user is authenticated against THAT branch's own users table (req.db →
-// <schema>.users). On apex the user is a global super-admin from public.users.
+// <schema>.users). On apex only a Super Dev (role super_admin) from public.users
+// may sign in; every other role signs in on its own branch.
 // A branch's users and another branch's users never interconnect.
 // Throttle login to blunt brute-force / credential stuffing (audit H-2): 10
 // attempts / IP / minute. Successful logins are rare, so this never bites users.
@@ -35,6 +36,10 @@ router.post('/login', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) 
     const user = rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    // Apex is Super Dev only. Same answer as a wrong password, and checked after
+    // it, so the response does not tell which accounts exist.
+    if (!req.branch && user.role !== 'super_admin')
+      return res.status(401).json({ error: 'Invalid credentials' });
 
     const isSuper = !req.branch;                       // apex login = super-admin
     const branchSlug = req.branch ? req.branch.slug : null;

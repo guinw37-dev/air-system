@@ -14,6 +14,11 @@ function authMiddleware(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload;
+    // A token with no branch is an apex (Super Dev) token. Only super_admin holds
+    // one; anything else without a branch is refused.
+    if (!payload.branchSlug && payload.role !== 'super_admin') {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     // Cross-branch guard (schema-per-tenant): a branch-scoped token (branchSlug
     // set, not a super-admin) is bound to its own branch. It must resolve to that
     // branch — reject both a wrong branch AND no branch at all, so a branch token
